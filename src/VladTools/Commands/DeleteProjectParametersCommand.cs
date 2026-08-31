@@ -199,13 +199,30 @@ namespace VladTools.Commands
             if (definition == null)
                 return string.Empty;
 
+            // GetGroupTypeId вместо ParameterGroup: в Revit 2025 и сам BuiltInParameterGroup,
+            // и Definition.ParameterGroup убраны совсем. Новая пара есть уже в 2022,
+            // поэтому код остаётся общим для всех трёх лет.
+            ForgeTypeId group;
             try
             {
-                return LabelUtils.GetLabelFor(definition.ParameterGroup);
+                group = definition.GetGroupTypeId();
             }
             catch (Exception)
             {
-                return definition.ParameterGroup.ToString();
+                return string.Empty;
+            }
+
+            // У параметра без группы ForgeTypeId пустой, а GetLabelForGroup на таком бросает.
+            if (group == null || string.IsNullOrEmpty(group.TypeId))
+                return string.Empty;
+
+            try
+            {
+                return LabelUtils.GetLabelForGroup(group);
+            }
+            catch (Exception)
+            {
+                return group.TypeId;
             }
         }
 

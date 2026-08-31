@@ -1,4 +1,4 @@
-# VladTools — плагин для Revit 2022 и 2024
+# VladTools — плагин для Revit 2022, 2024 и 2025
 
 Надстройка с вкладкой ленты **Vlad Tools**: панель «Семейства» — для работы в редакторе семейств (`.rfa`),
 панель «Проект» — для работы в проекте (`.rvt`). Кнопки добавляются по одному образцу —
@@ -399,14 +399,15 @@ src/VladTools/
 ```
 
 Требуется .NET SDK и установленный Revit — версия задаётся `RevitVersion` (по умолчанию `2022`, из
-`Directory.Build.props`; оттуда берутся `RevitAPI.dll` и `RevitAPIUI.dll`). Целевой фреймворк — `net48`,
-как требуют обе версии.
+`Directory.Build.props`; оттуда берутся `RevitAPI.dll` и `RevitAPIUI.dll`). Целевой фреймворк зависит от года:
+`net48` для 2022 и 2024, `net8.0-windows` для 2025 (Revit 2025 сам работает на .NET 8).
 
-`.\build.ps1` без параметров собирает и ставит только версию по умолчанию (2022) — своего параметра
-для года у скрипта пока нет. Под Revit 2024 собирать напрямую:
+`.\build.ps1` без параметров собирает и ставит **все три года за один запуск**, пропуская те, что не
+установлены на машине. Собрать только один год:
 
 ```powershell
-dotnet build src\VladTools\VladTools.csproj -c Release -p:RevitVersion=2024
+.\build.ps1 -RevitVersion 2024
+dotnet build src\VladTools\VladTools.csproj -c Release -p:RevitVersion=2024   # то же напрямую
 ```
 
 После сборки файлы уходят в `%AppData%\Autodesk\Revit\Addins\<год>\`:
@@ -452,8 +453,13 @@ Ribbon.AddPushButton(panel,
 
 ## Перенос на другую версию Revit
 
-В [VladTools.csproj](src/VladTools/VladTools.csproj) поменять `<RevitVersion>`. Для Revit 2025+ дополнительно
-сменить `<TargetFramework>` на `net8.0-windows`.
+Год не прописывается в csproj руками — это ключ сборки `-p:RevitVersion=<год>` (`.\build.ps1 -RevitVersion <год>`
+или `dotnet build -p:RevitVersion=<год>`), от него зависят пути к `RevitAPI.dll`, папка установки и целевой
+фреймворк. `RevitServerClient.ServiceVersion` тоже правки не требует — год Revit Server подставляется
+из запущенного Revit сам, при старте надстройки.
 
-Отдельно от csproj год Revit прописан в `RevitServerClient.ServiceVersion`: имя REST-службы Revit Server
-включает год, и на чужой год сервер отвечает «404». Поменять надо оба места.
+Для 2022, 2024 и 2025 всё уже сделано — подробный разбор, что изменилось и что для очередного года
+проверить в первую очередь, в [CHECKLIST-Revit2024.md](CHECKLIST-Revit2024.md) и
+[CHECKLIST-Revit2025.md](CHECKLIST-Revit2025.md). Для года после 2025 одной пересборки может снова
+не хватить, если Autodesk опять сменит рантайм — как это уже случилось при переходе на 2025
+(`net48` → `net8.0-windows`); смотреть `RevitAPI.runtimeconfig.json` рядом с `RevitAPI.dll` нового года.

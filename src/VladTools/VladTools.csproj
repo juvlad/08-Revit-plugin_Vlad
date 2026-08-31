@@ -1,7 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <!--
+      Revit 2025 работает на .NET 8 (RevitAPI.runtimeconfig.json: tfm net8.0 +
+      Microsoft.WindowsDesktop.App 8.0), 2022 и 2024 — на .NET Framework 4.8.
+      Сравнение числовое: MSBuild приводит обе стороны к числу, когда обе — числа.
+    -->
+    <TargetFramework Condition="'$(RevitVersion)' &gt;= '2025'">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net48</TargetFramework>
+    <!-- На .NET 8 сборки WPF подключает UseWPF, ссылками по именам их уже не взять. -->
+    <UseWPF Condition="'$(TargetFramework)' != 'net48'">true</UseWPF>
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>VladTools</AssemblyName>
@@ -12,6 +20,9 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <!-- RevitAPI.dll тянет соседние DLL Revit со своими версиями System.Drawing и т.п.
+         На net8 это даёт стену MSB3277, за которой не видно настоящих предупреждений. -->
+    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <!--
@@ -35,6 +46,10 @@
       <HintPath>$(RevitDir)\RevitAPIUI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <!-- На net8.0-windows это же даёт UseWPF; на net48 ссылки нужны явно, по именам. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
@@ -50,6 +65,8 @@
     <MakeDir Directories="$(RevitAddinsDir)\VladTools" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(RevitAddinsDir)\VladTools" ContinueOnError="true" />
     <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(RevitAddinsDir)\VladTools" ContinueOnError="true" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    <!-- Только на net8.0-windows (2025): на net48 такого файла нет. -->
+    <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(RevitAddinsDir)\VladTools" ContinueOnError="true" Condition="Exists('$(TargetDir)$(TargetName).deps.json')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\VladTools.addin" DestinationFolder="$(RevitAddinsDir)" ContinueOnError="true" />
     <Message Importance="high" Text="VladTools развёрнут в $(RevitAddinsDir)" />
   </Target>

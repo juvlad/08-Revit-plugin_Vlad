@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>VladTools</Name>
+    <Assembly>VladTools\VladTools.dll</Assembly>
+    <AddInId>f9b57b52-81a2-431f-96f9-1478a0d58968</AddInId>
+    <FullClassName>VladTools.App</FullClassName>
+    <VendorId>VLAD</VendorId>
+    <VendorDescription>Vlad</VendorDescription>
+  </AddIn>
+</RevitAddIns>

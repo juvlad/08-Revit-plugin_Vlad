@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>VladTools</AssemblyName>
+    <RootNamespace>VladTools</RootNamespace>
+    <Version>1.0.0</Version>
+    <Company>Vlad</Company>
+    <Product>VladTools для Revit $(RevitVersion)</Product>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+  </PropertyGroup>
+
+  <!--
+    Версия Revit и пути. Год по умолчанию и разведение bin/obj — в Directory.Build.props
+    (см. комментарий там); здесь только то, что от него зависит. Ключ -p:RevitVersion=2024
+    перебивает год целиком, включая пути ниже.
+  -->
+  <PropertyGroup>
+    <RevitDir>C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitDir>
+    <RevitAddinsDir>$(AppData)\Autodesk\Revit\Addins\$(RevitVersion)</RevitAddinsDir>
+    <!-- Автокопирование в папку надстроек Revit после сборки. -->
+    <DeployToRevit Condition="'$(DeployToRevit)' == ''">true</DeployToRevit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+
+  <!-- Иконки лежат внутри DLL: разворачивать нужно только один файл. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\*.png" />
+  </ItemGroup>
+
+  <Target Name="DeployToRevitAddins" AfterTargets="Build" Condition="'$(DeployToRevit)' == 'true'">
+    <MakeDir Directories="$(RevitAddinsDir)\VladTools" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(RevitAddinsDir)\VladTools" ContinueOnError="true" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(RevitAddinsDir)\VladTools" ContinueOnError="true" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\VladTools.addin" DestinationFolder="$(RevitAddinsDir)" ContinueOnError="true" />
+    <Message Importance="high" Text="VladTools развёрнут в $(RevitAddinsDir)" />
+  </Target>
+
+</Project>

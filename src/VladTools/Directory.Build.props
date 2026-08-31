@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    Год Revit и разведение bin/obj по годам — здесь, а не в самом .csproj: MSBuild читает
+    Directory.Build.props до импорта Sdk.props, а BaseOutputPath/BaseIntermediateOutputPath
+    должны быть известны именно к этому моменту, иначе NuGet успевает выбрать путь для
+    служебных файлов restore до того, как свойство применится (предупреждение MSB3539),
+    и они остаются в общей папке вместо obj\R2022\ / obj\R2024\.
+  -->
+  <PropertyGroup>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2022</RevitVersion>
+    <BaseOutputPath>bin\R$(RevitVersion)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj\R$(RevitVersion)\</BaseIntermediateOutputPath>
+    <!--
+      Готовый DefaultItemExcludes у SDK исключает из глобов **только** BaseOutputPath/
+      BaseIntermediateOutputPath ЭТОЙ сборки (bin\R2024, obj\R2024) — про соседнюю папку
+      другого года (obj\R2022, уже с файлами на диске) он не знает, и её содержимое
+      (в том числе сгенерированный VladTools.AssemblyInfo.cs) подхватывается как обычный
+      исходник дублем к своему же. Поэтому bin/obj исключаются широким шаблоном целиком,
+      а не полагаемся на то, что SDK угадает все годы сам.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+</Project>

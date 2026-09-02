@@ -1124,7 +1124,10 @@ namespace VladTools.UI
             if (text.Length == 0)
                 return;
 
-            if (_worksets.Any(workset => string.Equals(workset.Name, text, StringComparison.CurrentCultureIgnoreCase)))
+            // Дубль считается по тому же правилу, по которому набор потом ищется в связи.
+            // Иначе имя, отличающееся только пробелом по краю, тихо теряется: строкой
+            // не появляется, а найтись при загрузке тоже не может.
+            if (_worksets.Any(workset => LinkPreferences.SameWorkset(workset.Name, text)))
                 return;
 
             var row = new WorksetRow(text, isRemembered);
@@ -1195,10 +1198,17 @@ namespace VladTools.UI
         {
             var marked = Marked();
 
+            // Считать есть по чему только если хоть у одной отмеченной связи наборы прочитаны:
+            // иначе ноль означает «не смотрели», а не «нет ни в одной», и путать эти два
+            // состояния нельзя — из второго растёт «плагин не закрыл набор».
+            var counted = marked.Any(row => row.WorksetNames != null);
+
             foreach (var workset in _worksets)
             {
                 workset.LinkCount = marked.Count(row => row.WorksetNames != null &&
-                    row.WorksetNames.Any(name => string.Equals(name, workset.Name, StringComparison.CurrentCultureIgnoreCase)));
+                    row.WorksetNames.Any(name => LinkPreferences.SameWorkset(name, workset.Name)));
+
+                workset.IsCounted = counted;
             }
         }
 
@@ -1238,9 +1248,13 @@ namespace VladTools.UI
             if (pattern.Length == 0)
                 return false;
 
+            // Обрезка та же, что в команде: правило должно отмечать в окне ровно то,
+            // что потом закроется при загрузке.
+            var trimmed = LinkPreferences.NormalizeWorkset(name);
+
             return PatternContains
-                ? name.IndexOf(pattern, StringComparison.CurrentCultureIgnoreCase) >= 0
-                : name.StartsWith(pattern, StringComparison.CurrentCultureIgnoreCase);
+                ? trimmed.IndexOf(pattern, StringComparison.CurrentCultureIgnoreCase) >= 0
+                : trimmed.StartsWith(pattern, StringComparison.CurrentCultureIgnoreCase);
         }
 
         private void ToggleSelectedWorksets()

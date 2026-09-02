@@ -112,6 +112,34 @@ namespace VladTools.Infrastructure
         /// <summary>%AppData%\VladTools\links\_settings.txt</summary>
         public static string FilePath => Path.Combine(LinkSetLibrary.FolderPath, "_settings.txt");
 
+        /// <summary>
+        /// Имя рабочего набора в сравнимом виде: без пробелов по краям.
+        ///
+        /// Обрезка тут не косметика. Набор у смежника легко называется «00_Reference planes »
+        /// с висящим пробелом — в списке Revit это никак не видно. Пока окно обрезало имя при
+        /// добавлении в список, а сравнивали имена как есть, такой набор пропадал дважды:
+        /// отдельной строкой не появлялся (обрезанное имя выглядело дублем уже отмеченного),
+        /// в столбце «Где есть» показывал «нет ни в одной» — и **не закрывался вовсе**,
+        /// потому что <c>Matches</c> его не находил.
+        /// </summary>
+        public static string NormalizeWorkset(string name)
+        {
+            return (name ?? string.Empty).Trim();
+        }
+
+        /// <summary>
+        /// Одно и то же имя рабочего набора или нет. Регистр не учитывается — Revit его
+        /// в именах наборов тоже не различает. Правило одно на всех: и окно, и команда
+        /// сравнивают имена наборов связей только через этот метод.
+        /// </summary>
+        public static bool SameWorkset(string first, string second)
+        {
+            return string.Equals(
+                NormalizeWorkset(first),
+                NormalizeWorkset(second),
+                StringComparison.CurrentCultureIgnoreCase);
+        }
+
         /// <summary>Читает настройки. Файла нет или он испорчен — значения по умолчанию.</summary>
         public static LinkPreferences Load()
         {

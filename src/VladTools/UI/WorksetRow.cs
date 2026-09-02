@@ -15,6 +15,7 @@ namespace VladTools.UI
     {
         private bool _isSelected;
         private int _linkCount;
+        private bool _isCounted;
 
         public WorksetRow(string name, bool isRemembered)
         {
@@ -61,10 +62,41 @@ namespace VladTools.UI
             }
         }
 
+        /// <summary>
+        /// Наборы отмеченных связей уже читали, так что <see cref="LinkCount"/> — это счёт,
+        /// а не «ещё не смотрели». Без этого признака ноль значил и то и другое.
+        /// </summary>
+        public bool IsCounted
+        {
+            get { return _isCounted; }
+            set
+            {
+                if (_isCounted == value)
+                    return;
+
+                _isCounted = value;
+                Raise(nameof(IsCounted));
+                Raise(nameof(Where));
+            }
+        }
+
         /// <summary>Подпись столбца «Где есть».</summary>
-        public string Where => LinkCount > 0
-            ? "в " + LinkCount + " связях"
-            : IsRemembered ? "из прошлого раза" : string.Empty;
+        public string Where
+        {
+            get
+            {
+                if (LinkCount > 0)
+                    return "в " + LinkCount + " связях";
+
+                // Прочитали и не нашли — совсем не то же, что «не читали»: у имени, которого
+                // нет ни в одной связи, закрывать нечего, и это самая частая причина
+                // «набор не закрылся». Такую строку пользователь должен видеть.
+                if (IsCounted)
+                    return "нет ни в одной";
+
+                return IsRemembered ? "из прошлого раза" : string.Empty;
+            }
+        }
 
         private void Raise(string property)
         {

@@ -631,6 +631,18 @@ namespace VladTools.Commands
 
                     var instance = RevitLinkInstance.Create(doc, result.ElementId, placement);
 
+                    // Новую связь сразу закрепляем булавкой: смежник вставлен по координатам,
+                    // и случайный сдвиг мышью потом ищут всей командой. Снять закрепление
+                    // вручную — одна кнопка, вернуть уехавшую связь на место — нет.
+                    try
+                    {
+                        instance.Pinned = true;
+                    }
+                    catch (Exception exception)
+                    {
+                        failures.Add(row.Name + " — закрепить связь не удалось: " + Short(exception.Message));
+                    }
+
                     // Набор задаётся уже созданным элементам, а не через активный набор документа:
                     // так связь ложится туда, куда просили, независимо от того, где стоит пользователь.
                     WorksetId hostWorkset;

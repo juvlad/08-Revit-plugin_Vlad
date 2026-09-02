@@ -57,6 +57,7 @@ namespace VladTools.UI
         private readonly List<string> _hostWorksets = new List<string> { LinkRow.ActiveWorkset };
 
         private readonly ComboBox _hostWorksetBox;
+        private readonly CheckBox _matchWorksetBox;
         private readonly ComboBox _scopeBox;
         private readonly ComboBox _setBox;
         private readonly ComboBox _placementBox;
@@ -76,6 +77,12 @@ namespace VladTools.UI
         private bool _syncingSelectAll;
         private bool _settingMany;
         private bool _worksetsRead;
+
+        /// <summary>Строки, которым набор проекта подставил подбор по имени, — чтобы снять его при выключении.</summary>
+        private readonly HashSet<LinkRow> _autoWorkset = new HashSet<LinkRow>();
+
+        /// <summary>Подбор сейчас сам меняет набор строки — не считать это ручной правкой.</summary>
+        private bool _suggesting;
 
         /// <summary>Связи, которые пользователь подтвердил к загрузке.</summary>
         public IReadOnlyList<LinkRow> Selected { get; private set; } = new List<LinkRow>();
@@ -172,6 +179,22 @@ namespace VladTools.UI
                       "набор у каждой связи меняется отдельно."
                     : "Проект не совмещённый — рабочих наборов в нём нет."
             };
+
+            _matchWorksetBox = new CheckBox
+            {
+                Content = "Подбирать по имени модели",
+                IsChecked = _preferences.MatchProjectWorkset,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 0, 0, 0),
+                IsEnabled = HasHostWorksets,
+                ToolTip =
+                    "У новой связи без заданного набора плагин берёт код раздела из имени модели\n" +
+                    "(…_OV_R22 → OV) и ставит набор проекта, в имени которого этот код стоит\n" +
+                    "отдельным словом: «01_Link_OV», «01_Связи_OV». Ручной выбор в таблице\n" +
+                    "не трогается. Список кодов правится в links\\_settings.txt (строки DISCIPLINE)."
+            };
+            _matchWorksetBox.Checked += (s, e) => ApplyWorksetSuggestions();
+            _matchWorksetBox.Unchecked += (s, e) => ClearWorksetSuggestions();
 
             _relativeBox = new CheckBox
             {
@@ -373,6 +396,8 @@ namespace VladTools.UI
             applyWorkset.Margin = new Thickness(8, 0, 8, 4);
             applyWorkset.IsEnabled = HasHostWorksets;
             hostWorkset.Children.Add(applyWorkset);
+
+            hostWorkset.Children.Add(_matchWorksetBox);
 
             hostWorkset.Children.Add(new TextBlock
             {
@@ -867,6 +892,7 @@ namespace VladTools.UI
 
                 var row = new LinkRow(entry) { IsSelected = true };
                 Normalize(row);
+                SuggestWorkset(row);
                 row.PropertyChanged += OnRowChanged;
                 _all.Add(row);
                 added++;
@@ -904,6 +930,79 @@ namespace VladTools.UI
 
             row.Workset = LinkRow.ActiveWorkset;
             row.Note = "Набора «" + chosen + "» в проекте нет";
+        }
+
+        // ───────────────────────────── подбор набора проекта по имени ─────────────────────────────
+
+        /// <summary>
+        /// Ставит новой связи рабочий набор проекта по коду раздела из имени модели — если
+        /// подбор включён, связь новая и набор ей ещё не задан (ни руками, ни из сохранённого
+        /// набора). Ровно один подходящий набор — ставим; несколько — только помечаем в
+        /// «Состоянии», выбор за пользователем; ни одного — молчим, чтобы не засорять столбец.
+        /// </summary>
+        private void SuggestWorkset(LinkRow row)
+        {
+            if (!HasHostWorksets || _matchWorksetBox?.IsChecked != true)
+                return;
+
+            if (row.IsExisting || row.Entry.Workset.Length > 0)
+                return;
+
+            var code = DisciplineCatalog.Detect(row.Entry.Name, _preferences.EffectiveDisciplines);
+            if (code.Length == 0)
+                return;
+
+            var matches = DisciplineCatalog.MatchingWorksets(code, _hostWorksets.Skip(1));
+
+            _suggesting = true;
+            try
+            {
+                if (matches.Count == 1)
+                {
+                    row.Workset = matches[0];
+                    row.Note = "Набор по разделу «" + code + "»";
+                    _autoWorkset.Add(row);
+                }
+                else if (matches.Count > 1)
+                {
+                    row.Note = "Раздел «" + code + "»: наборов несколько, выберите";
+                }
+            }
+            finally
+            {
+                _suggesting = false;
+            }
+        }
+
+        /// <summary>Прогоняет подбор по всем строкам — по кнопке включения подбора.</summary>
+        private void ApplyWorksetSuggestions()
+        {
+            foreach (var row in _all)
+                SuggestWorkset(row);
+
+            UpdateSummary();
+        }
+
+        /// <summary>Снимает то, что поставил подбор; заданное руками не трогает.</summary>
+        private void ClearWorksetSuggestions()
+        {
+            _suggesting = true;
+            try
+            {
+                foreach (var row in _autoWorkset)
+                {
+                    row.Workset = LinkRow.ActiveWorkset;
+                    if (row.Note.StartsWith("Набор по разделу", StringComparison.Ordinal))
+                        row.Note = string.Empty;
+                }
+            }
+            finally
+            {
+                _suggesting = false;
+            }
+
+            _autoWorkset.Clear();
+            UpdateSummary();
         }
 
         // ───────────────────────────── сохранённые наборы ─────────────────────────────
@@ -1239,6 +1338,20 @@ namespace VladTools.UI
 
         private void OnRowChanged(object sender, PropertyChangedEventArgs e)
         {
+            // Ручная смена набора в таблице снимает со строки признак «подставлено подбором»:
+            // при выключении подбора такой выбор трогать уже нельзя.
+            if (e.PropertyName == nameof(LinkRow.Workset))
+            {
+                if (!_suggesting && _autoWorkset.Remove((LinkRow)sender))
+                {
+                    var row = (LinkRow)sender;
+                    if (row.Note.StartsWith("Набор по разделу", StringComparison.Ordinal))
+                        row.Note = string.Empty;
+                }
+
+                return;
+            }
+
             if (_settingMany || e.PropertyName != nameof(LinkRow.IsSelected))
                 return;
 
@@ -1362,6 +1475,7 @@ namespace VladTools.UI
             _preferences.WorksetMode = WorksetMode;
             _preferences.WorksetPattern = Pattern;
             _preferences.WorksetPatternContains = PatternContains;
+            _preferences.MatchProjectWorkset = _matchWorksetBox.IsChecked == true;
 
             _preferences.Worksets.Clear();
             _preferences.Worksets.AddRange(MarkedWorksets());

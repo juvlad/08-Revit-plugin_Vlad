@@ -64,6 +64,8 @@ namespace VladTools.Infrastructure
             "# CLOSE — имя рабочего набора, отмеченного в списке (строк может быть много)",
             "# RULE / RULE_CONTAINS — правило по имени набора: строка и «содержит» вместо «начинается с»",
             "# SERVER — имя сервера Revit Server, которое подставляется в просмотр (строк может быть много)",
+            "# MATCH_WORKSET — 1/0: подбирать набор проекта по коду раздела в имени модели",
+            "# DISCIPLINE — код раздела для этого подбора (строк может быть много); нет ни одной — берётся список по умолчанию",
             "# Файл перезаписывается при каждом закрытии окна."
         };
 
@@ -88,6 +90,24 @@ namespace VladTools.Infrastructure
 
         /// <summary>Имена серверов Revit Server, которые пользователь уже вводил.</summary>
         public List<string> Servers { get; } = new List<string>();
+
+        /// <summary>
+        /// Подбирать рабочий набор проекта по коду раздела в имени модели: у новой связи без
+        /// заданного набора плагин ищет набор вида «01_Link_OV» по коду «OV» из имени файла.
+        /// Ручной выбор в таблице никогда не затирается — подбор только заполняет пустое.
+        /// </summary>
+        public bool MatchProjectWorkset { get; set; } = true;
+
+        /// <summary>
+        /// Коды разделов для этого подбора. Пустой список = <see cref="DisciplineCatalog.Defaults"/>:
+        /// пользователь дописывает свой код в _settings.txt, а весь список туда же и сохраняется,
+        /// чтобы было что править.
+        /// </summary>
+        public List<string> Disciplines { get; } = new List<string>();
+
+        /// <summary>Коды разделов с подстановкой умолчаний, когда пользователь список не трогал.</summary>
+        public IReadOnlyList<string> EffectiveDisciplines =>
+            Disciplines.Count > 0 ? (IReadOnlyList<string>)Disciplines : DisciplineCatalog.Defaults;
 
         /// <summary>%AppData%\VladTools\links\_settings.txt</summary>
         public static string FilePath => Path.Combine(LinkSetLibrary.FolderPath, "_settings.txt");
@@ -126,9 +146,14 @@ namespace VladTools.Infrastructure
                 lines.Add(Line("WORKSETS", WorksetMode.ToString()));
                 lines.Add(Line("RULE", WorksetPattern ?? string.Empty));
                 lines.Add(Line("RULE_CONTAINS", WorksetPatternContains ? "1" : "0"));
+                lines.Add(Line("MATCH_WORKSET", MatchProjectWorkset ? "1" : "0"));
 
                 lines.AddRange(Clean(Worksets).Select(name => Line("CLOSE", name)));
                 lines.AddRange(Clean(Servers).Select(name => Line("SERVER", name)));
+
+                // Пустой список подразумевает умолчания, но в файл кладём то, что реально
+                // действует, — иначе править было бы нечего.
+                lines.AddRange(Clean(EffectiveDisciplines).Select(code => Line("DISCIPLINE", code)));
 
                 Directory.CreateDirectory(LinkSetLibrary.FolderPath);
 
@@ -200,6 +225,15 @@ namespace VladTools.Infrastructure
                 case "SERVER":
                     if (value.Length > 0)
                         Servers.Add(value);
+                    break;
+
+                case "MATCH_WORKSET":
+                    MatchProjectWorkset = value != "0";
+                    break;
+
+                case "DISCIPLINE":
+                    if (value.Length > 0)
+                        Disciplines.Add(value);
                     break;
             }
         }

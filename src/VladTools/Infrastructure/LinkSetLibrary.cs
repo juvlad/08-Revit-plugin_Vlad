@@ -198,7 +198,9 @@ namespace VladTools.Infrastructure
 
         // ───────────────────────────── строка файла ─────────────────────────────
 
-        private static string Format(LinkEntry entry)
+        /// <summary>Запись набора одной строкой файла. Тем же форматом кнопка «Базовый файл»
+        /// запоминает последнюю выбранную модель — чтобы не заводить второй.</summary>
+        public static string Format(LinkEntry entry)
         {
             var fields = entry.Origin == LinkOrigin.Cloud
                 ? new List<string> { "CLOUD", entry.Region, entry.ProjectGuid, entry.ModelGuid, entry.Name }
@@ -212,7 +214,8 @@ namespace VladTools.Infrastructure
             return string.Join(" " + Separator + " ", fields);
         }
 
-        private static LinkEntry Parse(string line)
+        /// <summary>Разбирает строку, записанную <see cref="Format"/>; мусор и комментарий — null.</summary>
+        public static LinkEntry Parse(string line)
         {
             var text = (line ?? string.Empty).Trim();
             if (text.Length == 0 || text[0] == '#')

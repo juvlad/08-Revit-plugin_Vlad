@@ -62,7 +62,7 @@ namespace VladTools.Commands
 
             try
             {
-                var window = new LinkManagerWindow(Existing(doc), HostWorksets(doc), rows => ReadWorksets(rows));
+                var window = new LinkManagerWindow(LinkCatalog.Existing(doc), LinkCatalog.HostWorksets(doc), rows => ReadWorksets(rows));
                 new WindowInteropHelper(window).Owner = commandData.Application.MainWindowHandle;
 
                 if (window.ShowDialog() != true)
@@ -106,159 +106,6 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── что уже есть в проекте ─────────────────────────────
-
-        /// <summary>
-        /// Связи, уже стоящие в проекте. Вложенные не берутся: они приезжают вместе
-        /// со своим носителем, и грузить их отдельно нельзя.
-        /// </summary>
-        private static IReadOnlyList<LinkRow> Existing(Document doc)
-        {
-            var rows = new List<LinkRow>();
-
-            var types = new FilteredElementCollector(doc)
-                .OfClass(typeof(RevitLinkType))
-                .Cast<RevitLinkType>()
-                .Where(type => !type.IsNestedLink)
-                .OrderBy(type => type.Name, StringComparer.CurrentCultureIgnoreCase);
-
-            foreach (var type in types)
-            {
-                var entry = Describe(doc, type);
-                if (entry == null)
-                    continue;
-
-                // Набор показываем тот, в котором связь лежит сейчас: пользователь должен видеть,
-                // что менять, а не выбирать вслепую. Смотрим по экземпляру — именно он стоит в модели.
-                entry.Workset = WorksetName(doc, Instances(doc, type.Id).FirstOrDefault() ?? (Element)type);
-
-                rows.Add(new LinkRow(entry, type.Id));
-            }
-
-            return rows;
-        }
-
-        /// <summary>Экземпляры одной связи: их может быть несколько, и набор меняется у всех.</summary>
-        private static List<RevitLinkInstance> Instances(Document doc, ElementId typeId)
-        {
-            return new FilteredElementCollector(doc)
-                .OfClass(typeof(RevitLinkInstance))
-                .Cast<RevitLinkInstance>()
-                .Where(instance => instance.GetTypeId() == typeId)
-                .ToList();
-        }
-
-        // ───────────────────────────── рабочие наборы проекта ─────────────────────────────
-
-        /// <summary>
-        /// Рабочие наборы открытого проекта — те, куда можно положить связь.
-        /// Проект не совмещённый — наборов нет вовсе, и окно прячет весь столбец.
-        /// </summary>
-        private static IReadOnlyList<string> HostWorksets(Document doc)
-        {
-            if (!doc.IsWorkshared)
-                return new List<string>();
-
-            return new FilteredWorksetCollector(doc)
-                .OfKind(WorksetKind.UserWorkset)
-                .ToWorksets()
-                .Select(workset => workset.Name)
-                .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-        }
-
-        /// <summary>Имя набора, в котором лежит элемент; в несовмещённом проекте — пустая строка.</summary>
-        private static string WorksetName(Document doc, Element element)
-        {
-            if (element == null || !doc.IsWorkshared)
-                return string.Empty;
-
-            try
-            {
-                var workset = doc.GetWorksetTable().GetWorkset(element.WorksetId);
-                return workset == null || workset.Kind != WorksetKind.UserWorkset ? string.Empty : workset.Name;
-            }
-            catch (Exception)
-            {
-                return string.Empty;
-            }
-        }
-
-        /// <summary>Имена наборов проекта в их идентификаторы — по имени окно и выбирает.</summary>
-        private static Dictionary<string, WorksetId> WorksetIds(Document doc)
-        {
-            var map = new Dictionary<string, WorksetId>(StringComparer.CurrentCultureIgnoreCase);
-
-            if (!doc.IsWorkshared)
-                return map;
-
-            foreach (var workset in new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset).ToWorksets())
-                map[workset.Name] = workset.Id;
-
-            return map;
-        }
-
-        /// <summary>
-        /// Кладёт элемент в рабочий набор проекта. Отказ не должен срывать загрузку: связь уже
-        /// создана и работает, просто лежит не там, — поэтому он уходит строкой в отчёт.
-        /// </summary>
-        private static bool Place(Element element, WorksetId workset, List<string> failures, string what)
-        {
-            try
-            {
-                if (element == null || element.WorksetId == workset)
-                    return false;
-
-                var parameter = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
-                if (parameter == null || parameter.IsReadOnly)
-                {
-                    failures.Add(what + " — рабочий набор сменить нельзя: параметр недоступен");
-                    return false;
-                }
-
-                parameter.Set(workset.IntegerValue);
-                return true;
-            }
-            catch (Exception exception)
-            {
-                failures.Add(what + " — рабочий набор сменить не удалось: " + Short(exception.Message));
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Откуда приехала связь. Облачную узнаём по самому пути: у него есть регион
-        /// и пара GUID, и больше ничего — обычного пути у неё не существует.
-        /// </summary>
-        private static LinkEntry Describe(Document doc, RevitLinkType type)
-        {
-            try
-            {
-                var reference = ExternalFileUtils.GetExternalFileReference(doc, type.Id);
-                var path = reference.GetAbsolutePath();
-
-                if (path.CloudPath)
-                {
-                    return LinkEntry.ForCloud(
-                        path.Region,
-                        path.GetProjectGUID().ToString(),
-                        path.GetModelGUID().ToString(),
-                        type.Name);
-                }
-
-                var visible = ModelPathUtils.ConvertModelPathToUserVisiblePath(path);
-
-                return visible.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase)
-                    ? LinkEntry.ForServer(visible)
-                    : LinkEntry.ForFile(visible);
-            }
-            catch (Exception)
-            {
-                // Путь недоступен — связь просто не попадёт в список; это не повод не открывать окно.
-                return null;
-            }
-        }
-
         // ───────────────────────────── рабочие наборы ─────────────────────────────
 
         /// <summary>
@@ -289,7 +136,7 @@ namespace VladTools.Commands
                 catch (Exception exception)
                 {
                     row.Note = "Наборы не прочитаны";
-                    failures.Add(row.Name + " — " + Short(exception.Message));
+                    failures.Add(row.Name + " — " + LinkCatalog.Short(exception.Message));
                 }
             }
 
@@ -309,7 +156,7 @@ namespace VladTools.Commands
             if (!refresh && _worksets.TryGetValue(row.Key, out cached))
                 return cached;
 
-            var worksets = WorksharingUtils.GetUserWorksetInfo(ToModelPath(row.Entry))
+            var worksets = WorksharingUtils.GetUserWorksetInfo(LinkCatalog.ToModelPath(row.Entry))
                 .Select(preview => new WorksetInfo(preview.Name, preview.Id))
                 .ToList();
 
@@ -356,7 +203,7 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                notes.Add(row.Name + " — рабочие наборы прочитать не удалось (" + Short(exception.Message) +
+                notes.Add(row.Name + " — рабочие наборы прочитать не удалось (" + LinkCatalog.Short(exception.Message) +
                           "), связь загружена как есть");
                 return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
             }
@@ -505,14 +352,14 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                return WorksetCheck.Unknown("наборы проверить не удалось: " + Short(exception.Message));
+                return WorksetCheck.Unknown("наборы проверить не удалось: " + LinkCatalog.Short(exception.Message));
             }
         }
 
         /// <summary>Документ связи — или <c>null</c>, если связь его не отдаёт.</summary>
         private static Document LinkDocument(Document doc, ElementId typeId)
         {
-            return Instances(doc, typeId).FirstOrDefault()?.GetLinkDocument();
+            return LinkCatalog.Instances(doc, typeId).FirstOrDefault()?.GetLinkDocument();
         }
 
         /// <summary>
@@ -563,7 +410,7 @@ namespace VladTools.Commands
 
                     retried = true;
 
-                    var result = type.LoadFrom(ToModelPath(row.Entry), configuration);
+                    var result = type.LoadFrom(LinkCatalog.ToModelPath(row.Entry), configuration);
                     if (!LinkLoadResult.IsCodeSuccess(result.LoadResult))
                         return check;
                 }
@@ -651,8 +498,8 @@ namespace VladTools.Commands
             if (fresh.Count == 0 && existing.Count == 0)
                 return;
 
-            var placement = Placement(preferences.Placement);
-            var worksets = WorksetIds(doc);
+            var placement = LinkCatalog.Placement(preferences.Placement);
+            var worksets = LinkCatalog.WorksetIds(doc);
 
             // Кого проверить и, если понадобится, долечить через LoadFrom — обязательно вне
             // транзакции, поэтому список собирается внутри, а разбирается снаружи.
@@ -678,7 +525,7 @@ namespace VladTools.Commands
                     }
                     catch (Exception exception)
                     {
-                        failures.Add(row.Name + " — " + Short(exception.Message));
+                        failures.Add(row.Name + " — " + LinkCatalog.Short(exception.Message));
                     }
                 }
 
@@ -690,7 +537,7 @@ namespace VladTools.Commands
                     }
                     catch (Exception exception)
                     {
-                        failures.Add(row.Name + " — " + Short(exception.Message));
+                        failures.Add(row.Name + " — " + LinkCatalog.Short(exception.Message));
                     }
                 }
 
@@ -710,7 +557,7 @@ namespace VladTools.Commands
                 }
                 catch (Exception exception)
                 {
-                    failures.Add(pair.Key.Name + " — " + Short(exception.Message));
+                    failures.Add(pair.Key.Name + " — " + LinkCatalog.Short(exception.Message));
                 }
             }
         }
@@ -735,10 +582,10 @@ namespace VladTools.Commands
             if (type == null)
                 return;
 
-            var changed = Instances(doc, row.ExistingId)
-                .Count(instance => Place(instance, workset, failures, row.Name));
+            var changed = LinkCatalog.Instances(doc, row.ExistingId)
+                .Count(instance => LinkCatalog.Place(instance, workset, failures, row.Name));
 
-            Place(type, workset, failures, row.Name);
+            LinkCatalog.Place(type, workset, failures, row.Name);
 
             if (changed > 0)
             {
@@ -767,7 +614,7 @@ namespace VladTools.Commands
 
                 using (var options = new RevitLinkOptions(relative, configuration))
                 {
-                    var result = RevitLinkType.Create(doc, ToModelPath(row.Entry), options);
+                    var result = RevitLinkType.Create(doc, LinkCatalog.ToModelPath(row.Entry), options);
 
                     if (result.LoadResult == LinkLoadResultType.LinkExists)
                     {
@@ -778,8 +625,8 @@ namespace VladTools.Commands
 
                     if (!LinkLoadResult.IsCodeSuccess(result.LoadResult))
                     {
-                        row.Note = Describe(result.LoadResult);
-                        failures.Add(row.Name + " — " + Describe(result.LoadResult));
+                        row.Note = LinkCatalog.Describe(result.LoadResult);
+                        failures.Add(row.Name + " — " + LinkCatalog.Describe(result.LoadResult));
                         return ElementId.InvalidElementId;
                     }
 
@@ -798,7 +645,7 @@ namespace VladTools.Commands
                     }
                     catch (Exception exception)
                     {
-                        failures.Add(row.Name + " — закрепить связь не удалось: " + Short(exception.Message));
+                        failures.Add(row.Name + " — закрепить связь не удалось: " + LinkCatalog.Short(exception.Message));
                     }
 
                     // Набор задаётся уже созданным элементам, а не через активный набор документа:
@@ -806,8 +653,8 @@ namespace VladTools.Commands
                     WorksetId hostWorkset;
                     if (row.Entry.Workset.Length > 0 && worksets.TryGetValue(row.Entry.Workset, out hostWorkset))
                     {
-                        Place(instance, hostWorkset, failures, row.Name);
-                        Place(type, hostWorkset, failures, row.Name);
+                        LinkCatalog.Place(instance, hostWorkset, failures, row.Name);
+                        LinkCatalog.Place(type, hostWorkset, failures, row.Name);
                     }
 
                     row.Note = "Загружена";
@@ -853,12 +700,12 @@ namespace VladTools.Commands
 
                     using (var configuration = Configuration(row, preferences, notes))
                     {
-                        var result = type.LoadFrom(ToModelPath(row.Entry), configuration);
+                        var result = type.LoadFrom(LinkCatalog.ToModelPath(row.Entry), configuration);
 
                         if (!LinkLoadResult.IsCodeSuccess(result.LoadResult))
                         {
-                            row.Note = Describe(result.LoadResult);
-                            failures.Add(row.Name + " — " + Describe(result.LoadResult));
+                            row.Note = LinkCatalog.Describe(result.LoadResult);
+                            failures.Add(row.Name + " — " + LinkCatalog.Describe(result.LoadResult));
                             continue;
                         }
                     }
@@ -875,42 +722,9 @@ namespace VladTools.Commands
                 }
                 catch (Exception exception)
                 {
-                    failures.Add(row.Name + " — " + Short(exception.Message));
+                    failures.Add(row.Name + " — " + LinkCatalog.Short(exception.Message));
                 }
             }
-        }
-
-        private static ImportPlacement Placement(LinkPlacement placement)
-        {
-            switch (placement)
-            {
-                case LinkPlacement.Origin:
-                    return ImportPlacement.Origin;
-                case LinkPlacement.Centered:
-                    return ImportPlacement.Centered;
-                case LinkPlacement.Site:
-                    return ImportPlacement.Site;
-                default:
-                    return ImportPlacement.Shared;
-            }
-        }
-
-        /// <summary>
-        /// Путь к модели. У облачной модели обычного пути нет вовсе: она адресуется
-        /// регионом и парой GUID, и это единственный способ до неё добраться.
-        /// </summary>
-        private static ModelPath ToModelPath(LinkEntry entry)
-        {
-            if (entry.Origin != LinkOrigin.Cloud)
-                return ModelPathUtils.ConvertUserVisiblePathToModelPath(entry.Path);
-
-            Guid project;
-            Guid model;
-
-            if (!Guid.TryParse(entry.ProjectGuid, out project) || !Guid.TryParse(entry.ModelGuid, out model))
-                throw new InvalidOperationException("GUID облачной модели записан неверно.");
-
-            return ModelPathUtils.ConvertCloudGUIDsToCloudPath(entry.Region, project, model);
         }
 
         // ───────────────────────────── отчёт ─────────────────────────────
@@ -930,38 +744,6 @@ namespace VladTools.Commands
             return preferences.Worksets
                 .Where(name => !_seenNames.Contains(LinkPreferences.NormalizeWorkset(name)))
                 .ToList();
-        }
-
-        /// <summary>Код отказа Revit словами: сам по себе он пользователю ничего не говорит.</summary>
-        private static string Describe(LinkLoadResultType result)
-        {
-            switch (result)
-            {
-                case LinkLoadResultType.LinkNotFound:
-                    return "файл не найден";
-                case LinkLoadResultType.LinkNotOpenable:
-                    return "файл не открывается: повреждён или занят";
-                case LinkLoadResultType.LinkOpenAsHost:
-                    return "этот файл уже открыт как проект";
-                case LinkLoadResultType.SameModelAsHost:
-                case LinkLoadResultType.SameCentralModelAsHost:
-                    return "это сам открытый проект";
-                case LinkLoadResultType.LinkExists:
-                    return "такая связь в проекте уже есть";
-                case LinkLoadResultType.ExternalServerMissing:
-                    return "сервер недоступен";
-                case LinkLoadResultType.LinkNotLoadedOtherError:
-                    return "Revit не смог загрузить связь";
-                default:
-                    return "загрузка не удалась (" + result + ")";
-            }
-        }
-
-        /// <summary>Сообщения Revit бывают в несколько абзацев — в списке нужна одна строка.</summary>
-        private static string Short(string message)
-        {
-            var text = (message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
-            return text.Length > 160 ? text.Substring(0, 160) + "…" : text;
         }
 
         private static void Report(

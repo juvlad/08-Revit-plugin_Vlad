@@ -617,220 +617,22 @@ namespace VladTools.UI
 
         private void OnAddFiles(object sender, RoutedEventArgs e)
         {
-            var dialog = new Microsoft.Win32.OpenFileDialog
-            {
-                Title = "Выберите модели Revit",
-                Filter = "Модели Revit (*.rvt)|*.rvt",
-                Multiselect = true,
-                CheckFileExists = true
-            };
-
-            if (dialog.ShowDialog(this) != true)
-                return;
-
-            Add(dialog.FileNames.Select(LinkEntry.ForFile).ToList(), "файлов");
+            Add(ModelPicker.Files(this, true), "файлов");
         }
 
         private void OnBrowseServer(object sender, RoutedEventArgs e)
         {
-            var serverBox = new TextBox
-            {
-                MinWidth = 220,
-                VerticalAlignment = VerticalAlignment.Center,
-                VerticalContentAlignment = VerticalAlignment.Center,
-                Padding = new Thickness(3, 2, 3, 2),
-                Margin = new Thickness(0, 0, 8, 0),
-                Text = _preferences.Servers.FirstOrDefault() ?? string.Empty
-            };
-
-            var strip = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
-            strip.Children.Add(new TextBlock
-            {
-                Text = "Сервер:",
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 0)
-            });
-            strip.Children.Add(serverBox);
-
-            var roots = _preferences.Servers
-                .Select(server => ServerRoot(server))
-                .ToList();
-
-            var window = new ModelBrowserWindow(
-                "Revit Server",
-                "Имя сервера — то же, что в диалоге Revit: без «RSN://» и без слэшей. " +
-                "Папки читаются по мере раскрытия, поэтому первое обращение к большому серверу занимает секунду-другую.",
-                strip,
-                roots,
-                ExpandServer)
-            {
-                Owner = this
-            };
-
-            var addServer = new Button
-            {
-                Content = "Показать сервер",
-                Padding = new Thickness(10, 3, 10, 3),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            addServer.Click += (s, args) =>
-            {
-                var server = RevitServerClient.NormalizeServer(serverBox.Text);
-                if (server.Length == 0)
-                {
-                    MessageBox.Show(window, "Впишите имя сервера.", WindowTitle,
-                        MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                if (window.HasRoot(node => string.Equals(node.Name, server, StringComparison.OrdinalIgnoreCase)))
-                    return;
-
-                window.AddRoot(ServerRoot(server));
-                Remember(_preferences.Servers, server);
-            };
-            strip.Children.Add(addServer);
-
-            if (window.ShowDialog() == true)
-                Add(window.Selected, "моделей с Revit Server");
-        }
-
-        private static BrowseNode ServerRoot(string server)
-        {
-            var name = RevitServerClient.NormalizeServer(server);
-            var node = BrowseNode.Folder(name, new ServerFolder(name, RevitServerClient.RootFolder));
-            node.Note = "Revit Server";
-
-            return node;
-        }
-
-        private IReadOnlyList<BrowseNode> ExpandServer(BrowseNode node)
-        {
-            var folder = node.Context as ServerFolder;
-            if (folder == null)
-                return new List<BrowseNode>();
-
-            var known = Keys();
-
-            return RevitServerClient.Contents(folder.Server, folder.Path)
-                .Select(entry => entry.IsFolder
-                    ? BrowseNode.Folder(entry.Name, new ServerFolder(folder.Server, entry.Path))
-                    : ModelNode(LinkEntry.ForServer(RevitServerClient.RsnPath(folder.Server, folder.Path, entry.Name)), known))
-                .ToList();
+            Add(ModelPicker.Server(this, WindowTitle, _preferences, Keys), "моделей с Revit Server");
         }
 
         private void OnBrowseCloud(object sender, RoutedEventArgs e)
         {
-            var obstacle = AutodeskSession.Obstacle();
-            if (obstacle.Length > 0)
-            {
-                MessageBox.Show(
-                    this,
-                    obstacle + "\n\nСписок можно ввести парой GUID — кнопка «BIM360 по GUID…».",
-                    WindowTitle,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                return;
-            }
-
-            IReadOnlyList<AccHub> hubs;
-            var cursor = Mouse.OverrideCursor;
-
-            try
-            {
-                Mouse.OverrideCursor = Cursors.Wait;
-                hubs = AccClient.Hubs(AutodeskSession.Token);
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show(this, "Не удалось получить список учётных записей Autodesk.\n\n" + exception.Message,
-                    WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            finally
-            {
-                Mouse.OverrideCursor = cursor;
-            }
-
-            var roots = hubs.Select(hub =>
-            {
-                var node = BrowseNode.Folder(hub.Name, hub);
-                node.Note = hub.Region;
-                return node;
-            }).ToList();
-
-            var user = AutodeskSession.UserName;
-
-            var window = new ModelBrowserWindow(
-                "BIM360 / Autodesk Docs",
-                "Показано то, что доступно учётной записи, под которой вы вошли в Revit" +
-                (user.Length > 0 ? " (" + user + ")" : string.Empty) + ". " +
-                "Связать можно только совмещённые модели: обычный .rvt, просто лежащий в папке, в списке не появится.",
-                null,
-                roots,
-                ExpandCloud)
-            {
-                Owner = this
-            };
-
-            if (window.ShowDialog() == true)
-                Add(window.Selected, "моделей BIM360");
-        }
-
-        private IReadOnlyList<BrowseNode> ExpandCloud(BrowseNode node)
-        {
-            var token = AutodeskSession.Token;
-            if (token == null)
-                throw new InvalidOperationException("Сеанс Autodesk истёк. Войдите в учётную запись в Revit заново.");
-
-            var hub = node.Context as AccHub;
-            if (hub != null)
-            {
-                return AccClient.Projects(token, hub)
-                    .Select(project => BrowseNode.Folder(project.Name, new CloudFolder(hub, project, null)))
-                    .ToList();
-            }
-
-            var folder = node.Context as CloudFolder;
-            if (folder == null)
-                return new List<BrowseNode>();
-
-            if (folder.FolderId == null)
-            {
-                return AccClient.TopFolders(token, folder.Hub, folder.Project)
-                    .Select(entry => BrowseNode.Folder(entry.Name, new CloudFolder(folder.Hub, folder.Project, entry.Id)))
-                    .ToList();
-            }
-
-            var known = Keys();
-
-            return AccClient.Contents(token, folder.Project, folder.FolderId)
-                .Where(entry => entry.IsFolder || entry.IsCloudModel)
-                .Select(entry => entry.IsFolder
-                    ? BrowseNode.Folder(entry.Name, new CloudFolder(folder.Hub, folder.Project, entry.Id))
-                    : ModelNode(
-                        LinkEntry.ForCloud(
-                            folder.Project.Region,
-                            entry.ProjectGuid.ToString(),
-                            entry.ModelGuid.ToString(),
-                            entry.Name),
-                        known))
-                .ToList();
-        }
-
-        /// <summary>Модель в дереве: уже связанную показываем серой и отметить не даём.</summary>
-        private static BrowseNode ModelNode(LinkEntry entry, HashSet<string> known)
-        {
-            var isKnown = known.Contains(entry.Key);
-            return BrowseNode.Model(entry, isKnown ? "уже в списке" : string.Empty, !isKnown);
+            Add(ModelPicker.Cloud(this, WindowTitle, Keys), "моделей BIM360");
         }
 
         private void OnAddCloudByGuid(object sender, RoutedEventArgs e)
         {
-            var window = new CloudLinkWindow(DefaultRegion()) { Owner = this };
-
-            if (window.ShowDialog() == true)
-                Add(window.Selected, "облачных моделей");
+            Add(ModelPicker.CloudByGuid(this, DefaultRegion()), "облачных моделей");
         }
 
         /// <summary>Регион, с которым окно ввода GUID открывается: тот же, что у уже собранных связей.</summary>
@@ -1497,42 +1299,6 @@ namespace VladTools.UI
             _preferences.Save();
 
             base.OnClosed(e);
-        }
-
-        private static void Remember(List<string> values, string value)
-        {
-            values.RemoveAll(item => string.Equals(item, value, StringComparison.OrdinalIgnoreCase));
-            values.Insert(0, value);
-        }
-
-        // ───────────────────────────── что раскрывать дальше ─────────────────────────────
-
-        /// <summary>Папка на Revit Server: сервер плюс путь со своим разделителем.</summary>
-        private sealed class ServerFolder
-        {
-            public ServerFolder(string server, string path)
-            {
-                Server = server;
-                Path = path;
-            }
-
-            public string Server { get; }
-            public string Path { get; }
-        }
-
-        /// <summary>Место в облаке: учётная запись, проект и папка. Папка не задана — это сам проект.</summary>
-        private sealed class CloudFolder
-        {
-            public CloudFolder(AccHub hub, AccProject project, string folderId)
-            {
-                Hub = hub;
-                Project = project;
-                FolderId = folderId;
-            }
-
-            public AccHub Hub { get; }
-            public AccProject Project { get; }
-            public string FolderId { get; }
         }
     }
 }

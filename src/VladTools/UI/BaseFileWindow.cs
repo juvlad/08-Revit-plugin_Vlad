@@ -105,14 +105,18 @@ namespace VladTools.UI
                 "Для координационного файла обычно «Совмещение внутренних начал»: общие координаты " +
                 "из него ещё только предстоит получить, и вставлять по ним пока нечего.";
 
+            // Список редактируемый по той же причине, что и у набора для перехода: в новом
+            // разделе «01_Link_BM» ещё не заведён, выбрать его из списка нечем, а команда
+            // такой набор создаст.
             _linkWorksetBox = new ComboBox
             {
                 Width = 240,
+                IsEditable = true,
                 VerticalAlignment = VerticalAlignment.Center,
                 ItemsSource = _hostWorksets,
-                SelectedIndex = 0,
                 IsEnabled = HasHostWorksets,
-                ToolTip = "Рабочий набор проекта, в который встанет сама связь."
+                ToolTip = "Рабочий набор проекта, в который встанет сама связь. " +
+                          "Набора с таким именем в проекте нет — команда его создаст."
             };
 
             _acquireBox = Option("Получить общие координаты из базового файла",
@@ -189,6 +193,7 @@ namespace VladTools.UI
             // Text у редактируемого ComboBox задаётся после разметки: до применения шаблона
             // он теряется, если в списке нет строки с таким же значением.
             _worksetBox.Text = _preferences.Workset;
+            _linkWorksetBox.Text = Named(_preferences.LinkWorkset);
 
             Show(_preferences.Model == null ? null : Match(_preferences.Model));
         }
@@ -408,17 +413,25 @@ namespace VladTools.UI
             _modelPath.Text = row.Kind + " · " + row.Location;
             _runButton.IsEnabled = true;
 
-            // Набор показываем тот, в котором связь лежит сейчас: у существующей связи его
-            // менять незачем, а у новой это подсказка из сохранённых настроек.
-            var workset = row.Entry.Workset;
-            _linkWorksetBox.SelectedItem = workset.Length > 0 && _hostWorksets.Contains(workset)
-                ? workset
-                : LinkRow.ActiveWorkset;
+            // У связи, уже стоящей в проекте, показываем её нынешний набор — пользователь должен
+            // видеть, что меняет. У новой набор берётся из настроек и подставлен ещё до выбора
+            // модели: «01_Link_BM» один и тот же во всех разделах.
+            if (row.IsExisting)
+                _linkWorksetBox.Text = Named(row.Entry.Workset);
 
             _status.Foreground = SystemColors.GrayTextBrush;
             _status.Text = row.IsExisting
                 ? "Связь на эту модель в проекте уже есть — она и будет использована."
                 : string.Empty;
+        }
+
+        /// <summary>
+        /// Имя набора для показа в поле: пустое значит «активный», и пустая строка
+        /// в выпадающем списке выглядела бы недосмотром.
+        /// </summary>
+        private static string Named(string workset)
+        {
+            return string.IsNullOrEmpty(workset) ? LinkRow.ActiveWorkset : workset;
         }
 
         /// <summary>Ключи моделей, которые в дереве показывать серыми: выбранная — уже взята.</summary>
@@ -482,14 +495,18 @@ namespace VladTools.UI
         /// </summary>
         private void Collect()
         {
+            var linkWorkset = (_linkWorksetBox.Text ?? string.Empty).Trim();
+            if (linkWorkset == LinkRow.ActiveWorkset)
+                linkWorkset = string.Empty;
+
             if (_row != null)
             {
-                // Набор проекта хранится в самой записи — оттуда его берёт и команда,
-                // и сохранённая на будущее модель.
-                _row.Workset = _linkWorksetBox.SelectedItem as string ?? LinkRow.ActiveWorkset;
+                // Набор проекта хранится в самой записи — оттуда его берёт команда.
+                _row.Workset = linkWorkset;
                 _preferences.Model = _row.Entry;
             }
 
+            _preferences.LinkWorkset = linkWorkset;
             _preferences.Placement = PlacementFor(_placementBox.SelectedIndex);
             _preferences.Site = _siteBox.Text.Trim();
             _preferences.Workset = (_worksetBox.Text ?? string.Empty).Trim();

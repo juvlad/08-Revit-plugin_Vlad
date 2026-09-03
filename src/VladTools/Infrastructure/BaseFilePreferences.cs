@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -23,6 +23,12 @@ namespace VladTools.Infrastructure
         /// <summary>Имя набора, куда переходят перед копированием уровней и осей.</summary>
         public const string SharedLevelsWorkset = "00_Shared levels and grids";
 
+        /// <summary>
+        /// Набор, в который кладут саму связь базового файла. По той же конвенции, что
+        /// «01_Link_OV» у смежников: BM — базовая модель.
+        /// </summary>
+        public const string BaseLinkWorkset = "01_Link_BM";
+
         private static readonly string[] FileHeader =
         {
             "# Настройки кнопки «Базовый файл» — панель «Проект».",
@@ -32,6 +38,7 @@ namespace VladTools.Infrastructure
             "# PLACEMENT — Shared | Origin | Centered | Site (по умолчанию Origin:",
             "#   общие координаты из базового файла ещё только предстоит получить)",
             "# SITE — имя, которое получит площадка проекта",
+            "# LINK_WORKSET — рабочий набор проекта, в который встанет сама связь (пусто — активный)",
             "# WORKSET — рабочий набор, в который команда переходит перед копированием уровней и осей",
             "# ACQUIRE / RENAME / PIN / ACTIVATE / MONITOR — 1/0: делать ли соответствующий шаг",
             "# Файл перезаписывается при каждом закрытии окна."
@@ -48,6 +55,13 @@ namespace VladTools.Infrastructure
 
         /// <summary>Имя, которое получит площадка проекта.</summary>
         public string Site { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Рабочий набор проекта, в который встанет сама связь. Хранится отдельно от модели:
+        /// набор один и тот же во всех разделах, а базовый файл в новом объекте другой.
+        /// Пусто — активный набор, как это делает сам Revit.
+        /// </summary>
+        public string LinkWorkset { get; set; } = BaseLinkWorkset;
 
         /// <summary>Рабочий набор, в который команда переходит перед копированием уровней и осей.</summary>
         public string Workset { get; set; } = SharedLevelsWorkset;
@@ -105,6 +119,7 @@ namespace VladTools.Infrastructure
 
                 lines.Add(Line("PLACEMENT", Placement.ToString()));
                 lines.Add(Line("SITE", Site ?? string.Empty));
+                lines.Add(Line("LINK_WORKSET", LinkWorkset ?? string.Empty));
                 lines.Add(Line("WORKSET", Workset ?? string.Empty));
                 lines.Add(Line("ACQUIRE", Acquire ? "1" : "0"));
                 lines.Add(Line("RENAME", Rename ? "1" : "0"));
@@ -154,6 +169,10 @@ namespace VladTools.Infrastructure
 
                 case "SITE":
                     Site = value;
+                    break;
+
+                case "LINK_WORKSET":
+                    LinkWorkset = value;
                     break;
 
                 case "WORKSET":

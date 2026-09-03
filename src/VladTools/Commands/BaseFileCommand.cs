@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Interop;
@@ -96,7 +96,12 @@ namespace VladTools.Commands
                         Rename(doc, preferences.Site, done, failures);
 
                     if (preferences.Activate)
-                        target = Ensure(doc, preferences.Workset, done, failures);
+                    {
+                        if (doc.IsWorkshared)
+                            target = Ensure(doc, preferences.Workset, done, failures);
+                        else
+                            failures.Add("Перейти в рабочий набор нельзя: проект не совмещённый.");
+                    }
 
                     if (done.Count == 0)
                         transaction.RollBack();
@@ -138,7 +143,10 @@ namespace VladTools.Commands
             List<string> failures)
         {
             var placement = LinkCatalog.Placement(preferences.Placement);
-            var worksets = LinkCatalog.WorksetIds(doc);
+
+            // Набор для связи не ищется в готовом списке, а заводится, если его нет: «01_Link_BM»
+            // в новом разделе ещё не создан, и связь молча легла бы в активный набор.
+            var workset = Ensure(doc, row.Entry.Workset, done, failures);
 
             if (row.IsExisting)
             {
@@ -147,14 +155,14 @@ namespace VladTools.Commands
                 if (instance != null)
                 {
                     done.Add("Связь «" + row.Name + "» уже в проекте — работаем с ней");
-                    Move(doc, row, instances, worksets, done, failures);
+                    Move(doc, row, instances, workset, done, failures);
 
                     return instance.Id;
                 }
 
                 // Тип связи загружен, а экземпляра в модели нет — такое остаётся после
                 // «Удалить» на экземпляре. Вставляем экземпляр, тип трогать незачем.
-                return Place(doc, row, row.ExistingId, placement, worksets,
+                return Place(doc, row, row.ExistingId, placement, workset,
                     "Связь «" + row.Name + "» вставлена (тип уже был загружен)", done, failures);
             }
 
@@ -172,7 +180,7 @@ namespace VladTools.Commands
                         return ElementId.InvalidElementId;
                     }
 
-                    return Place(doc, row, result.ElementId, placement, worksets,
+                    return Place(doc, row, result.ElementId, placement, workset,
                         "Связь «" + row.Name + "» загружена", done, failures);
                 }
             }
@@ -192,12 +200,11 @@ namespace VladTools.Commands
             Document doc,
             LinkRow row,
             IReadOnlyList<RevitLinkInstance> instances,
-            Dictionary<string, WorksetId> worksets,
+            WorksetId workset,
             List<string> done,
             List<string> failures)
         {
-            WorksetId workset;
-            if (row.Entry.Workset.Length == 0 || !worksets.TryGetValue(row.Entry.Workset, out workset))
+            if (workset == WorksetId.InvalidWorksetId)
                 return;
 
             var moved = instances.Count(instance => LinkCatalog.Place(instance, workset, failures, row.Name));
@@ -213,7 +220,7 @@ namespace VladTools.Commands
             LinkRow row,
             ElementId typeId,
             ImportPlacement placement,
-            Dictionary<string, WorksetId> worksets,
+            WorksetId workset,
             string success,
             List<string> done,
             List<string> failures)
@@ -225,8 +232,7 @@ namespace VladTools.Commands
                 // Набор задаётся уже созданным элементам, а не через активный набор документа:
                 // так связь ложится туда, куда просили, независимо от того, где стоит пользователь.
                 // Кладём и экземпляр, и тип — так же делает сам Revit.
-                WorksetId workset;
-                if (row.Entry.Workset.Length > 0 && worksets.TryGetValue(row.Entry.Workset, out workset))
+                if (workset != WorksetId.InvalidWorksetId)
                 {
                     LinkCatalog.Place(instance, workset, failures, row.Name);
                     LinkCatalog.Place(doc.GetElement(typeId), workset, failures, row.Name);
@@ -322,17 +328,19 @@ namespace VladTools.Commands
         // ───────────────────────────── рабочий набор ─────────────────────────────
 
         /// <summary>
-        /// Ищет рабочий набор по имени, а если такого нет — создаёт. Создание здесь не
-        /// самодеятельность: в новом разделе «00_Shared levels and grids» часто ещё не заведён,
-        /// а перейти в несуществующий набор нельзя, и кнопка молча не сделала бы главного.
+        /// Ищет рабочий набор по имени, а если такого нет — создаёт. Общий для обоих наборов
+        /// окна: и того, куда кладётся связь («01_Link_BM»), и того, в который переходят
+        /// («00_Shared levels and grids»). Создание здесь не самодеятельность: в новом разделе
+        /// ни того, ни другого ещё нет, а молчаливый пропуск означал бы, что кнопка не сделала
+        /// главного — связь легла бы в активный набор, а перейти было бы некуда.
+        ///
+        /// Имя пустое или проект не совмещённый — это не отказ, а «набор не нужен»:
+        /// про несовмещённый проект говорит тот, кто набор заказывал.
         /// </summary>
         private static WorksetId Ensure(Document doc, string name, List<string> done, List<string> failures)
         {
-            if (!doc.IsWorkshared)
-            {
-                failures.Add("Перейти в рабочий набор нельзя: проект не совмещённый.");
+            if (!doc.IsWorkshared || string.IsNullOrEmpty(name))
                 return WorksetId.InvalidWorksetId;
-            }
 
             WorksetId existing;
             if (LinkCatalog.WorksetIds(doc).TryGetValue(name, out existing))

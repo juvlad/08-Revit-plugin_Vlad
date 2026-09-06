@@ -32,6 +32,17 @@ namespace VladTools.Infrastructure
         /// <summary>Нитки ставятся наружу помещения, а не внутрь (по умолчанию — внутрь).</summary>
         public bool Outward { get; set; }
 
+        /// <summary>
+        /// Крайние засечки нитки берутся с дальней грани примыкающей стены, а не с ближней —
+        /// первым и последним звеном нитки становится толщина этой стены («120 | 3775 | 120»).
+        /// По умолчанию включено: так устроена каждая нитка кладочного плана. Шаблоны, записанные
+        /// до появления этого поля, читаются с тем же значением — строки в файле просто нет.
+        /// </summary>
+        public bool IncludeAdjacentWallThickness { get; set; } = true;
+
+        /// <summary>Подписи звеньев, которым не хватает места между засечками, выносятся на полку.</summary>
+        public bool MoveSmallText { get; set; } = true;
+
         public List<DimensionTemplateChain> Chains { get; } = new List<DimensionTemplateChain>();
     }
 
@@ -50,8 +61,10 @@ namespace VladTools.Infrastructure
         private static readonly string[] FileHeader =
         {
             "# Шаблон авторазмеров VladTools — кнопка «Авто размеры» (панель «Проект»).",
-            "# ГРАНИЦА | Finish | Center | CoreBoundary | CoreCenter — по какой линии идёт граница помещения.",
+            "# ГРАНИЦА  | Finish | Center | CoreBoundary | CoreCenter — по какой линии идёт граница помещения.",
             "# СТОРОНА  | Внутрь | Наружу — куда смотрят нитки.",
+            "# ТОЛЩИНА  | Да | Нет — захватывать ли крайними засечками толщину примыкающих стен.",
+            "# ПОДПИСИ  | Полка | Наместе — выносить ли на полку подписи, которым не хватает места.",
             "# НИТКА    | номер | смещение_мм | вид нитки | имя типа размера",
             "#   вид нитки — одно из: Overall, OpeningEdges, OpeningCenters, Partitions, WallFaces, Combined",
             "# Номер нитки — только для удобства чтения файла глазами, при загрузке не используется:",
@@ -120,6 +133,8 @@ namespace VladTools.Infrastructure
             var lines = new List<string>(FileHeader) { string.Empty };
             lines.Add(Field("ГРАНИЦА", template.Boundary.ToString()));
             lines.Add(Field("СТОРОНА", template.Outward ? "Наружу" : "Внутрь"));
+            lines.Add(Field("ТОЛЩИНА", template.IncludeAdjacentWallThickness ? "Да" : "Нет"));
+            lines.Add(Field("ПОДПИСИ", template.MoveSmallText ? "Полка" : "Наместе"));
             lines.Add(string.Empty);
 
             var number = 1;
@@ -186,6 +201,14 @@ namespace VladTools.Infrastructure
                     template.Outward = string.Equals(parts[1], "Наружу", StringComparison.OrdinalIgnoreCase);
                     break;
 
+                case "ТОЛЩИНА":
+                    template.IncludeAdjacentWallThickness = !string.Equals(parts[1], "Нет", StringComparison.OrdinalIgnoreCase);
+                    break;
+
+                case "ПОДПИСИ":
+                    template.MoveSmallText = !string.Equals(parts[1], "Наместе", StringComparison.OrdinalIgnoreCase);
+                    break;
+
                 case "НИТКА":
                     var chain = ParseChain(parts);
                     if (chain != null)
@@ -238,6 +261,12 @@ namespace VladTools.Infrastructure
         public bool Outward { get; set; }
         public bool RemovePrevious { get; set; } = true;
 
+        /// <summary>См. <see cref="DimensionTemplate.IncludeAdjacentWallThickness"/> — по умолчанию включено.</summary>
+        public bool IncludeAdjacentThickness { get; set; } = true;
+
+        /// <summary>См. <see cref="DimensionTemplate.MoveSmallText"/> — по умолчанию включено.</summary>
+        public bool MoveSmallText { get; set; } = true;
+
         public static string FilePath => Path.Combine(DimensionTemplateLibrary.FolderPath, "_settings.txt");
 
         public static AutoDimensionPreferences Load()
@@ -272,7 +301,9 @@ namespace VladTools.Infrastructure
                     Line("TEMPLATE", LastTemplate),
                     Line("BOUNDARY", Boundary.ToString()),
                     Line("OUTWARD", Outward ? "1" : "0"),
-                    Line("REMOVE_PREVIOUS", RemovePrevious ? "1" : "0")
+                    Line("REMOVE_PREVIOUS", RemovePrevious ? "1" : "0"),
+                    Line("ADJACENT_THICKNESS", IncludeAdjacentThickness ? "1" : "0"),
+                    Line("MOVE_SMALL_TEXT", MoveSmallText ? "1" : "0")
                 };
 
                 Directory.CreateDirectory(DimensionTemplateLibrary.FolderPath);
@@ -322,6 +353,14 @@ namespace VladTools.Infrastructure
 
                 case "REMOVE_PREVIOUS":
                     RemovePrevious = value != "0";
+                    break;
+
+                case "ADJACENT_THICKNESS":
+                    IncludeAdjacentThickness = value != "0";
+                    break;
+
+                case "MOVE_SMALL_TEXT":
+                    MoveSmallText = value != "0";
                     break;
             }
         }

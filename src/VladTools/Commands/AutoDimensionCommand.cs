@@ -28,7 +28,14 @@ namespace VladTools.Commands
     public class AutoDimensionCommand : IExternalCommand
     {
         private const string DialogTitle = "Авторазмеры";
-        private const double LineMarginMm = 200;
+
+        /// <summary>
+        /// Насколько линия размера длиннее самой стороны с каждого конца. Не косметика: крайние
+        /// засечки нитки лежат теперь не на конце стороны, а на дальней грани примыкающей стены
+        /// (см. «захватывать толщину примыкающих стен») — то есть за пределами пролёта. Запас
+        /// должен перекрывать любую разумную толщину стены, иначе ссылка окажется вне линии.
+        /// </summary>
+        private const double LineMarginMm = 1000;
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
@@ -115,14 +122,20 @@ namespace VladTools.Commands
         private static Result RunWindow(ExternalCommandData commandData, UIDocument uidoc, Document doc, ViewPlan view, List<Room> rooms)
         {
             var dimensionTypes = DimensionTypes(doc);
+            var defaultTypeName = DefaultDimensionTypeName(doc);
             var prefs = AutoDimensionPreferences.Load();
 
-            var boundary = prefs.Boundary;
-            var outward = prefs.Outward;
-            var removePrevious = prefs.RemovePrevious;
-            var templateName = prefs.LastTemplate;
+            var settings = new AutoDimensionSettings
+            {
+                Boundary = prefs.Boundary,
+                Outward = prefs.Outward,
+                RemovePrevious = prefs.RemovePrevious,
+                IncludeAdjacentThickness = prefs.IncludeAdjacentThickness,
+                MoveSmallText = prefs.MoveSmallText
+            };
 
-            IReadOnlyList<DimensionChainRow> rows = InitialRows(templateName, dimensionTypes, ref boundary, ref outward);
+            var templateName = prefs.LastTemplate;
+            IReadOnlyList<DimensionChainRow> rows = InitialRows(templateName, settings);
 
             while (true)
             {
@@ -131,11 +144,14 @@ namespace VladTools.Commands
                 var window = new AutoDimensionWindow(
                     rooms.Count,
                     dimensionTypes,
+                    defaultTypeName,
                     templateNames,
                     rows,
-                    boundary,
-                    outward,
-                    removePrevious,
+                    settings.Boundary,
+                    settings.Outward,
+                    settings.RemovePrevious,
+                    settings.IncludeAdjacentThickness,
+                    settings.MoveSmallText,
                     templateName,
                     name => DimensionTemplateLibrary.Load(name),
                     (name, template) => DimensionTemplateLibrary.Save(name, template));
@@ -144,15 +160,19 @@ namespace VladTools.Commands
 
                 var dialogResult = window.ShowDialog();
 
-                boundary = window.Boundary;
-                outward = window.Outward;
-                removePrevious = window.RemovePrevious;
+                settings.Boundary = window.Boundary;
+                settings.Outward = window.Outward;
+                settings.RemovePrevious = window.RemovePrevious;
+                settings.IncludeAdjacentThickness = window.IncludeAdjacentThickness;
+                settings.MoveSmallText = window.MoveSmallText;
                 templateName = window.TemplateName;
                 rows = window.Rows;
 
-                prefs.Boundary = boundary;
-                prefs.Outward = outward;
-                prefs.RemovePrevious = removePrevious;
+                prefs.Boundary = settings.Boundary;
+                prefs.Outward = settings.Outward;
+                prefs.RemovePrevious = settings.RemovePrevious;
+                prefs.IncludeAdjacentThickness = settings.IncludeAdjacentThickness;
+                prefs.MoveSmallText = settings.MoveSmallText;
                 prefs.LastTemplate = templateName;
                 prefs.Save();
 
@@ -162,18 +182,24 @@ namespace VladTools.Commands
                 if (!window.WantsSample)
                 {
                     var selected = window.Rows.Where(r => r.IsEnabled).ToList();
-                    return Place(doc, view, rooms, selected, boundary, outward, removePrevious);
+                    return Place(doc, view, rooms, selected, settings);
                 }
 
-                rows = TakeSample(uidoc, doc, boundary, rows);
+                rows = TakeSample(uidoc, doc, settings.Boundary, rows);
             }
         }
 
-        private static IReadOnlyList<DimensionChainRow> InitialRows(
-            string templateName,
-            IReadOnlyList<DimensionTypeInfo> dimensionTypes,
-            ref SpatialElementBoundaryLocation boundary,
-            ref bool outward)
+        /// <summary>Настройки окна, общие для всех ниток, — чтобы не таскать полдюжины отдельных параметров.</summary>
+        private sealed class AutoDimensionSettings
+        {
+            public SpatialElementBoundaryLocation Boundary;
+            public bool Outward;
+            public bool RemovePrevious;
+            public bool IncludeAdjacentThickness;
+            public bool MoveSmallText;
+        }
+
+        private static IReadOnlyList<DimensionChainRow> InitialRows(string templateName, AutoDimensionSettings settings)
         {
             if (string.IsNullOrEmpty(templateName))
                 return new List<DimensionChainRow>();
@@ -182,8 +208,10 @@ namespace VladTools.Commands
             if (template.Chains.Count == 0)
                 return new List<DimensionChainRow>();
 
-            boundary = template.Boundary;
-            outward = template.Outward;
+            settings.Boundary = template.Boundary;
+            settings.Outward = template.Outward;
+            settings.IncludeAdjacentThickness = template.IncludeAdjacentWallThickness;
+            settings.MoveSmallText = template.MoveSmallText;
 
             return template.Chains.Select(chain => new DimensionChainRow
             {
@@ -263,9 +291,7 @@ namespace VladTools.Commands
             ViewPlan view,
             List<Room> rooms,
             List<DimensionChainRow> chains,
-            SpatialElementBoundaryLocation boundary,
-            bool outward,
-            bool removePrevious)
+            AutoDimensionSettings settings)
         {
             if (chains.Count == 0)
             {
@@ -273,13 +299,14 @@ namespace VladTools.Commands
                 return Result.Cancelled;
             }
 
-            var boundaryOptions = new SpatialElementBoundaryOptions { SpatialElementBoundaryLocation = boundary };
+            var boundaryOptions = new SpatialElementBoundaryOptions { SpatialElementBoundaryLocation = settings.Boundary };
             var collector = new DimensionReferenceCollector(doc);
             var defaultTypeId = doc.GetDefaultElementTypeId(ElementTypeGroup.LinearDimensionType);
             var typesByName = DimensionTypesByName(doc);
 
             var skippedRooms = new List<string>();
             var skippedChains = new List<string>();
+            var approximate = new List<string>();
             var pending = new List<PendingDimension>();
 
             // ФАЗА ЧТЕНИЯ — вся геометрия стен читается здесь, до единой правки документа.
@@ -332,23 +359,28 @@ namespace VladTools.Commands
                     {
                         chainIndex++;
 
-                        var result = collector.Collect(side, sides, chain.Kind);
+                        var label = roomLabel + ", сторона " + SideLabel(side) + ", нитка «" +
+                                    DimensionChainKindText.Caption(chain.Kind) + "»";
+
+                        var result = collector.Collect(side, sides, chain.Kind, settings.IncludeAdjacentThickness);
                         if (!result.Success)
                         {
-                            skippedChains.Add(roomLabel + ", сторона " + SideLabel(side) + ", нитка «" +
-                                               DimensionChainKindText.Caption(chain.Kind) + "» — " + result.FailureReason);
+                            skippedChains.Add(label + " — " + result.FailureReason);
                             continue;
                         }
 
+                        if (!string.IsNullOrEmpty(result.Warning))
+                            approximate.Add(label + " — " + result.Warning);
+
                         pending.Add(new PendingDimension
                         {
-                            Line = ChainLine(side, chain.OffsetMm, outward),
+                            Line = ChainLine(side, chain.OffsetMm, settings.Outward),
+                            AwayNormal = ChainNormal(side, settings.Outward),
                             References = result.References,
                             DimensionType = ResolveType(chain.DimensionTypeName, typesByName, doc, defaultTypeId),
                             RoomUniqueId = room.UniqueId,
                             ChainIndex = chainIndex,
-                            Label = roomLabel + ", сторона " + SideLabel(side) + ", нитка «" +
-                                    DimensionChainKindText.Caption(chain.Kind) + "»"
+                            Label = label
                         });
                         foundHere++;
                     }
@@ -360,12 +392,13 @@ namespace VladTools.Commands
 
             if (pending.Count == 0)
             {
-                Report(0, rooms.Count, skippedRooms, skippedChains, new List<string>(), new List<string>());
+                Report(0, rooms.Count, skippedRooms, skippedChains, approximate, 0, new List<string>(), new List<string>());
                 return Result.Cancelled;
             }
 
             // ФАЗА ЗАПИСИ — только создание размеров, никаких новых чтений геометрии стен.
             var placed = 0;
+            var movedTexts = 0;
             var failures = new List<string>();
             var warnings = new WarningSuppressor();
 
@@ -377,7 +410,7 @@ namespace VladTools.Commands
                 failureOptions.SetFailuresPreprocessor(warnings);
                 transaction.SetFailureHandlingOptions(failureOptions);
 
-                if (removePrevious)
+                if (settings.RemovePrevious)
                 {
                     var roomUniqueIds = new HashSet<string>(rooms.Select(room => room.UniqueId));
                     var previous = AutoDimensionMarker.FindMarked(doc, view.Id, roomUniqueIds);
@@ -404,11 +437,29 @@ namespace VladTools.Commands
                             : doc.Create.NewDimension(view, item.Line, item.References);
 
                         AutoDimensionMarker.Mark(dimension, item.RoomUniqueId, item.ChainIndex);
+                        item.Created = dimension;
                         placed++;
                     }
                     catch (Exception exception)
                     {
                         failures.Add(item.Label + " — " + exception.Message);
+                    }
+                }
+
+                // ФАЗА РАЗВОДКИ ПОДПИСЕЙ — отдельным проходом и только после Regenerate: до неё
+                // у только что созданного размера ещё не заполнены сегменты, и разводить нечего.
+                // Regenerate тут безопасен ровно потому, что грани стен больше не нужны — вся
+                // геометрия уже прочитана в первой фазе.
+                if (settings.MoveSmallText && placed > 0)
+                {
+                    doc.Regenerate();
+
+                    foreach (var item in pending)
+                    {
+                        if (item.Created == null)
+                            continue;
+
+                        movedTexts += DimensionTextLayout.Arrange(item.Created, item.AwayNormal, view.Scale);
                     }
                 }
 
@@ -418,7 +469,7 @@ namespace VladTools.Commands
                     transaction.Commit();
             }
 
-            Report(placed, rooms.Count, skippedRooms, skippedChains, failures, warnings.Messages);
+            Report(placed, rooms.Count, skippedRooms, skippedChains, approximate, movedTexts, failures, warnings.Messages);
             return placed > 0 ? Result.Succeeded : Result.Cancelled;
         }
 
@@ -426,16 +477,28 @@ namespace VladTools.Commands
         private sealed class PendingDimension
         {
             public Line Line;
+
+            /// <summary>Куда отодвигать подписи коротких звеньев — прочь от стены, вдоль смещения нитки.</summary>
+            public XYZ AwayNormal;
+
             public ReferenceArray References;
             public DimensionType DimensionType;
             public string RoomUniqueId;
             public int ChainIndex;
             public string Label;
+
+            /// <summary>Созданный размер — заполняется в фазе записи, нужен фазе разводки подписей.</summary>
+            public Dimension Created;
+        }
+
+        private static XYZ ChainNormal(RoomSide side, bool outward)
+        {
+            return outward ? side.InwardNormal.Negate() : side.InwardNormal;
         }
 
         private static Line ChainLine(RoomSide side, double offsetMm, bool outward)
         {
-            var normal = outward ? side.InwardNormal.Negate() : side.InwardNormal;
+            var normal = ChainNormal(side, outward);
             var offsetFeet = FeetOf(offsetMm);
             var marginFeet = FeetOf(LineMarginMm);
 
@@ -468,6 +531,28 @@ namespace VladTools.Commands
                 .Select(type => new DimensionTypeInfo(type.Id.IntegerValue, type.Name))
                 .OrderBy(info => info.Name, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
+        }
+
+        /// <summary>
+        /// Имя типа размера, который Revit поставит сам, если тип не задан. Нужно окну: новая
+        /// строка должна рождаться с ним, а не с первым типом по алфавиту — иначе «по умолчанию»
+        /// в таблице означает случайный тип, который просто оказался первым в списке проекта.
+        /// </summary>
+        private static string DefaultDimensionTypeName(Document doc)
+        {
+            try
+            {
+                var id = doc.GetDefaultElementTypeId(ElementTypeGroup.LinearDimensionType);
+                if (id == null || id == ElementId.InvalidElementId)
+                    return string.Empty;
+
+                var type = doc.GetElement(id) as DimensionType;
+                return type == null ? string.Empty : SafeName(type);
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
         }
 
         private static Dictionary<string, DimensionType> DimensionTypesByName(Document doc)
@@ -535,6 +620,8 @@ namespace VladTools.Commands
             int roomCount,
             List<string> skippedRooms,
             List<string> skippedChains,
+            List<string> approximate,
+            int movedTexts,
             List<string> failures,
             IReadOnlyList<string> warnings)
         {
@@ -542,11 +629,19 @@ namespace VladTools.Commands
                 ? "Размеров поставлено: " + placed + " (помещений: " + roomCount + ")."
                 : "Не поставлено ни одного размера.";
 
+            if (movedTexts > 0)
+                text += "\nПодписей вынесено на полку: " + movedTexts + ".";
+
             if (skippedRooms.Count > 0)
                 text += "\n\n" + Bulleted("Пропущено помещений", skippedRooms, 10);
 
             if (skippedChains.Count > 0)
                 text += "\n\n" + Bulleted("Не поставлено ниток", skippedChains, 15);
+
+            // Отдельным разделом, а не вместе с «не поставлено»: эти нитки стоят, но короче,
+            // чем должны быть. Слить их с успехом значит молча отдать неверный размер.
+            if (approximate.Count > 0)
+                text += "\n\n" + Bulleted("Нитки, которые нужно проверить", approximate, 10);
 
             if (failures.Count > 0)
                 text += "\n\n" + Bulleted("Ошибки Revit", failures, 15);

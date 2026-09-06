@@ -164,14 +164,23 @@ namespace VladTools.Infrastructure
             DimensionChainKind kind;
             var approximate = false;
 
+            // Оси проёмов в образце — отдельный случай: «Всё вместе» их не ставит (см.
+            // DimensionReferenceCollector.CollectCombined), поэтому образец с осями и чем-то
+            // ещё точного соответствия в каталоге не имеет и помечается как приблизительный.
             if (foreignCount > 0 && (ownCount > 2 || centerCount > 0))
+            {
                 kind = DimensionChainKind.Combined;
+                approximate = centerCount > 0;
+            }
             else if (foreignCount > 0)
                 kind = DimensionChainKind.Partitions;
             else if (centerCount > 0 && ownCount <= 2)
                 kind = DimensionChainKind.OpeningCenters;
             else if (centerCount > 0)
+            {
                 kind = DimensionChainKind.Combined;
+                approximate = true;
+            }
             else if (ownCount > 2)
                 kind = DimensionChainKind.OpeningEdges;
             else if (ownCount == 2)

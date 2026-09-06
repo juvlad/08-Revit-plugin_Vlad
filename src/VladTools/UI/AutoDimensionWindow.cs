@@ -46,6 +46,7 @@ namespace VladTools.UI
 
         private readonly IReadOnlyList<DimensionTypeInfo> _dimensionTypes;
         private readonly HashSet<string> _dimensionTypeNames;
+        private readonly string _defaultTypeName;
         private readonly ObservableCollection<DimensionChainRow> _rows = new ObservableCollection<DimensionChainRow>();
         private readonly ObservableCollection<string> _templateNames;
         private readonly Func<string, DimensionTemplate> _loadTemplate;
@@ -54,6 +55,8 @@ namespace VladTools.UI
         private readonly ComboBox _boundaryBox;
         private readonly ComboBox _directionBox;
         private readonly CheckBox _removePreviousBox;
+        private readonly CheckBox _adjacentThicknessBox;
+        private readonly CheckBox _moveSmallTextBox;
         private readonly ComboBox _templateBox;
         private readonly TextBox _templateNameBox;
         private readonly DataGrid _grid;
@@ -73,17 +76,26 @@ namespace VladTools.UI
 
         public bool RemovePrevious => _removePreviousBox.IsChecked == true;
 
+        /// <summary>Крайние засечки нитки захватывают толщину примыкающей стены.</summary>
+        public bool IncludeAdjacentThickness => _adjacentThicknessBox.IsChecked == true;
+
+        /// <summary>Подписи, которым не хватает места между засечками, выносятся на полку.</summary>
+        public bool MoveSmallText => _moveSmallTextBox.IsChecked == true;
+
         /// <summary>Имя шаблона, выбранное или введённое последним — для настроек окна.</summary>
         public string TemplateName => (_templateBox.SelectedItem as string) ?? (_templateNameBox.Text ?? string.Empty).Trim();
 
         public AutoDimensionWindow(
             int roomCount,
             IReadOnlyList<DimensionTypeInfo> dimensionTypes,
+            string defaultDimensionTypeName,
             IReadOnlyList<string> templateNames,
             IReadOnlyList<DimensionChainRow> initialRows,
             SpatialElementBoundaryLocation boundary,
             bool outward,
             bool removePrevious,
+            bool includeAdjacentThickness,
+            bool moveSmallText,
             string lastTemplateName,
             Func<string, DimensionTemplate> loadTemplate,
             Action<string, DimensionTemplate> saveTemplate)
@@ -94,14 +106,17 @@ namespace VladTools.UI
             _loadTemplate = loadTemplate;
             _saveTemplate = saveTemplate;
 
-            foreach (var row in initialRows ?? new List<DimensionChainRow>())
-                _rows.Add(row);
+            // Тип «по умолчанию» — тот, который поставит сам Revit, а не первый по алфавиту:
+            // иначе новая строка рождалась бы со случайным типом проекта.
+            _defaultTypeName = Known(defaultDimensionTypeName)
+                ? defaultDimensionTypeName
+                : (_dimensionTypes.Count > 0 ? _dimensionTypes[0].Name : string.Empty);
 
             Title = WindowTitle;
             Width = 1080;
-            Height = 660;
+            Height = 700;
             MinWidth = 860;
-            MinHeight = 460;
+            MinHeight = 500;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             SnapsToDevicePixels = true;
 
@@ -117,10 +132,31 @@ namespace VladTools.UI
             {
                 Content = "Удалять ранее расставленные этой кнопкой",
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(16, 0, 0, 0),
                 IsChecked = removePrevious,
                 ToolTip = "Размеры, поставленные пользователем вручную, эта галочка не касается никогда — " +
                           "они не помечены и авторазмерам не видны."
+            };
+
+            _adjacentThicknessBox = new CheckBox
+            {
+                Content = "Захватывать толщину примыкающих стен",
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(20, 0, 0, 0),
+                IsChecked = includeAdjacentThickness,
+                ToolTip = "Нитка начинается и кончается не углом помещения, а дальней гранью примыкающей стены: " +
+                          "первым и последним звеном становится её толщина (120 | 3775 | 120) — так устроена " +
+                          "каждая нитка кладочного плана."
+            };
+
+            _moveSmallTextBox = new CheckBox
+            {
+                Content = "Выносить мелкие подписи на полку",
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(20, 0, 0, 0),
+                IsChecked = moveSmallText,
+                ToolTip = "Подпись, которой не хватает места между засечками, сдвигается с линии, и Revit " +
+                          "дорисовывает к ней выноску. Ширина подписи оценивается по высоте шрифта типа " +
+                          "размера и масштабу вида — это подбор, не точный расчёт."
             };
 
             _templateBox = new ComboBox { Width = 220, VerticalAlignment = VerticalAlignment.Center, ItemsSource = _templateNames, IsEditable = false };
@@ -171,10 +207,13 @@ namespace VladTools.UI
                 addChainButton, removeChainButton, closeButton);
 
             _rows.CollectionChanged += (s, e) => UpdateSummary();
-            foreach (var row in _rows)
-                Watch(row);
 
-            ValidateAll();
+            foreach (var row in initialRows ?? new List<DimensionChainRow>())
+            {
+                _rows.Add(row);
+                Adopt(row);
+            }
+
             UpdateSummary();
         }
 
@@ -193,6 +232,7 @@ namespace VladTools.UI
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // подсказка
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // помещения + образец
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // граница/направление
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // галочки
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // шаблон
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // добавить/удалить нитку
@@ -234,9 +274,15 @@ namespace VladTools.UI
             settingsRow.Children.Add(_boundaryBox);
             settingsRow.Children.Add(new TextBlock { Text = "Ставить размеры:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 6, 0) });
             settingsRow.Children.Add(_directionBox);
-            settingsRow.Children.Add(_removePreviousBox);
             Grid.SetRow(settingsRow, 2);
             root.Children.Add(settingsRow);
+
+            var checkRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            checkRow.Children.Add(_removePreviousBox);
+            checkRow.Children.Add(_adjacentThicknessBox);
+            checkRow.Children.Add(_moveSmallTextBox);
+            Grid.SetRow(checkRow, 3);
+            root.Children.Add(checkRow);
 
             var templateRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
             templateRow.Children.Add(new TextBlock { Text = "Шаблон:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
@@ -245,17 +291,17 @@ namespace VladTools.UI
             templateRow.Children.Add(new TextBlock { Text = "Имя для сохранения:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 6, 0) });
             templateRow.Children.Add(_templateNameBox);
             templateRow.Children.Add(saveTemplateButton);
-            Grid.SetRow(templateRow, 3);
+            Grid.SetRow(templateRow, 4);
             root.Children.Add(templateRow);
 
-            Grid.SetRow(_grid, 4);
+            Grid.SetRow(_grid, 5);
             _grid.Margin = new Thickness(0, 10, 0, 8);
             root.Children.Add(_grid);
 
             var chainButtons = new StackPanel { Orientation = Orientation.Horizontal };
             chainButtons.Children.Add(addChainButton);
             chainButtons.Children.Add(removeChainButton);
-            Grid.SetRow(chainButtons, 5);
+            Grid.SetRow(chainButtons, 6);
             root.Children.Add(chainButtons);
 
             var bottom = new Grid { Margin = new Thickness(0, 10, 0, 0) };
@@ -271,7 +317,7 @@ namespace VladTools.UI
             Grid.SetColumn(actionButtons, 1);
             bottom.Children.Add(actionButtons);
 
-            Grid.SetRow(bottom, 6);
+            Grid.SetRow(bottom, 7);
             root.Children.Add(bottom);
 
             return root;
@@ -316,14 +362,11 @@ namespace VladTools.UI
                 .Select(kind => new KindOption(kind, DimensionChainKindText.Caption(kind)))
                 .ToList();
 
-            grid.Columns.Add(new DataGridComboBoxColumn
+            grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = "Вид нитки",
                 Width = new DataGridLength(150),
-                ItemsSource = kindOptions,
-                DisplayMemberPath = "Caption",
-                SelectedValuePath = "Kind",
-                SelectedValueBinding = new Binding("Kind") { Mode = BindingMode.TwoWay }
+                CellTemplate = BuildComboTemplate(kindOptions, "Caption", "Kind", "Kind")
             });
 
             grid.Columns.Add(new DataGridTextColumn
@@ -335,16 +378,12 @@ namespace VladTools.UI
                 EditingElementStyle = EditorStyle()
             });
 
-            grid.Columns.Add(new DataGridComboBoxColumn
+            grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = "Тип размера",
                 Width = new DataGridLength(1, DataGridLengthUnitType.Star),
                 MinWidth = 150,
-                ItemsSource = _dimensionTypes,
-                DisplayMemberPath = "Name",
-                SelectedValuePath = "Name",
-                SelectedValueBinding = new Binding("DimensionTypeName") { Mode = BindingMode.TwoWay },
-                TextBinding = new Binding("DimensionTypeName") { Mode = BindingMode.TwoWay }
+                CellTemplate = BuildComboTemplate(_dimensionTypes, "Name", "Name", "DimensionTypeName")
             });
 
             var note = TextColumn("Откуда взято", "Note", new DataGridLength(1.2, DataGridLengthUnitType.Star));
@@ -375,6 +414,39 @@ namespace VladTools.UI
                 IsReadOnly = true,
                 ElementStyle = style
             };
+        }
+
+        /// <summary>
+        /// Колонка-список: живой <c>ComboBox</c> прямо в ячейке, а не <c>DataGridComboBoxColumn</c>.
+        ///
+        /// Так сделано не ради вида, а потому что у <c>DataGridComboBoxColumn</c> три взаимно
+        /// исключающие привязки (<c>SelectedItemBinding</c>, <c>SelectedValueBinding</c>,
+        /// <c>TextBinding</c>), и задать можно ровно одну: при двух заданных вторая молча
+        /// не работает, выбор из списка не доходит до строки, и в ячейке остаётся то значение,
+        /// с которым строка родилась. Выглядит это как «нужный тип не выбирается, возвращается
+        /// какой-то свой» — ровно то, на что жаловался проектировщик. Живой список в ячейке
+        /// снимает вопрос целиком: привязка одна, значение уходит в строку сразу по выбору
+        /// (<c>UpdateSourceTrigger.PropertyChanged</c>), а не по выходу из режима правки.
+        /// </summary>
+        private static DataTemplate BuildComboTemplate(
+            System.Collections.IEnumerable itemsSource,
+            string displayMemberPath,
+            string selectedValuePath,
+            string bindingPath)
+        {
+            var combo = new FrameworkElementFactory(typeof(ComboBox));
+            combo.SetValue(ItemsControl.ItemsSourceProperty, itemsSource);
+            combo.SetValue(ItemsControl.DisplayMemberPathProperty, displayMemberPath);
+            combo.SetValue(Selector.SelectedValuePathProperty, selectedValuePath);
+            combo.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 1, 2, 1));
+
+            // Список один на все строки, а значит и представление коллекции у них общее: без
+            // явного «не синхронизировать» выбор в одной строке потянул бы за собой остальные.
+            combo.SetValue(Selector.IsSynchronizedWithCurrentItemProperty, (bool?)false);
+            combo.SetBinding(Selector.SelectedValueProperty,
+                new Binding(bindingPath) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+
+            return new DataTemplate { VisualTree = combo };
         }
 
         private static DataTemplate BuildCheckBoxTemplate()
@@ -463,10 +535,45 @@ namespace VladTools.UI
 
         private void AddRow()
         {
-            var row = new DimensionChainRow { DimensionTypeName = _dimensionTypes.Count > 0 ? _dimensionTypes[0].Name : string.Empty };
-            Watch(row);
+            var row = new DimensionChainRow { DimensionTypeName = _defaultTypeName };
             _rows.Add(row);
+            Adopt(row);
+        }
+
+        /// <summary>
+        /// Берёт строку под присмотр окна и приводит её к тому, что есть в проекте: тип размера
+        /// из чужого шаблона или из образца другого проекта здесь может отсутствовать, а выбрать
+        /// из списка то, чего в нём нет, нельзя. Тот же приём, что с рабочими наборами проекта
+        /// в «Link Manager» (см. CLAUDE.md): не хранить недостижимое значение молча, а подставить
+        /// рабочее и сказать об этом в «Состоянии».
+        /// </summary>
+        private void Adopt(DimensionChainRow row)
+        {
+            Watch(row);
+
+            var missing = string.Empty;
+            if (row.DimensionTypeName.Length == 0)
+            {
+                row.DimensionTypeName = _defaultTypeName;
+            }
+            else if (!Known(row.DimensionTypeName))
+            {
+                missing = row.DimensionTypeName;
+                row.DimensionTypeName = _defaultTypeName;
+            }
+
             Validate(row);
+
+            if (missing.Length > 0)
+            {
+                row.SetStatus("Тип размера «" + missing + "» в проекте не найден — подставлен «" +
+                              row.DimensionTypeName + "»", false);
+            }
+        }
+
+        private bool Known(string typeName)
+        {
+            return !string.IsNullOrEmpty(typeName) && _dimensionTypeNames.Contains(typeName);
         }
 
         private void RemoveSelectedRows()
@@ -495,12 +602,6 @@ namespace VladTools.UI
             var row = e.Row.Item as DimensionChainRow;
             if (row != null)
                 Dispatcher.BeginInvoke((Action)(() => Validate(row)));
-        }
-
-        private void ValidateAll()
-        {
-            foreach (var row in _rows)
-                Validate(row);
         }
 
         private void Validate(DimensionChainRow row)
@@ -559,6 +660,8 @@ namespace VladTools.UI
 
             _boundaryBox.SelectedItem = BoundaryOptions.FirstOrDefault(o => o.Value == template.Boundary) ?? BoundaryOptions[0];
             _directionBox.SelectedIndex = template.Outward ? 1 : 0;
+            _adjacentThicknessBox.IsChecked = template.IncludeAdjacentWallThickness;
+            _moveSmallTextBox.IsChecked = template.MoveSmallText;
             _templateNameBox.Text = name;
 
             foreach (var row in _rows.ToList())
@@ -575,9 +678,8 @@ namespace VladTools.UI
                     OffsetMm = chain.OffsetMm,
                     DimensionTypeName = chain.DimensionTypeName
                 };
-                Watch(row);
                 _rows.Add(row);
-                Validate(row);
+                Adopt(row);
             }
 
             UpdateSummary();
@@ -598,7 +700,13 @@ namespace VladTools.UI
                 return;
             }
 
-            var template = new DimensionTemplate { Boundary = Boundary, Outward = Outward };
+            var template = new DimensionTemplate
+            {
+                Boundary = Boundary,
+                Outward = Outward,
+                IncludeAdjacentWallThickness = IncludeAdjacentThickness,
+                MoveSmallText = MoveSmallText
+            };
             foreach (var row in _rows)
             {
                 template.Chains.Add(new DimensionTemplateChain

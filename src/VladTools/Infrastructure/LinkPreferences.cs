@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -66,6 +66,11 @@ namespace VladTools.Infrastructure
             "# SERVER — имя сервера Revit Server, которое подставляется в просмотр (строк может быть много)",
             "# MATCH_WORKSET — 1/0: подбирать набор проекта по коду раздела в имени модели",
             "# DISCIPLINE — код раздела для этого подбора (строк может быть много); нет ни одной — берётся список по умолчанию",
+            "# KIT — раздел комплекта по корпусу (строк может быть много); нет ни одной — берётся список по умолчанию",
+            "# KIT_TOKEN — какой по счёту кусок имени модели считать номером корпуса (MK3-VSC-B01-AR → 3)",
+            "# KIT_DEEP — 1/0: заходить ли внутрь вложенных папок раздела",
+            "# KIT_BUILDING — номер корпуса из прошлого раза",
+            "# KIT_ROOT — папка, в которой искать: FILE | путь, SERVER | RSN://…, CLOUD | регион | проект | папка | имя",
             "# Файл перезаписывается при каждом закрытии окна."
         };
 
@@ -105,9 +110,53 @@ namespace VladTools.Infrastructure
         /// </summary>
         public List<string> Disciplines { get; } = new List<string>();
 
-        /// <summary>Коды разделов с подстановкой умолчаний, когда пользователь список не трогал.</summary>
-        public IReadOnlyList<string> EffectiveDisciplines =>
-            Disciplines.Count > 0 ? (IReadOnlyList<string>)Disciplines : DisciplineCatalog.Defaults;
+        /// <summary>
+        /// Коды разделов с подстановкой умолчаний, когда пользователь список не трогал.
+        /// Коды комплекта сюда входят всегда: раз пользователь назвал раздел в «Комплекте
+        /// по корпусу», странно было бы не узнать тот же код в имени модели при подборе
+        /// рабочего набора. Заодно это чинит старый файл настроек, записанный до того,
+        /// как код появился в списке по умолчанию: список в файле перекрывает умолчания.
+        /// </summary>
+        public IReadOnlyList<string> EffectiveDisciplines
+        {
+            get
+            {
+                if (Disciplines.Count == 0)
+                    return DisciplineCatalog.Defaults;
+
+                return Disciplines
+                    .Concat(EffectiveKit)
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+            }
+        }
+
+        /// <summary>
+        /// Разделы, которые «Комплект по корпусу» ищет в папках проекта. Список отдельный
+        /// от <see cref="Disciplines"/>: там все коды, какие вообще встречаются в именах файлов,
+        /// а здесь — те, чьи модели нужно грузить связями в каждую модель.
+        /// </summary>
+        public List<string> Kit { get; } = new List<string>();
+
+        /// <summary>Разделы комплекта с подстановкой умолчаний.</summary>
+        public IReadOnlyList<string> EffectiveKit =>
+            Kit.Count > 0 ? (IReadOnlyList<string>)Kit : DisciplineCatalog.KitDefaults;
+
+        /// <summary>Какой по счёту кусок имени модели считать номером корпуса: <c>MK3-VSC-B01-AR</c> → третий.</summary>
+        public int BuildingToken { get; set; } = ModelKit.DefaultBuildingToken;
+
+        /// <summary>Заходить ли внутрь вложенных папок раздела при поиске комплекта.</summary>
+        public bool KitDeep { get; set; } = true;
+
+        /// <summary>Номер корпуса из прошлого раза — подставляется, когда из имени открытой модели его не вышло.</summary>
+        public string KitBuilding { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Папка, в которой искать комплект, строкой <see cref="ModelFolder.Format"/>. Обычно
+        /// не нужна: папку кнопка определяет по самой открытой модели. Пригождается там, где
+        /// определить нечего — проект открыт как отсоединённый файл, а модели лежат на сервере.
+        /// </summary>
+        public string KitRoot { get; set; } = string.Empty;
 
         /// <summary>%AppData%\VladTools\links\_settings.txt</summary>
         public static string FilePath => Path.Combine(LinkSetLibrary.FolderPath, "_settings.txt");
@@ -176,12 +225,18 @@ namespace VladTools.Infrastructure
                 lines.Add(Line("RULE_CONTAINS", WorksetPatternContains ? "1" : "0"));
                 lines.Add(Line("MATCH_WORKSET", MatchProjectWorkset ? "1" : "0"));
 
+                lines.Add(Line("KIT_TOKEN", BuildingToken.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                lines.Add(Line("KIT_DEEP", KitDeep ? "1" : "0"));
+                lines.Add(Line("KIT_BUILDING", KitBuilding ?? string.Empty));
+                lines.Add(Line("KIT_ROOT", KitRoot ?? string.Empty));
+
                 lines.AddRange(Clean(Worksets).Select(name => Line("CLOSE", name)));
                 lines.AddRange(Clean(Servers).Select(name => Line("SERVER", name)));
 
                 // Пустой список подразумевает умолчания, но в файл кладём то, что реально
                 // действует, — иначе править было бы нечего.
                 lines.AddRange(Clean(EffectiveDisciplines).Select(code => Line("DISCIPLINE", code)));
+                lines.AddRange(Clean(EffectiveKit).Select(code => Line("KIT", code)));
 
                 Directory.CreateDirectory(LinkSetLibrary.FolderPath);
 
@@ -262,6 +317,29 @@ namespace VladTools.Infrastructure
                 case "DISCIPLINE":
                     if (value.Length > 0)
                         Disciplines.Add(value);
+                    break;
+
+                case "KIT":
+                    if (value.Length > 0)
+                        Kit.Add(value);
+                    break;
+
+                case "KIT_TOKEN":
+                    int token;
+                    if (int.TryParse(value, out token) && token >= 1)
+                        BuildingToken = token;
+                    break;
+
+                case "KIT_DEEP":
+                    KitDeep = value != "0";
+                    break;
+
+                case "KIT_BUILDING":
+                    KitBuilding = value;
+                    break;
+
+                case "KIT_ROOT":
+                    KitRoot = value;
                     break;
             }
         }

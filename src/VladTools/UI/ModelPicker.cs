@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -15,6 +15,10 @@ namespace VladTools.UI
     /// Вынесено из окна «Link Manager», когда те же четыре кнопки понадобились окну
     /// «Базовый файл». Код не принадлежит ни одному из них: он про то, где взять модель,
     /// а не про то, что с ней делать дальше.
+    ///
+    /// Теми же деревьями выбирается и папка — для «Комплекта по корпусу». Дорога вниз
+    /// одна и та же, поэтому оба режима собираются одним кодом: различается только то,
+    /// что уходит наружу.
     /// </summary>
     internal static class ModelPicker
     {
@@ -48,6 +52,26 @@ namespace VladTools.UI
             LinkPreferences preferences,
             Func<HashSet<string>> known)
         {
+            var picker = ServerWindow(owner, title, preferences, known, null);
+
+            return picker.ShowDialog() == true ? picker.Selected : Nothing;
+        }
+
+        /// <summary>Та же дорога, но наружу уходит папка: «Комплект по корпусу» спрашивает, где искать.</summary>
+        public static ModelFolder PickServerFolder(Window owner, string title, LinkPreferences preferences)
+        {
+            var picker = ServerWindow(owner, title, preferences, Nobody, node => ToFolder(node) != null);
+
+            return picker.ShowDialog() == true ? ToFolder(picker.SelectedFolder) : null;
+        }
+
+        private static ModelBrowserWindow ServerWindow(
+            Window owner,
+            string title,
+            LinkPreferences preferences,
+            Func<HashSet<string>> known,
+            Func<BrowseNode, bool> pickFolder)
+        {
             var serverBox = new TextBox
             {
                 MinWidth = 220,
@@ -75,7 +99,8 @@ namespace VladTools.UI
                 "Папки читаются по мере раскрытия, поэтому первое обращение к большому серверу занимает секунду-другую.",
                 strip,
                 roots,
-                node => ExpandServer(node, known))
+                node => ExpandServer(node, known),
+                pickFolder)
             {
                 Owner = owner
             };
@@ -104,7 +129,7 @@ namespace VladTools.UI
             };
             strip.Children.Add(addServer);
 
-            return window.ShowDialog() == true ? window.Selected : Nothing;
+            return window;
         }
 
         /// <summary>
@@ -112,6 +137,26 @@ namespace VladTools.UI
         /// Токена нет — окно не открывается вовсе, а пользователю предлагается ввод по GUID.
         /// </summary>
         public static IReadOnlyList<LinkEntry> Cloud(Window owner, string title, Func<HashSet<string>> known)
+        {
+            var picker = CloudWindow(owner, title, known, null);
+
+            return picker != null && picker.ShowDialog() == true ? picker.Selected : Nothing;
+        }
+
+        /// <summary>Папка BIM360 вместо моделей — для «Комплекта по корпусу».</summary>
+        public static ModelFolder PickCloudFolder(Window owner, string title)
+        {
+            var picker = CloudWindow(owner, title, Nobody, node => ToFolder(node) != null);
+
+            return picker != null && picker.ShowDialog() == true ? ToFolder(picker.SelectedFolder) : null;
+        }
+
+        /// <summary>Окно дерева облака; вход в учётную запись не получен — null и объяснение пользователю.</summary>
+        private static ModelBrowserWindow CloudWindow(
+            Window owner,
+            string title,
+            Func<HashSet<string>> known,
+            Func<BrowseNode, bool> pickFolder)
         {
             var obstacle = AutodeskSession.Obstacle();
             if (obstacle.Length > 0)
@@ -122,7 +167,7 @@ namespace VladTools.UI
                     title,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
-                return Nothing;
+                return null;
             }
 
             IReadOnlyList<AccHub> hubs;
@@ -137,7 +182,7 @@ namespace VladTools.UI
             {
                 MessageBox.Show(owner, "Не удалось получить список учётных записей Autodesk.\n\n" + exception.Message,
                     title, MessageBoxButton.OK, MessageBoxImage.Warning);
-                return Nothing;
+                return null;
             }
             finally
             {
@@ -160,12 +205,13 @@ namespace VladTools.UI
                 "Связать можно только совмещённые модели: обычный .rvt, просто лежащий в папке, в списке не появится.",
                 null,
                 roots,
-                node => ExpandCloud(node, known))
+                node => ExpandCloud(node, known),
+                pickFolder)
             {
                 Owner = owner
             };
 
-            return window.ShowDialog() == true ? window.Selected : Nothing;
+            return window;
         }
 
         /// <summary>Ввод облачной модели парой GUID — запасной путь, когда просмотр недоступен.</summary>
@@ -174,6 +220,55 @@ namespace VladTools.UI
             var window = new CloudLinkWindow(region) { Owner = owner };
 
             return window.ShowDialog() == true ? window.Selected : Nothing;
+        }
+
+        /// <summary>
+        /// Папка на диске или в сети. Выбирается указанием любой модели внутри неё: своего
+        /// диалога выбора папки у WPF нет ни в одном из трёх собираемых годов (в .NET 8 он
+        /// появился, в .NET Framework 4.8 — нет), а тащить ради него WinForms в надстройку,
+        /// живущую в чужом процессе, — плохой размен.
+        /// </summary>
+        public static ModelFolder PickFileFolder(Window owner)
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Укажите любую модель в нужной папке",
+                Filter = "Модели Revit (*.rvt)|*.rvt",
+                CheckFileExists = true
+            };
+
+            if (dialog.ShowDialog(owner) != true)
+                return null;
+
+            var folder = System.IO.Path.GetDirectoryName(dialog.FileName);
+
+            return string.IsNullOrEmpty(folder) ? null : ModelFolder.ForFile(folder);
+        }
+
+        /// <summary>
+        /// Узел дерева как папка. У учётной записи и проекта BIM360 папки нет: до содержимого
+        /// там ещё не добрались, и выбирать нечего — предикат окна на это и опирается.
+        /// </summary>
+        private static ModelFolder ToFolder(BrowseNode node)
+        {
+            if (node == null)
+                return null;
+
+            var server = node.Context as ServerFolder;
+            if (server != null)
+                return ModelFolder.ForServer(server.Server, server.Path);
+
+            var cloud = node.Context as CloudFolder;
+            if (cloud != null && cloud.FolderId != null)
+                return ModelFolder.ForCloud(cloud.Project.Region, cloud.Project.Id, cloud.FolderId, node.Name);
+
+            return null;
+        }
+
+        /// <summary>Список уже собранных моделей в режиме выбора папки не нужен: серым красить нечего.</summary>
+        private static HashSet<string> Nobody()
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
         }
 
         /// <summary>Запоминает введённое значение первым в списке, без повторов.</summary>

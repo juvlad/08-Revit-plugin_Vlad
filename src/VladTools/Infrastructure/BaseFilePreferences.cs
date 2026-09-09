@@ -41,6 +41,10 @@ namespace VladTools.Infrastructure
             "# LINK_WORKSET — рабочий набор проекта, в который встанет сама связь (пусто — активный)",
             "# WORKSET — рабочий набор, в который команда переходит перед копированием уровней и осей",
             "# ACQUIRE / RENAME / PIN / ACTIVATE / MONITOR — 1/0: делать ли соответствующий шаг",
+            "# AUTO_PICK — 1/0: подбирать ли базовый файл по имени открытой модели при открытии окна",
+            "# BASE_FOLDER — папка, в которой лежат базовые файлы всех корпусов проекта",
+            "# BASE_CODE — код базовой модели в имени файла (MK3-VSC-B01-BM)",
+            "#   какой по счёту кусок имени считать номером корпуса — links\\_settings.txt, ключ KIT_TOKEN",
             "# Файл перезаписывается при каждом закрытии окна."
         };
 
@@ -73,6 +77,19 @@ namespace VladTools.Infrastructure
 
         /// <summary>Открывать ли в конце режим «Копирование/Мониторинг».</summary>
         public bool Monitor { get; set; } = true;
+
+        /// <summary>
+        /// Подбирать ли базовый файл по имени открытой модели при открытии окна. Галочка нужна
+        /// потому, что подбор — это чтение папок хранилища: на облаке пара запросов по сети,
+        /// и тому, кто всегда выбирает файл руками, платить за них незачем.
+        /// </summary>
+        public bool AutoPick { get; set; } = true;
+
+        /// <summary>Папка базовых файлов — та, в которой подбор их и ищет.</summary>
+        public string BaseFolder { get; set; } = BaseFileFinder.DefaultFolderName;
+
+        /// <summary>Код базовой модели в имени файла: «MK3-VSC-B01-BM» → BM.</summary>
+        public string BaseCode { get; set; } = BaseFileFinder.DefaultCode;
 
         /// <summary>%AppData%\VladTools\basefile</summary>
         public static string FolderPath
@@ -126,6 +143,9 @@ namespace VladTools.Infrastructure
                 lines.Add(Line("PIN", Pin ? "1" : "0"));
                 lines.Add(Line("ACTIVATE", Activate ? "1" : "0"));
                 lines.Add(Line("MONITOR", Monitor ? "1" : "0"));
+                lines.Add(Line("AUTO_PICK", AutoPick ? "1" : "0"));
+                lines.Add(Line("BASE_FOLDER", BaseFolder ?? string.Empty));
+                lines.Add(Line("BASE_CODE", BaseCode ?? string.Empty));
 
                 Directory.CreateDirectory(FolderPath);
 
@@ -197,6 +217,18 @@ namespace VladTools.Infrastructure
 
                 case "MONITOR":
                     Monitor = value != "0";
+                    break;
+
+                case "AUTO_PICK":
+                    AutoPick = value != "0";
+                    break;
+
+                case "BASE_FOLDER":
+                    BaseFolder = value;
+                    break;
+
+                case "BASE_CODE":
+                    BaseCode = value;
                     break;
             }
         }

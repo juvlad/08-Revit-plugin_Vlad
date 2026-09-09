@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -60,6 +60,26 @@ namespace VladTools.Infrastructure
 
         /// <summary>Модель совмещённая (C4R) — только такую Revit умеет связать из облака.</summary>
         public bool IsCloudModel => !IsFolder && ProjectGuid != Guid.Empty && ModelGuid != Guid.Empty;
+    }
+
+    /// <summary>
+    /// Сама папка: как называется и в какой лежит. Нужна, чтобы подниматься вверх по дереву —
+    /// от папки, в которой лежит открытая модель, к папке проекта, где стоят папки разделов.
+    /// </summary>
+    internal sealed class AccFolder
+    {
+        public AccFolder(string id, string name, string parentId)
+        {
+            Id = id;
+            Name = name;
+            ParentId = parentId;
+        }
+
+        public string Id { get; }
+        public string Name { get; }
+
+        /// <summary>Папка уровнем выше; у корневой пусто.</summary>
+        public string ParentId { get; }
     }
 
     /// <summary>
@@ -142,7 +162,17 @@ namespace VladTools.Infrastructure
         /// </summary>
         public static IReadOnlyList<AccEntry> Contents(string token, AccProject project, string folderId)
         {
-            var url = Api + "/data/v1/projects/" + Escape(project.Id) + "/folders/" + Escape(folderId) + "/contents";
+            return Contents(token, project.Id, folderId);
+        }
+
+        /// <summary>
+        /// То же по одному идентификатору проекта. Он же собирается из GUID открытой облачной
+        /// модели (<see cref="ProjectId"/>), когда проект известен, а хаб — нет: смотреть кладовку
+        /// целиком ради имени хаба незачем.
+        /// </summary>
+        public static IReadOnlyList<AccEntry> Contents(string token, string projectId, string folderId)
+        {
+            var url = Api + "/data/v1/projects/" + Escape(projectId) + "/folders/" + Escape(folderId) + "/contents";
 
             var folders = new List<AccEntry>();
             var models = new List<AccEntry>();
@@ -183,6 +213,36 @@ namespace VladTools.Infrastructure
             return folders.OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Concat(models.OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase))
                 .ToList();
+        }
+
+        /// <summary>
+        /// Сведения о самой папке: имя и папка уровнем выше. Data Management отдаёт их одним
+        /// запросом, и это единственный способ подняться по дереву вверх — вниз-то ведут
+        /// содержимое и topFolders, а вверх ничего не ведёт.
+        /// </summary>
+        public static AccFolder Folder(string token, string projectId, string folderId)
+        {
+            var url = Api + "/data/v1/projects/" + Escape(projectId) + "/folders/" + Escape(folderId);
+            var body = Http.GetJson(url, new Dictionary<string, string> { { "Authorization", "Bearer " + token } });
+            var data = Json.At(body, "data");
+
+            var name = Json.Str(data, "attributes", "displayName");
+            if (name.Length == 0)
+                name = Json.Str(data, "attributes", "name");
+
+            return new AccFolder(Json.Str(data, "id"), name, Json.Str(data, "relationships", "parent", "data", "id"));
+        }
+
+        /// <summary>
+        /// Идентификатор проекта Data Management по GUID проекта из облачного пути Revit:
+        /// у BIM360/ACC это тот же GUID с приставкой «b.». Проверяется само собой — с неверным
+        /// идентификатором служба ответит отказом, и кнопка предложит выбрать папку руками.
+        /// </summary>
+        public static string ProjectId(string projectGuid)
+        {
+            var guid = (projectGuid ?? string.Empty).Trim();
+
+            return guid.Length == 0 || guid.StartsWith("b.", StringComparison.OrdinalIgnoreCase) ? guid : "b." + guid;
         }
 
         // ───────────────────────────── разбор ответа ─────────────────────────────

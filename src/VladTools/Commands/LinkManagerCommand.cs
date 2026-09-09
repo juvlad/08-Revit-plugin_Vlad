@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Interop;
@@ -62,7 +62,11 @@ namespace VladTools.Commands
 
             try
             {
-                var window = new LinkManagerWindow(LinkCatalog.Existing(doc), LinkCatalog.HostWorksets(doc), rows => ReadWorksets(rows));
+                var window = new LinkManagerWindow(
+                    LinkCatalog.Existing(doc),
+                    LinkCatalog.HostWorksets(doc),
+                    rows => ReadWorksets(rows),
+                    LinkCatalog.Host(doc));
                 new WindowInteropHelper(window).Owner = commandData.Application.MainWindowHandle;
 
                 if (window.ShowDialog() != true)

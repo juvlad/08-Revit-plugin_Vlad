@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
@@ -6,6 +6,35 @@ using VladTools.UI;
 
 namespace VladTools.Infrastructure
 {
+    /// <summary>
+    /// Сама открытая модель как подсказка: как она названа и в какой папке лежит.
+    ///
+    /// Нужна «Комплекту по корпусу» и только ему: номер корпуса берётся из имени открытой
+    /// модели, а папки разделов ищутся рядом с ней. Всё может оказаться пустым — проект
+    /// бывает ни разу не сохранён, — и это не поломка: тогда корпус и папку задаёт человек.
+    /// </summary>
+    internal sealed class HostModel
+    {
+        public HostModel(LinkEntry entry, ModelFolder folder, string name)
+        {
+            Entry = entry;
+            Folder = folder;
+            Name = name ?? string.Empty;
+        }
+
+        /// <summary>Описание самой модели — по нему её отличают от предложенных связей.</summary>
+        public LinkEntry Entry { get; }
+
+        /// <summary>Папка, в которой модель лежит; у несохранённого проекта — null.</summary>
+        public ModelFolder Folder { get; }
+
+        /// <summary>Имя модели с расширением или без — так, как его отдал Revit.</summary>
+        public string Name { get; }
+
+        /// <summary>Ключ самой модели: предлагать связаться с самим собой Revit всё равно не даст.</summary>
+        public string Key => Entry == null ? string.Empty : Entry.Key;
+    }
+
     /// <summary>
     /// Всё, что нужно знать про связи открытого проекта и его рабочие наборы: что уже стоит,
     /// куда можно положить новую связь, как перевести описание модели в путь Revit.
@@ -44,6 +73,95 @@ namespace VladTools.Infrastructure
             }
 
             return rows;
+        }
+
+        /// <summary>
+        /// Где лежит и как называется сам открытый проект. У совмещённого берётся путь
+        /// центральной модели, а не локальной копии: папки разделов стоят рядом с центральной,
+        /// а локальная лежит у пользователя на диске и к делу отношения не имеет.
+        /// </summary>
+        public static HostModel Host(Document doc)
+        {
+            try
+            {
+                if (doc.IsModelInCloud)
+                    return CloudHost(doc);
+
+                var visible = VisiblePath(doc);
+                if (visible.Length == 0)
+                    return new HostModel(null, null, doc.Title);
+
+                if (visible.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
+                {
+                    string server;
+                    string folderPath;
+                    string modelName;
+                    RevitServerClient.TryParse(visible, out server, out folderPath, out modelName);
+
+                    return new HostModel(
+                        LinkEntry.ForServer(visible),
+                        ModelFolder.ForServer(server, folderPath),
+                        modelName);
+                }
+
+                var directory = System.IO.Path.GetDirectoryName(visible);
+
+                return new HostModel(
+                    LinkEntry.ForFile(visible),
+                    string.IsNullOrEmpty(directory) ? null : ModelFolder.ForFile(directory),
+                    System.IO.Path.GetFileName(visible));
+            }
+            catch (Exception)
+            {
+                // Ничего не выяснили — окно просто спросит корпус и папку у человека.
+                return new HostModel(null, null, doc.Title);
+            }
+        }
+
+        /// <summary>
+        /// Облачная модель: пары GUID хватает, чтобы её опознать, а папку отдаёт
+        /// <c>GetCloudFolderId</c> — тем же идентификатором, каким её знает Data Management.
+        /// </summary>
+        private static HostModel CloudHost(Document doc)
+        {
+            var path = doc.GetCloudModelPath();
+            var project = path.GetProjectGUID().ToString();
+
+            var entry = LinkEntry.ForCloud(path.Region, project, path.GetModelGUID().ToString(), doc.Title);
+            ModelFolder folder = null;
+
+            try
+            {
+                var folderId = doc.GetCloudFolderId(false);
+                if (!string.IsNullOrEmpty(folderId))
+                    folder = ModelFolder.ForCloud(path.Region, AccClient.ProjectId(project), folderId, string.Empty);
+            }
+            catch (Exception)
+            {
+                // Папку Revit отдаёт не всегда; корпус из имени это не отменяет.
+            }
+
+            return new HostModel(entry, folder, doc.Title);
+        }
+
+        /// <summary>Путь центральной модели, а при её отсутствии — путь самого файла.</summary>
+        private static string VisiblePath(Document doc)
+        {
+            if (doc.IsWorkshared)
+            {
+                try
+                {
+                    var central = doc.GetWorksharingCentralModelPath();
+                    if (central != null && !central.Empty)
+                        return ModelPathUtils.ConvertModelPathToUserVisiblePath(central);
+                }
+                catch (Exception)
+                {
+                    // Не совмещённая с центральной или отсоединённая — остаётся путь файла.
+                }
+            }
+
+            return doc.PathName ?? string.Empty;
         }
 
         /// <summary>Экземпляры связи данного типа — их в проекте может быть несколько.</summary>

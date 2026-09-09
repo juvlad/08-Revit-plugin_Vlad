@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using VladTools.Infrastructure;
 
@@ -18,6 +19,13 @@ namespace VladTools.UI
     /// начать копирование уровней и осей. Пять диалогов в разных углах ленты, и порядок
     /// между ними важен.
     ///
+    /// Сам координационный файл окно предлагает само: базовые файлы всего проекта лежат
+    /// в одной папке рядом с папками разделов, а в имени открытой модели стоит номер корпуса
+    /// (<c>MK3-VSC-B01-VOIDS</c>), — значит, нужный файл зовётся <c>MK3-VSC-B01-BM</c> и искать
+    /// его в дереве не за чем (<see cref="BaseFileFinder"/>). Подобранное только предлагается:
+    /// разбор имён — эвристика, поэтому под именем модели написано, откуда она взялась,
+    /// а когда подходящих несколько — не подставляется ни одна.
+    ///
     /// Последний шаг — копирование мониторингом — окно не обещает: API Revit создавать
     /// связи мониторинга не умеет вовсе (есть только чтение уже существующих). Всё, что
     /// можно сделать честно, — открыть сам режим «Копирование/Мониторинг», и это последняя
@@ -31,6 +39,9 @@ namespace VladTools.UI
 
         private readonly IReadOnlyList<LinkRow> _existing;
         private readonly BaseFilePreferences _preferences;
+
+        /// <summary>Открытая модель: из её имени берётся корпус, из её папки — где искать базовый файл.</summary>
+        private readonly HostModel _host;
 
         /// <summary>Настройки «Link Manager» — ради общего списка серверов Revit Server.</summary>
         private readonly LinkPreferences _linkPreferences;
@@ -49,6 +60,7 @@ namespace VladTools.UI
         private readonly CheckBox _activateBox;
         private readonly ComboBox _worksetBox;
         private readonly CheckBox _monitorBox;
+        private readonly CheckBox _autoBox;
         private readonly TextBlock _status;
         private readonly Button _runButton;
 
@@ -65,9 +77,11 @@ namespace VladTools.UI
         /// Рабочие наборы открытого проекта. Пустой список — проект не совмещённый,
         /// и оба относящихся к наборам шага выключаются.
         /// </param>
-        public BaseFileWindow(IReadOnlyList<LinkRow> existing, IReadOnlyList<string> hostWorksets)
+        /// <param name="host">Открытая модель — по ней подбирается базовый файл.</param>
+        public BaseFileWindow(IReadOnlyList<LinkRow> existing, IReadOnlyList<string> hostWorksets, HostModel host)
         {
             _existing = existing ?? new List<LinkRow>();
+            _host = host ?? new HostModel(null, null, string.Empty);
             _preferences = BaseFilePreferences.Load();
             _linkPreferences = LinkPreferences.Load();
 
@@ -163,6 +177,18 @@ namespace VladTools.UI
                 "Команда доводит до режима: останется выбрать связь и отметить уровни и оси.",
                 _preferences.Monitor);
 
+            _autoBox = new CheckBox
+            {
+                Content = "подбирать сам",
+                IsChecked = _preferences.AutoPick,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 4),
+                ToolTip =
+                    "Искать базовый файл своего корпуса при открытии окна: по номеру корпуса\n" +
+                    "в имени открытой модели, в папке «" + _preferences.BaseFolder + "» рядом с ней.\n" +
+                    "Каждый поиск — чтение папок хранилища, поэтому это галочка, а не всегда."
+            };
+
             _status = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
 
             _runButton = new Button
@@ -196,6 +222,12 @@ namespace VladTools.UI
             _linkWorksetBox.Text = Named(_preferences.LinkWorkset);
 
             Show(_preferences.Model == null ? null : Match(_preferences.Model));
+
+            // Подбор сам, при открытии: спрашивать «искать ли», когда и корпус, и папка уже
+            // известны из открытой модели, значит просить лишний щелчок ровно за тем, ради
+            // чего окно и открыли. Не при построении разметки, а по Loaded — чтение папок
+            // хранилища занимает секунду, и окно должно к этому моменту стоять на экране.
+            Loaded += (sender, args) => AutoPick();
         }
 
         private bool HasHostWorksets => _hostWorksets.Count > 1;
@@ -222,10 +254,14 @@ namespace VladTools.UI
             root.Children.Add(hint);
 
             var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+            sources.Children.Add(SourceButton("Подобрать",
+                "Найти базовый файл своего корпуса самому: по номеру корпуса в имени открытой модели, " +
+                "в папке базовых файлов рядом с ней.", OnAutoPick));
             sources.Children.Add(SourceButton("Файл…", "Обычный файл .rvt: диск или сетевая папка.", OnPickFile));
             sources.Children.Add(SourceButton("Revit Server…", "Просмотр папок и моделей на Revit Server.", OnBrowseServer));
             sources.Children.Add(SourceButton("BIM360…", "Просмотр учётных записей, проектов и папок BIM360/ACC.", OnBrowseCloud));
             sources.Children.Add(SourceButton("BIM360 по GUID…", "Ввод облачной модели парой GUID — если просмотр недоступен.", OnPickCloudByGuid));
+            sources.Children.Add(_autoBox);
 
             Grid.SetRow(sources, 1);
             root.Children.Add(sources);
@@ -348,6 +384,11 @@ namespace VladTools.UI
 
         // ───────────────────────────── откуда берётся модель ─────────────────────────────
 
+        private void OnAutoPick(object sender, RoutedEventArgs e)
+        {
+            Pick(true);
+        }
+
         private void OnPickFile(object sender, RoutedEventArgs e)
         {
             Take(ModelPicker.Files(this, false));
@@ -457,6 +498,149 @@ namespace VladTools.UI
                 : "US";
         }
 
+        // ───────────────────────────── подбор базового файла ─────────────────────────────
+
+        /// <summary>
+        /// Подбор при открытии окна. В отличие от кнопки, молчит про отказы: окно только что
+        /// открылось, и модальный диалог поверх него на ровном месте — худшее, чем можно
+        /// встретить пользователя.
+        /// </summary>
+        private void AutoPick()
+        {
+            if (_autoBox.IsChecked != true)
+                return;
+
+            var building = ModelKit.Building(_host.Name, _linkPreferences.BuildingToken);
+
+            // Запомненная модель уже от этого корпуса — искать нечего: в новом разделе того же
+            // объекта базовый файл тот же самый, а обход папок стоит запросов по сети.
+            if (building.Length > 0 && _row != null && DisciplineCatalog.HasToken(_row.Name, building))
+            {
+                Note("Базовый файл от прошлого раза — того же корпуса (" + building + ").", false);
+                return;
+            }
+
+            Pick(false);
+        }
+
+        /// <param name="loud">
+        /// Показывать ли отказ диалогом и красной строкой. По кнопке — да: пользователь нажал
+        /// и ждёт ответа. При открытии окна — нет: это подсказка, а не поломка.
+        /// </param>
+        private void Pick(bool loud)
+        {
+            if (_host.Folder == null || _host.Name.Length == 0)
+            {
+                Complain(loud,
+                    "Где лежит открытая модель, выяснить не удалось: проект ни разу не сохранён " +
+                    "или открыт отсоединённым. Выберите базовый файл кнопками выше.");
+                return;
+            }
+
+            BaseFileScan scan;
+            var cursor = Mouse.OverrideCursor;
+
+            try
+            {
+                // Чтение идёт прямо в потоке интерфейса, как и в дереве просмотра:
+                // окно модальное, Revit всё равно ждёт.
+                Mouse.OverrideCursor = Cursors.Wait;
+
+                scan = BaseFileFinder.Find(
+                    _host,
+                    _preferences.BaseFolder,
+                    _preferences.BaseCode,
+                    _linkPreferences.BuildingToken);
+            }
+            catch (Exception exception)
+            {
+                Complain(loud, "Подобрать базовый файл не удалось: " + LinkCatalog.Short(exception.Message));
+                return;
+            }
+            finally
+            {
+                Mouse.OverrideCursor = cursor;
+            }
+
+            Apply(scan, loud);
+        }
+
+        /// <summary>
+        /// Что делать с итогом подбора. Исходов пять, и каждый должен звучать по-своему:
+        /// «корпуса в имени нет», «папки не нашлось», «в папке нет модели корпуса»,
+        /// «подходящих несколько» и «вот она». Одно общее «подобрать не удалось» на всё это
+        /// не годится: причины разные, и лечатся они по-разному.
+        /// </summary>
+        private void Apply(BaseFileScan scan, bool loud)
+        {
+            var tail = scan.Failures.Count > 0
+                ? " Прочитать не удалось: " + string.Join("; ", scan.Failures.Take(2)) + "."
+                : string.Empty;
+
+            if (scan.Building.Length == 0)
+            {
+                Complain(loud,
+                    "Номера корпуса на " + _linkPreferences.BuildingToken + "-м месте в имени «" +
+                    _host.Name + "» нет — подбирать не от чего. Место задаётся в links\\_settings.txt (KIT_TOKEN)." + tail);
+                return;
+            }
+
+            if (scan.Folder == null)
+            {
+                Complain(loud,
+                    "Папка «" + _preferences.BaseFolder + "» рядом с открытой моделью не нашлась. " +
+                    "Имя папки задаётся в basefile\\_settings.txt (BASE_FOLDER)." + tail);
+                return;
+            }
+
+            if (scan.Hits.Count == 0)
+            {
+                Complain(loud, "В папке «" + scan.Folder.Name + "» модели корпуса " + scan.Building + " нет." + tail);
+                return;
+            }
+
+            if (scan.Hits.Count > 1)
+            {
+                // Несколько подходящих — не повод брать первую: то же правило, что при подборе
+                // рабочего набора и комплекта по корпусу. Зато сказать, из чего выбирать, обязаны:
+                // без имён приписка «подходит несколько» не говорит ничего.
+                Complain(loud,
+                    "Под корпус " + scan.Building + " в папке «" + scan.Folder.Name + "» подходит несколько моделей: " +
+                    string.Join(", ", scan.Hits.Select(hit => hit.Name)) + ". Выберите нужную кнопками выше." + tail);
+                return;
+            }
+
+            Show(Match(scan.Hits[0]));
+
+            Note("Подобран по имени открытой модели: корпус " + scan.Building +
+                 ", папка «" + scan.Folder.Name + "»." +
+                 (scan.IsLoose
+                     ? " Кода «" + _preferences.BaseCode + "» в имени нет — совпал только корпус, проверьте модель."
+                     : string.Empty) + tail,
+                 scan.IsLoose);
+        }
+
+        /// <summary>Отказ подбора: строкой всегда, диалогом — только когда нажимали кнопку.</summary>
+        private void Complain(bool loud, string text)
+        {
+            Note(text, loud);
+
+            if (loud)
+                MessageBox.Show(this, text, WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        /// <summary>
+        /// Подпись под выбранной моделью. Про уже стоящую в проекте связь дописывается всегда:
+        /// это важнее любой подсказки подбора и теряться за ней не должно.
+        /// </summary>
+        private void Note(string text, bool isProblem)
+        {
+            _status.Foreground = isProblem ? Brushes.Firebrick : SystemColors.GrayTextBrush;
+            _status.Text = _row != null && _row.IsExisting
+                ? text + " Связь на эту модель в проекте уже есть — она и будет использована."
+                : text;
+        }
+
         // ───────────────────────────── выполнение ─────────────────────────────
 
         private void OnRun(object sender, RoutedEventArgs e)
@@ -515,6 +699,7 @@ namespace VladTools.UI
             _preferences.Pin = _pinBox.IsChecked == true;
             _preferences.Activate = _activateBox.IsChecked == true;
             _preferences.Monitor = _monitorBox.IsChecked == true;
+            _preferences.AutoPick = _autoBox.IsChecked == true;
         }
 
         protected override void OnClosed(EventArgs e)

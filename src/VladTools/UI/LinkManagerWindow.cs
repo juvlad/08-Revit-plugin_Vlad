@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -35,6 +35,11 @@ namespace VladTools.UI
     /// модели. Он у каждой связи свой: АР в «01_Связи_АР», КР в «01_Связи_КР», — поэтому правится
     /// прямо в строке, а кнопка «Задать отмеченным» лишь избавляет от щелчков, когда набор общий.
     ///
+    /// Список моделей не обязательно собирать руками: кнопка «Комплект по корпусу…»
+    /// предлагает готовый набор связей — модели всех разделов того же корпуса, найденные
+    /// по папкам проекта (см. <see cref="ModelKitWindow"/>). Дальше они попадают в ту же
+    /// таблицу и живут по тем же правилам, что и добавленные любым другим способом.
+    ///
     /// Связи, уже стоящие в проекте, из списка не прячутся: их видно со статусом
     /// «Уже в проекте», и отметить их можно — тогда они перезагрузятся с новой настройкой
     /// рабочих наборов, а при смене набора проекта ещё и переедут в него вместе со всеми своими
@@ -52,6 +57,9 @@ namespace VladTools.UI
 
         private readonly Func<IReadOnlyList<LinkRow>, LinkWorksetScan> _readWorksets;
         private readonly LinkPreferences _preferences;
+
+        /// <summary>Сама открытая модель — из неё «Комплект по корпусу» берёт корпус и папку.</summary>
+        private readonly HostModel _host;
 
         /// <summary>Рабочие наборы открытого проекта — с «(активный)» первой строкой.</summary>
         private readonly List<string> _hostWorksets = new List<string> { LinkRow.ActiveWorkset };
@@ -84,6 +92,9 @@ namespace VladTools.UI
         /// <summary>Подбор сейчас сам меняет набор строки — не считать это ручной правкой.</summary>
         private bool _suggesting;
 
+        /// <summary>Заведены ли в проекте наборы под разделы; считается по первому запросу.</summary>
+        private bool? _usesDisciplineWorksets;
+
         /// <summary>Связи, которые пользователь подтвердил к загрузке.</summary>
         public IReadOnlyList<LinkRow> Selected { get; private set; } = new List<LinkRow>();
 
@@ -102,12 +113,15 @@ namespace VladTools.UI
         /// Чтение рабочих наборов выбранных моделей без их открытия.
         /// Всю работу с Revit делает команда — окно только зовёт и показывает итог.
         /// </param>
+        /// <param name="host">Где лежит и как называется сам открытый проект; может быть пустым.</param>
         public LinkManagerWindow(
             IReadOnlyList<LinkRow> existing,
             IReadOnlyList<string> hostWorksets,
-            Func<IReadOnlyList<LinkRow>, LinkWorksetScan> readWorksets)
+            Func<IReadOnlyList<LinkRow>, LinkWorksetScan> readWorksets,
+            HostModel host)
         {
             _readWorksets = readWorksets;
+            _host = host;
             _preferences = LinkPreferences.Load();
 
             if (hostWorksets != null)
@@ -331,6 +345,9 @@ namespace VladTools.UI
             sources.Children.Add(SourceButton("Revit Server…", "Просмотр папок и моделей на Revit Server.", OnBrowseServer));
             sources.Children.Add(SourceButton("BIM360…", "Просмотр учётных записей, проектов и папок BIM360/ACC.", OnBrowseCloud));
             sources.Children.Add(SourceButton("BIM360 по GUID…", "Ввод облачных моделей парой GUID — если просмотр недоступен.", OnAddCloudByGuid));
+            sources.Children.Add(SourceButton("Комплект по корпусу…",
+                "Сам находит модели всех разделов вашего корпуса — по папкам проекта и номеру корпуса в имени.",
+                OnAddKit));
             sources.Children.Add(SourceButton("Убрать из списка", "Убирает отмеченные строки из таблицы. Связи в проекте при этом не трогаются.", OnRemove));
 
             sources.Children.Add(new TextBlock
@@ -500,12 +517,12 @@ namespace VladTools.UI
                 Width = new DataGridLength(36),
                 CanUserResize = false,
                 CanUserSort = false,
-                CellTemplate = BuildCheckBoxTemplate()
+                CellTemplate = GridBuilder.CheckBoxTemplate()
             });
 
-            grid.Columns.Add(TextColumn("Модель", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(TextColumn("Откуда", "Kind", new DataGridLength(100)));
-            grid.Columns.Add(TextColumn("Расположение", "Location", new DataGridLength(1.2, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(GridBuilder.TextColumn("Модель", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(GridBuilder.TextColumn("Откуда", "Kind", new DataGridLength(100)));
+            grid.Columns.Add(GridBuilder.TextColumn("Расположение", "Location", new DataGridLength(1.2, DataGridLengthUnitType.Star)));
 
             // Набор проекта — единственное, что правится прямо в строке: он у каждой связи свой,
             // и «задать всем» тут помогает не всегда.
@@ -521,8 +538,8 @@ namespace VladTools.UI
                 });
             }
 
-            grid.Columns.Add(TextColumn("Наборы в связи", "Worksets", new DataGridLength(110)));
-            grid.Columns.Add(TextColumn("Состояние", "Status", new DataGridLength(200)));
+            grid.Columns.Add(GridBuilder.TextColumn("Наборы в связи", "Worksets", new DataGridLength(110)));
+            grid.Columns.Add(GridBuilder.TextColumn("Состояние", "Status", new DataGridLength(200)));
 
             grid.MouseDoubleClick += (s, e) => ToggleSelectedRows();
             grid.PreviewKeyDown += OnGridKeyDown;
@@ -556,44 +573,15 @@ namespace VladTools.UI
                 Width = new DataGridLength(36),
                 CanUserResize = false,
                 CanUserSort = false,
-                CellTemplate = BuildCheckBoxTemplate()
+                CellTemplate = GridBuilder.CheckBoxTemplate()
             });
 
-            grid.Columns.Add(TextColumn("Рабочий набор", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(TextColumn("Где есть", "Where", new DataGridLength(160)));
+            grid.Columns.Add(GridBuilder.TextColumn("Рабочий набор", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(GridBuilder.TextColumn("Где есть", "Where", new DataGridLength(160)));
 
             grid.MouseDoubleClick += (s, e) => ToggleSelectedWorksets();
 
             return grid;
-        }
-
-        private static DataGridTextColumn TextColumn(string header, string property, DataGridLength width)
-        {
-            var style = new Style(typeof(TextBlock));
-            style.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center));
-            style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 0, 4, 0)));
-            style.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
-            style.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding(property)));
-
-            return new DataGridTextColumn
-            {
-                Header = header,
-                Width = width,
-                Binding = new Binding(property),
-                ElementStyle = style
-            };
-        }
-
-        /// <summary>Галочка в ячейке: со своим шаблоном она срабатывает с первого щелчка.</summary>
-        private static DataTemplate BuildCheckBoxTemplate()
-        {
-            var checkBox = new FrameworkElementFactory(typeof(CheckBox));
-            checkBox.SetBinding(ToggleButton.IsCheckedProperty,
-                new Binding("IsSelected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
-            checkBox.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            checkBox.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-
-            return new DataTemplate { VisualTree = checkBox };
         }
 
         /// <summary>
@@ -633,6 +621,19 @@ namespace VladTools.UI
         private void OnAddCloudByGuid(object sender, RoutedEventArgs e)
         {
             Add(ModelPicker.CloudByGuid(this, DefaultRegion()), "облачных моделей");
+        }
+
+        /// <summary>
+        /// Готовый комплект связей по номеру корпуса. Найденное приходит сюда обычными
+        /// записями и дальше живёт как всё остальное: дубли отсеются, рабочий набор проекта
+        /// подберётся по разделу — тому же, по которому модель и нашлась.
+        /// </summary>
+        private void OnAddKit(object sender, RoutedEventArgs e)
+        {
+            var window = new ModelKitWindow(_host, _preferences, Keys) { Owner = this };
+
+            if (window.ShowDialog() == true)
+                Add(window.Selected, "моделей комплекта");
         }
 
         /// <summary>Регион, с которым окно ввода GUID открывается: тот же, что у уже собранных связей.</summary>
@@ -752,27 +753,66 @@ namespace VladTools.UI
 
             var code = DisciplineCatalog.Detect(row.Entry.Name, _preferences.EffectiveDisciplines);
             if (code.Length == 0)
-                return;
+            {
+                // Кода раздела в имени не видно. Там, где наборы по разделам заведены, это
+                // и есть ответ на вопрос «почему пусто»: молчание выглядело бы поломкой.
+                if (UsesDisciplineWorksets)
+                    row.Note = "Раздела в имени модели не видно";
 
-            var matches = DisciplineCatalog.MatchingWorksets(code, _hostWorksets.Skip(1));
+                return;
+            }
+
+            var worksets = _hostWorksets.Skip(1).ToList();
+            var matches = DisciplineCatalog.MatchingWorksets(code, worksets);
+
+            // Из нескольких подходящих берётся тот, что назван как сама модель («…_AR_B03»
+            // на модели корпуса B03) или как наборы остальных разделов («01_Link_AR» рядом
+            // с «01_Link_ES» и «01_Link_OV», а не «05_AR_Фасады»).
+            var chosen = DisciplineCatalog.Preferred(
+                code, matches, worksets, _preferences.EffectiveDisciplines, row.Entry.Name);
 
             _suggesting = true;
             try
             {
-                if (matches.Count == 1)
+                if (chosen != null)
                 {
-                    row.Workset = matches[0];
+                    row.Workset = chosen;
                     row.Note = "Набор по разделу «" + code + "»";
                     _autoWorkset.Add(row);
                 }
                 else if (matches.Count > 1)
                 {
-                    row.Note = "Раздел «" + code + "»: наборов несколько, выберите";
+                    // Имена в приписке не для красоты: без них «наборов несколько» ничего
+                    // не говорит о том, из чего именно выбирать.
+                    row.Note = "Раздел «" + code + "»: подходят " + string.Join(", ", matches.Take(3)) +
+                               (matches.Count > 3 ? " и ещё " + (matches.Count - 3) : string.Empty) + " — выберите";
+                }
+                else if (UsesDisciplineWorksets)
+                {
+                    // Молчать здесь нельзя: в проекте наборы по разделам заведены, значит
+                    // отсутствие нужного — это ответ, а не «подбор не сработал».
+                    row.Note = "Раздел «" + code + "»: набора с этим кодом в проекте нет";
                 }
             }
             finally
             {
                 _suggesting = false;
+            }
+        }
+
+        /// <summary>
+        /// В проекте заведены наборы под разделы. Считается один раз: наборы за время окна
+        /// не меняются, а от ответа зависит, говорить ли про каждый ненайденный набор.
+        /// </summary>
+        private bool UsesDisciplineWorksets
+        {
+            get
+            {
+                if (_usesDisciplineWorksets == null)
+                    _usesDisciplineWorksets = DisciplineCatalog.HasDisciplineWorksets(
+                        _hostWorksets.Skip(1), _preferences.EffectiveDisciplines);
+
+                return _usesDisciplineWorksets.Value;
             }
         }
 
@@ -791,10 +831,15 @@ namespace VladTools.UI
             _suggesting = true;
             try
             {
-                foreach (var row in _autoWorkset)
+                foreach (var row in _all)
                 {
-                    row.Workset = LinkRow.ActiveWorkset;
-                    if (row.Note.StartsWith("Набор по разделу", StringComparison.Ordinal))
+                    if (_autoWorkset.Contains(row))
+                        row.Workset = LinkRow.ActiveWorkset;
+
+                    // Приписки про раздел — тоже работа подбора: выключили его, значит
+                    // и объяснять больше нечего.
+                    if (row.Note.StartsWith("Набор по разделу", StringComparison.Ordinal) ||
+                        row.Note.StartsWith("Раздел", StringComparison.Ordinal))
                         row.Note = string.Empty;
                 }
             }

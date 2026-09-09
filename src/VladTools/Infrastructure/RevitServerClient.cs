@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -71,6 +71,88 @@ namespace VladTools.Infrastructure
             var tail = folder.Length == 0 ? modelName : folder + "/" + modelName;
 
             return "RSN://" + NormalizeServer(server) + "/" + tail;
+        }
+
+        /// <summary>
+        /// Разбирает путь связи <c>RSN://сервер/VSC/3.0_AR/модель.rvt</c> на части: имя сервера,
+        /// путь папки в том виде, в каком его понимает служба (<c>|VSC|3.0_AR</c>), и имя модели.
+        /// Обратное к <see cref="RsnPath"/>: по пути уже стоящей связи или самого открытого проекта
+        /// надо уметь вернуться к папке, в которой он лежит.
+        /// </summary>
+        public static bool TryParse(string rsnPath, out string server, out string folderPath, out string modelName)
+        {
+            server = string.Empty;
+            folderPath = RootFolder;
+            modelName = string.Empty;
+
+            var text = (rsnPath ?? string.Empty).Trim();
+            if (!text.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var parts = text.Substring("RSN://".Length)
+                .Split('/')
+                .Where(part => part.Length > 0)
+                .ToList();
+
+            if (parts.Count == 0)
+                return false;
+
+            server = parts[0];
+            modelName = parts.Count > 1 ? parts[parts.Count - 1] : string.Empty;
+
+            // Между сервером и моделью — папки; их и склеиваем разделителем службы.
+            var folders = parts.Skip(1).Take(Math.Max(0, parts.Count - 2)).ToList();
+            folderPath = folders.Count == 0 ? RootFolder : RootFolder + string.Join("|", folders);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Разбирает путь **папки** — <c>RSN://сервер/VSC/3.0_AR</c> — на имя сервера и путь
+        /// в виде службы. Отдельно от <see cref="TryParse"/>: там последний кусок пути считается
+        /// моделью, здесь он такая же папка, как остальные.
+        /// </summary>
+        public static bool TryParseFolder(string rsnPath, out string server, out string folderPath)
+        {
+            server = string.Empty;
+            folderPath = RootFolder;
+
+            var text = (rsnPath ?? string.Empty).Trim();
+            if (!text.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var parts = text.Substring("RSN://".Length)
+                .Split('/')
+                .Where(part => part.Length > 0)
+                .ToList();
+
+            if (parts.Count == 0)
+                return false;
+
+            server = parts[0];
+            folderPath = parts.Count == 1 ? RootFolder : RootFolder + string.Join("|", parts.Skip(1));
+
+            return true;
+        }
+
+        /// <summary>Папка, в которой лежит эта: <c>|VSC|3.0_AR</c> → <c>|VSC</c>. Выше корня — null.</summary>
+        public static string ParentFolder(string folderPath)
+        {
+            var path = (folderPath ?? RootFolder).Trim();
+            if (path.Length <= 1)
+                return null;
+
+            var cut = path.LastIndexOf('|');
+
+            return cut <= 0 ? RootFolder : path.Substring(0, cut);
+        }
+
+        /// <summary>Имя самой папки без пути: <c>|VSC|3.0_AR</c> → <c>3.0_AR</c>; у корня — пусто.</summary>
+        public static string FolderName(string folderPath)
+        {
+            var path = (folderPath ?? RootFolder).Trim();
+
+            return path.Length <= 1 ? string.Empty : path.Substring(path.LastIndexOf('|') + 1);
         }
 
         /// <summary>

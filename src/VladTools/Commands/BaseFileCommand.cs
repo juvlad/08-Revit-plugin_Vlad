@@ -50,7 +50,12 @@ namespace VladTools.Commands
 
             try
             {
-                var window = new BaseFileWindow(LinkCatalog.Existing(doc), LinkCatalog.HostWorksets(doc));
+                // Открытая модель нужна окну ради подбора: из её имени берётся номер корпуса,
+                // из её папки — где искать базовый файл этого корпуса.
+                var window = new BaseFileWindow(
+                    LinkCatalog.Existing(doc),
+                    LinkCatalog.HostWorksets(doc),
+                    LinkCatalog.Host(doc));
                 new WindowInteropHelper(window).Owner = commandData.Application.MainWindowHandle;
 
                 if (window.ShowDialog() != true)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -19,6 +19,11 @@ namespace VladTools.UI
     /// подгружается только при раскрытии узла. Различается лишь то, чем заполняются дети,
     /// и это окно получает готовой лямбдой.
     ///
+    /// Тем же деревом выбирается и **папка** — когда «Комплект по корпусу» спрашивает, где
+    /// искать модели разделов. Отдельного окна для этого нет и не нужно: дерево то же самое,
+    /// меняются только галочки (в режиме папки их нет вовсе) и то, что уходит наружу, —
+    /// вместо отмеченных моделей одна выделенная папка.
+    ///
     /// Чтение идёт прямо в потоке интерфейса, под курсором ожидания: асинхронность здесь
     /// была бы лишней сложностью — окно всё равно модальное, а Revit на время диалога
     /// ничего не делает. Отказ службы не закрывает окно и не роняет кнопку: он становится
@@ -31,6 +36,9 @@ namespace VladTools.UI
         private readonly ObservableCollection<BrowseNode> _roots = new ObservableCollection<BrowseNode>();
         private readonly Func<BrowseNode, IReadOnlyList<BrowseNode>> _expand;
 
+        /// <summary>Задан — окно выбирает папку, а не модели; сам предикат говорит, годится ли эта папка.</summary>
+        private readonly Func<BrowseNode, bool> _pickFolder;
+
         private readonly TreeView _tree;
         private readonly TextBlock _status;
         private readonly Button _addButton;
@@ -38,17 +46,26 @@ namespace VladTools.UI
         /// <summary>Модели, отмеченные пользователем.</summary>
         public IReadOnlyList<LinkEntry> Selected { get; private set; } = new List<LinkEntry>();
 
+        /// <summary>Папка, выбранная в режиме выбора папки; в обычном — null.</summary>
+        public BrowseNode SelectedFolder { get; private set; }
+
         /// <param name="hint">Строка над деревом: что здесь показано и что с этим делать.</param>
         /// <param name="topStrip">Полоса управления над деревом; не нужна — null.</param>
         /// <param name="expand">Чем заполнить папку. Исключение отсюда показывается внутри узла.</param>
+        /// <param name="pickFolder">
+        /// Задан — окно выбирает одну папку вместо моделей, а предикат говорит, годится ли
+        /// выделенный узел: учётная запись и проект BIM360 папками не являются.
+        /// </param>
         public ModelBrowserWindow(
             string title,
             string hint,
             UIElement topStrip,
             IEnumerable<BrowseNode> roots,
-            Func<BrowseNode, IReadOnlyList<BrowseNode>> expand)
+            Func<BrowseNode, IReadOnlyList<BrowseNode>> expand,
+            Func<BrowseNode, bool> pickFolder = null)
         {
             _expand = expand;
+            _pickFolder = pickFolder;
 
             Title = title;
             Width = 760;
@@ -63,7 +80,7 @@ namespace VladTools.UI
 
             _addButton = new Button
             {
-                Content = "Добавить",
+                Content = _pickFolder == null ? "Добавить" : "Выбрать",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -156,7 +173,7 @@ namespace VladTools.UI
             var tree = new TreeView
             {
                 ItemsSource = _roots,
-                ItemTemplate = BuildNodeTemplate(),
+                ItemTemplate = BuildNodeTemplate(_pickFolder == null),
                 BorderBrush = SystemColors.ControlDarkBrush,
                 BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 6, 0, 8)
@@ -165,22 +182,32 @@ namespace VladTools.UI
             // Содержимое папки читается ровно один раз — в тот момент, когда её раскрыли.
             tree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(OnExpanded));
 
+            if (_pickFolder != null)
+                tree.SelectedItemChanged += (sender, args) => UpdateSummary();
+
             return tree;
         }
 
-        private static HierarchicalDataTemplate BuildNodeTemplate()
+        /// <param name="withCheckBoxes">
+        /// В режиме выбора папки галочек нет: отмечать нечего, а видимая, но бессмысленная
+        /// галочка у модели выглядела бы как ещё один способ что-то выбрать.
+        /// </param>
+        private static HierarchicalDataTemplate BuildNodeTemplate(bool withCheckBoxes)
         {
             var panel = new FrameworkElementFactory(typeof(StackPanel));
             panel.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
 
-            var check = new FrameworkElementFactory(typeof(CheckBox));
-            check.SetBinding(ToggleButton.IsCheckedProperty,
-                new Binding("IsSelected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
-            check.SetBinding(UIElement.VisibilityProperty, new Binding("CheckBoxVisibility"));
-            check.SetBinding(UIElement.IsEnabledProperty, new Binding("IsCheckable"));
-            check.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-            check.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 6, 0));
-            panel.AppendChild(check);
+            if (withCheckBoxes)
+            {
+                var check = new FrameworkElementFactory(typeof(CheckBox));
+                check.SetBinding(ToggleButton.IsCheckedProperty,
+                    new Binding("IsSelected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+                check.SetBinding(UIElement.VisibilityProperty, new Binding("CheckBoxVisibility"));
+                check.SetBinding(UIElement.IsEnabledProperty, new Binding("IsCheckable"));
+                check.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+                check.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 6, 0));
+                panel.AppendChild(check);
+            }
 
             var name = new FrameworkElementFactory(typeof(TextBlock));
             name.SetBinding(TextBlock.TextProperty, new Binding("Name"));
@@ -276,8 +303,29 @@ namespace VladTools.UI
             return _roots.SelectMany(root => root.CheckedModels()).ToList();
         }
 
+        /// <summary>Выделенная в дереве папка, годная для выбора; иначе null.</summary>
+        private BrowseNode Highlighted()
+        {
+            var node = _tree.SelectedItem as BrowseNode;
+
+            return node != null && !node.IsModel && !node.IsPlaceholder && _pickFolder(node) ? node : null;
+        }
+
         private void UpdateSummary()
         {
+            if (_pickFolder != null)
+            {
+                var folder = Highlighted();
+
+                _status.Foreground = folder == null ? SystemColors.GrayTextBrush : SystemColors.ControlTextBrush;
+                _status.Text = folder == null
+                    ? "Выделите папку, внутри которой лежат папки разделов."
+                    : "Выбрана папка: " + folder.Name;
+
+                _addButton.IsEnabled = folder != null;
+                return;
+            }
+
             var marked = Marked().Count;
 
             if (marked == 0)
@@ -299,6 +347,16 @@ namespace VladTools.UI
 
         private void OnAdd(object sender, RoutedEventArgs e)
         {
+            if (_pickFolder != null)
+            {
+                SelectedFolder = Highlighted();
+                if (SelectedFolder == null)
+                    return;
+
+                DialogResult = true;
+                return;
+            }
+
             var marked = Marked();
             if (marked.Count == 0)
                 return;

@@ -1,25 +1,26 @@
-# Чек-лист: добавить сборку под Revit 2025
+# Checklist: adding a build for Revit 2025
 
-Задание для исполнителя (модель Sonnet). Цель: та же одна кодовая база, что сейчас собирается
-под **Revit 2022** и **Revit 2024**, собирается **и под Revit 2025**, причём `.\build.ps1`
-без параметров прогоняет **все три года за один запуск**.
+A task for the executor (the Sonnet model). Goal: the same single codebase that already builds for
+**Revit 2022** and **Revit 2024** also builds **for Revit 2025**, with `.\build.ps1` and no
+arguments running **all three years in one invocation**.
 
-Всё в разделе «Что уже выяснено» **измерено на этой машине**: рефлексия по `RevitAPI.dll`
-22.0.0.0 / 24.3.40.0 / 25.4.60.0, по `SSONET.dll` всех трёх версий, чтение
-`RevitAPI.runtimeconfig.json` Revit 2025 и **пробная компиляция всех текущих исходников
-против Revit 2025 API на `net8.0-windows`**. Не переспрашивай и не перепроверяй эти факты.
-Проверять нужно **свои правки**, а не вводные.
+Everything in "Already established" was **measured on this machine**: reflection over `RevitAPI.dll`
+22.0.0.0 / 24.3.40.0 / 25.4.60.0, over `SSONET.dll` for all three versions, reading Revit 2025's
+`RevitAPI.runtimeconfig.json`, and **a trial compile of all the current source files against the
+Revit 2025 API on `net8.0-windows`**. Do not re-ask or re-verify these facts. What needs checking
+is **your own edits**, not the inputs.
 
-Предлагаемые тексты `VladTools.csproj` и `build.ps1` из шагов 2 и 3 **уже собраны и прогнаны**
-в песочнице: три года подряд, 0 ошибок. Отклоняться от них без причины не нужно.
+The `VladTools.csproj` and `build.ps1` texts proposed in steps 2 and 3 have **already been built
+and run** in a sandbox: all three years in a row, 0 errors. There is no reason to deviate from them
+without cause.
 
 ---
 
-## Что уже выяснено (исходные данные, не требуют проверки)
+## Already established (given facts, no need to verify)
 
-### Главное
+### The main point
 
-**Revit 2025 работает на .NET 8, а не на .NET Framework.** Из
+**Revit 2025 runs on .NET 8, not the .NET Framework.** From
 `C:\Program Files\Autodesk\Revit 2025\RevitAPI.runtimeconfig.json`:
 
 ```json
@@ -30,76 +31,76 @@
 ]
 ```
 
-Значит `net48`-сборка в Revit 2025 не загрузится вовсе, и TFM обязан зависеть от года —
-`net48` для 2022/2024, `net8.0-windows` для 2025. Это единственное принципиальное отличие
-этого переезда от переезда на 2024.
+So a `net48` build will not load in Revit 2025 at all, and the TFM has to depend on the year —
+`net48` for 2022/2024, `net8.0-windows` for 2025. That is the one fundamental difference between
+this move and the move to 2024.
 
-**Кода при этом почти не меняется.** Пробная компиляция текущих исходников против Revit 2025 API
-дала **4 ошибки, все одного вида** (`Definition.ParameterGroup`), а после их починки —
-**0 ошибок, 8 предупреждений** (7 × CS0618 + 1 × SYSLIB0014, чинить их не нужно, см. блок
-«Чего делать не надо»).
+**Almost none of the code needs to change.** A trial compile of the current source files against
+the Revit 2025 API gave **4 errors, all of one kind** (`Definition.ParameterGroup`), and after
+fixing them — **0 errors, 8 warnings** (7 × CS0618 + 1 × SYSLIB0014, no need to fix these, see
+"What not to do" below).
 
-### Что убрано в Revit 2025 (ошибки компиляции)
+### What was removed in Revit 2025 (compile errors)
 
-| API | Где | 2022 | 2024 | 2025 | Замена, существующая **во всех трёх** |
+| API | Where | 2022 | 2024 | 2025 | Replacement that exists **in all three** |
 | --- | --- | --- | --- | --- | --- |
-| `Definition.ParameterGroup` | `DeleteProjectParametersCommand.cs:204,208`; `DeleteSharedParametersCommand.cs:155,159` | есть | есть (CS0618) | **нет** | `Definition.GetGroupTypeId()` → `ForgeTypeId` |
-| `LabelUtils.GetLabelFor(BuiltInParameterGroup)` | `DeleteProjectParametersCommand.cs:204`; `DeleteSharedParametersCommand.cs:155` | есть | есть (CS0618) | **нет** | `LabelUtils.GetLabelForGroup(ForgeTypeId)` |
-| тип `BuiltInParameterGroup` | только через два предыдущих | есть | есть | **нет типа целиком** | — |
+| `Definition.ParameterGroup` | `DeleteProjectParametersCommand.cs:204,208`; `DeleteSharedParametersCommand.cs:155,159` | present | present (CS0618) | **gone** | `Definition.GetGroupTypeId()` → `ForgeTypeId` |
+| `LabelUtils.GetLabelFor(BuiltInParameterGroup)` | `DeleteProjectParametersCommand.cs:204`; `DeleteSharedParametersCommand.cs:155` | present | present (CS0618) | **gone** | `LabelUtils.GetLabelForGroup(ForgeTypeId)` |
+| the `BuiltInParameterGroup` type | only via the two above | present | present | **the whole type is gone** | — |
 
-Проверено поимённо: `Definition.GetGroupTypeId()` и `LabelUtils.GetLabelForGroup(ForgeTypeId)`
-**есть и в 2022, и в 2024, и в 2025**, и ни в одной из версий не помечены устаревшими.
-Поэтому `#if` не нужен — код остаётся общий. Это ровно та замена, которая была отложена
-в [CHECKLIST-Revit2024.md](CHECKLIST-Revit2024.md); настал момент её сделать.
+Checked by name: `Definition.GetGroupTypeId()` and `LabelUtils.GetLabelForGroup(ForgeTypeId)`
+**exist in 2022, 2024 and 2025 alike**, and are not marked deprecated in any of them. So no `#if` is
+needed — the code stays shared. This is exactly the replacement that was postponed in
+[CHECKLIST-Revit2024.md](CHECKLIST-Revit2024.md); now is the time to make it.
 
-### Что устарело, но работает (предупреждения, чинить в этой задаче не надо)
+### What is deprecated but works (warnings, no need to fix in this task)
 
-| API | Где | Статус в 2025 | Почему не трогаем |
+| API | Where | Status in 2025 | Why we leave it |
 | --- | --- | --- | --- |
-| `ElementId.IntegerValue` | `CleanupCommand.cs:615,619,628,632`; `RenameNestedFamiliesCommand.cs:140 (×2),146` | есть, CS0618 | замены, работающей и в 2022, нет: `ElementId.Value` появился только в 2024 |
-| `WebRequest.Create` | `JsonHttp.cs:298` | есть, SYSLIB0014 (только на net8) | переход на `HttpClient` — отдельная задача, не про совместимость |
+| `ElementId.IntegerValue` | `CleanupCommand.cs:615,619,628,632`; `RenameNestedFamiliesCommand.cs:140 (×2),146` | present, CS0618 | there is no replacement that also works in 2022: `ElementId.Value` only arrived in 2024 |
+| `WebRequest.Create` | `JsonHttp.cs:298` | present, SYSLIB0014 (net8 only) | moving to `HttpClient` is a separate task, unrelated to compatibility |
 
-`WorksetId.IntegerValue` (`LinkManagerCommand.cs:198`) **не устарел ни в одной версии** —
-предупреждения на него нет, это другой тип.
+`WorksetId.IntegerValue` (`LinkManagerCommand.cs:198`) **is not deprecated in any version** — no
+warning is raised on it, it is a different type.
 
-### Что совпадает и трогать не нужно
+### What is the same and needs no touching
 
-| Факт | Значение |
+| Fact | Value |
 | --- | --- |
-| Формат `.addin` | одинаковый во всех трёх; `AddInId` остаётся тем же GUID — папки надстроек у версий разные |
-| Папка надстроек 2025 | `%AppData%\Autodesk\Revit\Addins\2025` — уже существует, формула `RevitAddinsDir` в csproj подходит как есть |
-| `Directory.Build.props` | правок **не требует**: `bin\R2025\` / `obj\R2025\` разводятся той же формулой, проверено сборкой |
-| `RevitServerClient.ServiceVersion` | правок **не требует**: `App.OnStartup` берёт год из `ControlledApplication.VersionNumber`, в 2025 получит `"2025"` |
-| `AutodeskSession` (SSONET) | правок **не требует**: все шесть вызываемых методов (`GetInstance`, `IsLoggedIn`, `GetLoginUserName`, `IsOAuth2TokenExpired`, `GetOAuth2AccessToken`, `RefreshOAuth2Token`) есть в `SSONET.dll` 2025 — проверено рефлексией |
-| `Icons.Load` | правок **не требует**: иконки читаются через `GetManifestResourceStream`, а не через `pack://`-URI, поэтому загрузка надстройки в отдельный `AssemblyLoadContext` (как делает Revit 2025) на них не влияет |
-| WPF-окна | строятся кодом, `pack://`-URI и `ResourceDictionary` в проекте не используются вовсе — на .NET 8 переносятся как есть |
-| .NET 8 Desktop Runtime | на машине стоит (8.0.26 / 8.0.28), отдельно ставить не надо |
+| `.addin` format | identical across all three; `AddInId` keeps the same GUID — the add-ins folders differ by version |
+| The 2025 add-ins folder | `%AppData%\Autodesk\Revit\Addins\2025` — already exists, the `RevitAddinsDir` formula in the csproj fits as is |
+| `Directory.Build.props` | **needs no edit**: `bin\R2025\` / `obj\R2025\` are split by the same formula, confirmed by building |
+| `RevitServerClient.ServiceVersion` | **needs no edit**: `App.OnStartup` takes the year from `ControlledApplication.VersionNumber`, which will give `"2025"` in 2025 |
+| `AutodeskSession` (SSONET) | **needs no edit**: all six methods called (`GetInstance`, `IsLoggedIn`, `GetLoginUserName`, `IsOAuth2TokenExpired`, `GetOAuth2AccessToken`, `RefreshOAuth2Token`) exist in 2025's `SSONET.dll` — confirmed by reflection |
+| `Icons.Load` | **needs no edit**: icons are read via `GetManifestResourceStream`, not a `pack://` URI, so loading the add-in into a separate `AssemblyLoadContext` (as Revit 2025 does) has no effect on them |
+| WPF windows | built in code, no `pack://` URI or `ResourceDictionary` is used in the project at all — they carry over to .NET 8 unchanged |
+| .NET 8 Desktop Runtime | already installed on this machine (8.0.26 / 8.0.28), no separate install needed |
 
-Ни один другой Revit API, который использует проект, в 2025 не убран и не переименован —
-это следует из того, что пробная компиляция после починки `GroupName` прошла без ошибок.
-
----
-
-## Стратегия
-
-**Три DLL из одного исходника — по одной на год, по-прежнему без единого `#if`.**
-Различаются только: ссылка на `RevitAPI.dll`, папка установки, `bin\R<год>\` — и теперь ещё
-TFM (`net48` / `net8.0-windows`). TFM выбирается в csproj по значению `RevitVersion`,
-то есть остаётся **одним ключом сборки**, а не форком проекта.
-
-Никакого второго `.csproj` и никакого множественного `TargetFrameworks`: год и так задаётся
-снаружи, а multi-targeting заставил бы ссылаться на два разных `RevitAPI.dll` в одной сборке.
+No other Revit API the project uses was removed or renamed in 2025 — that follows from the trial
+compile succeeding with no errors once `GroupName` was fixed.
 
 ---
 
-## Шаги
+## Strategy
 
-### Шаг 1. Единственная правка кода: `GroupName` в двух командах
+**Three DLLs from one source tree — one per year, still with not a single `#if`.** Only these
+differ: the `RevitAPI.dll` reference, the install folder, `bin\R<year>\` — and now also the TFM
+(`net48` / `net8.0-windows`). The TFM is chosen in the csproj from the `RevitVersion` value, so it
+remains **one build key**, not a project fork.
 
-В [DeleteProjectParametersCommand.cs](src/VladTools/Commands/DeleteProjectParametersCommand.cs) (метод
-начинается на строке 197) и в
-[DeleteSharedParametersCommand.cs](src/VladTools/Commands/DeleteSharedParametersCommand.cs) (строка 148)
-тело метода одинаковое. Заменить в **обоих** файлах этот кусок:
+No second `.csproj` and no (multiple) `TargetFrameworks`: the year is already given from outside,
+and multi-targeting would force referencing two different `RevitAPI.dll` copies in one build.
+
+---
+
+## Steps
+
+### Step 1. The only code edit: `GroupName` in two commands
+
+In [DeleteProjectParametersCommand.cs](src/VladTools/Commands/DeleteProjectParametersCommand.cs)
+(the method starts at line 197) and in
+[DeleteSharedParametersCommand.cs](src/VladTools/Commands/DeleteSharedParametersCommand.cs)
+(line 148), the method body is identical. Replace this piece in **both** files:
 
 ```csharp
             try
@@ -112,12 +113,12 @@ TFM (`net48` / `net8.0-windows`). TFM выбирается в csproj по зна
             }
 ```
 
-на:
+with:
 
 ```csharp
-            // GetGroupTypeId вместо ParameterGroup: в Revit 2025 и сам BuiltInParameterGroup,
-            // и Definition.ParameterGroup убраны совсем. Новая пара есть уже в 2022,
-            // поэтому код остаётся общим для всех трёх лет.
+            // GetGroupTypeId instead of ParameterGroup: in Revit 2025 both BuiltInParameterGroup
+            // itself and Definition.ParameterGroup are gone entirely. The new pair already exists
+            // in 2022, so the code stays shared across all three years.
             ForgeTypeId group;
             try
             {
@@ -128,7 +129,7 @@ TFM (`net48` / `net8.0-windows`). TFM выбирается в csproj по зна
                 return string.Empty;
             }
 
-            // У параметра без группы ForgeTypeId пустой, а GetLabelForGroup на таком бросает.
+            // A parameter with no group has an empty ForgeTypeId, and GetLabelForGroup throws on it.
             if (group == null || string.IsNullOrEmpty(group.TypeId))
                 return string.Empty;
 
@@ -142,60 +143,60 @@ TFM (`net48` / `net8.0-windows`). TFM выбирается в csproj по зна
             }
 ```
 
-Проверка `if (definition == null) return string.Empty;` в начале метода остаётся как была.
-Новых `using` не нужно: `ForgeTypeId` живёт в `Autodesk.Revit.DB`, который уже подключён в обоих файлах.
+The `if (definition == null) return string.Empty;` check at the start of the method stays as it
+was. No new `using` is needed: `ForgeTypeId` lives in `Autodesk.Revit.DB`, already referenced in
+both files.
 
-Комментарии писать по-русски и про **почему** — как требуют «Соглашения» в CLAUDE.md.
+Write the comments in English, about **why** — as CLAUDE.md's "Conventions" require.
 
-### Шаг 2. `VladTools.csproj`: TFM по году и WPF на .NET 8
+### Step 2. `VladTools.csproj`: TFM by year and WPF on .NET 8
 
-Файл: [VladTools.csproj](src/VladTools/VladTools.csproj). Изменения:
+File: [VladTools.csproj](src/VladTools/VladTools.csproj). Changes:
 
-**2.1. TFM по году** — вместо одной строки `<TargetFramework>net48</TargetFramework>`:
+**2.1. TFM by year** — instead of a single `<TargetFramework>net48</TargetFramework>` line:
 
 ```xml
     <!--
-      Revit 2025 работает на .NET 8 (RevitAPI.runtimeconfig.json: tfm net8.0 +
-      Microsoft.WindowsDesktop.App 8.0), 2022 и 2024 — на .NET Framework 4.8.
-      Сравнение числовое: MSBuild приводит обе стороны к числу, когда обе — числа.
+      Revit 2025 runs on .NET 8 (RevitAPI.runtimeconfig.json: tfm net8.0 +
+      Microsoft.WindowsDesktop.App 8.0), 2022 and 2024 run on .NET Framework 4.8.
+      The comparison is numeric: MSBuild converts both sides to a number when both are numbers.
     -->
     <TargetFramework Condition="'$(RevitVersion)' &gt;= '2025'">net8.0-windows</TargetFramework>
     <TargetFramework Condition="'$(TargetFramework)' == ''">net48</TargetFramework>
-    <!-- На .NET 8 сборки WPF подключает UseWPF, ссылками по именам их уже не взять. -->
+    <!-- On .NET 8, WPF assemblies are pulled in via UseWPF — they can no longer be referenced by name. -->
     <UseWPF Condition="'$(TargetFramework)' != 'net48'">true</UseWPF>
 ```
 
-**2.2. Ссылки на WPF — только для `net48`.** Существующий `ItemGroup` с `PresentationCore`,
-`PresentationFramework`, `WindowsBase`, `System.Xaml` вынести в отдельный `ItemGroup`
-с `Condition="'$(TargetFramework)' == 'net48'"`. На `net8.0-windows` эти четыре ссылки
-дадут ошибку, а `UseWPF` подключает всё то же самое (включая `System.Xaml`).
-Ссылки на `RevitAPI` / `RevitAPIUI` остаются в своём `ItemGroup` **без условия**.
+**2.2. WPF references — only for `net48`.** Move the existing `ItemGroup` with
+`PresentationCore`, `PresentationFramework`, `WindowsBase`, `System.Xaml` into a separate
+`ItemGroup` with `Condition="'$(TargetFramework)' == 'net48'"`. On `net8.0-windows` these four
+references would fail, and `UseWPF` pulls in the same things anyway (including `System.Xaml`).
+The `RevitAPI` / `RevitAPIUI` references stay in their own `ItemGroup` **with no condition**.
 
-**2.3. Заглушить MSB3277.** На `net8.0-windows` MSBuild выдаёт стену предупреждений
-«Найдены конфликты между различными версиями»: `RevitAPI.dll` тянет за собой полсотни
-соседних DLL Revit, у части из них своя версия `System.Drawing` / `Microsoft.VisualBasic`.
-На сборку это не влияет, но за этой стеной не видно настоящих предупреждений. В первый
-`PropertyGroup` добавить:
+**2.3. Silence MSB3277.** On `net8.0-windows`, MSBuild produces a wall of "Found conflicts between
+different versions" warnings: `RevitAPI.dll` drags in about fifty neighbouring Revit DLLs, some
+with their own version of `System.Drawing` / `Microsoft.VisualBasic`. This does not affect the
+build, but the real warnings are lost behind this wall. Add to the first `PropertyGroup`:
 
 ```xml
-    <!-- RevitAPI.dll тянет соседние DLL Revit со своими версиями System.Drawing и т.п.
-         На net8 это даёт стену MSB3277, за которой не видно настоящих предупреждений. -->
+    <!-- RevitAPI.dll drags in neighbouring Revit DLLs with their own versions of System.Drawing
+         and the like. On net8 this produces a wall of MSB3277 that hides the real warnings. -->
     <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
 ```
 
-**2.4. В `DeployToRevitAddins` добавить копирование `.deps.json`.** На `net8.0-windows` рядом
-с DLL появляется `VladTools.deps.json` (на `net48` его нет — отсюда условие `Exists`):
+**2.4. Add copying `.deps.json` to `DeployToRevitAddins`.** On `net8.0-windows`,
+`VladTools.deps.json` appears next to the DLL (there is none on `net48` — hence the `Exists` condition):
 
 ```xml
     <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(RevitAddinsDir)\VladTools" ContinueOnError="true" Condition="Exists('$(TargetDir)$(TargetName).deps.json')" />
 ```
 
-Всё остальное в csproj — `PlatformTarget x64`, `AppendTargetFrameworkToOutputPath false`,
-`Product`, `RevitDir`, `RevitAddinsDir`, `EmbeddedResource` с иконками — остаётся как есть.
-`AppendTargetFrameworkToOutputPath false` важен особо: без него вывод 2025 уехал бы
-в `bin\R2025\Release\net8.0-windows\` и таргет установки промахнулся бы.
+Everything else in the csproj — `PlatformTarget x64`, `AppendTargetFrameworkToOutputPath false`,
+`Product`, `RevitDir`, `RevitAddinsDir`, the icon `EmbeddedResource`s — stays as is.
+`AppendTargetFrameworkToOutputPath false` matters especially here: without it, 2025's output would
+land in `bin\R2025\Release\net8.0-windows\` and the install target would miss the file.
 
-Проверенный целиком файл (собран под все три года) — эталон структуры:
+A verified full file (built for all three years) — the structural reference:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -210,7 +211,7 @@ TFM (`net48` / `net8.0-windows`). TFM выбирается в csproj по зна
     <RootNamespace>VladTools</RootNamespace>
     <Version>1.0.0</Version>
     <Company>Vlad</Company>
-    <Product>VladTools для Revit $(RevitVersion)</Product>
+    <Product>VladTools for Revit $(RevitVersion)</Product>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
@@ -246,25 +247,25 @@ TFM (`net48` / `net8.0-windows`). TFM выбирается в csproj по зна
   </ItemGroup>
 
   <Target Name="DeployToRevitAddins" AfterTargets="Build" Condition="'$(DeployToRevit)' == 'true'">
-    <!-- как сейчас, плюс строка копирования .deps.json из пункта 2.4 -->
+    <!-- as it is now, plus the .deps.json copy line from point 2.4 -->
   </Target>
 
 </Project>
 ```
 
-(В эталоне комментарии опущены для краткости — в самом файле их сохранить: там объясняется,
-почему TFM зависит от года.)
+(Comments are omitted from the reference for brevity — keep them in the actual file: they explain
+why the TFM depends on the year.)
 
-### Шаг 3. `build.ps1`: все годы за один запуск
+### Step 3. `build.ps1`: every year in one run
 
-Файл: [build.ps1](build.ps1). Сейчас скрипт умеет только год по умолчанию. Заменить целиком на:
+File: [build.ps1](build.ps1). Right now the script only knows the default year. Replace it in full with:
 
 ```powershell
-# Сборка VladTools и установка в папки надстроек Revit.
-# Использование:  .\build.ps1                        (Release + установка, все годы)
-#                 .\build.ps1 -Configuration Debug
-#                 .\build.ps1 -NoDeploy              (только собрать)
-#                 .\build.ps1 -RevitVersion 2025     (один год)
+# Builds VladTools and installs it into the Revit add-ins folders.
+# Usage:  .\build.ps1                        (Release + install, every year)
+#         .\build.ps1 -Configuration Debug
+#         .\build.ps1 -NoDeploy              (build only)
+#         .\build.ps1 -RevitVersion 2025     (one year)
 
 [CmdletBinding()]
 param(
@@ -279,182 +280,185 @@ $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot 'src\VladTools\VladTools.csproj'
 
 if (Get-Process -Name 'Revit' -ErrorAction SilentlyContinue) {
-    Write-Warning 'Revit запущен — он держит VladTools.dll, копирование в папку надстроек не пройдёт. Закройте Revit.'
+    Write-Warning 'Revit is running — it holds VladTools.dll locked, the copy into the add-ins folder will not go through. Close Revit.'
 }
 
 $deploy = if ($NoDeploy) { 'false' } else { 'true' }
 $built = @()
 
 foreach ($year in $RevitVersion) {
-    # Без установленного Revit нет RevitAPI.dll по HintPath — год пропускаем,
-    # а не роняем всю сборку: на машине может стоять не каждая версия.
+    # No installed Revit means no RevitAPI.dll at the HintPath — the year is skipped
+    # rather than failing the whole build: not every version may be on this machine.
     if (-not (Test-Path "C:\Program Files\Autodesk\Revit $year")) {
-        Write-Warning "Revit $year не установлен — год пропущен."
+        Write-Warning "Revit $year is not installed — the year was skipped."
         continue
     }
 
     Write-Host "── Revit $year ──" -ForegroundColor Cyan
     dotnet build $project -c $Configuration -p:RevitVersion=$year -p:DeployToRevit=$deploy
-    if ($LASTEXITCODE -ne 0) { throw "Сборка под Revit $year не удалась (код $LASTEXITCODE)." }
+    if ($LASTEXITCODE -ne 0) { throw "The build for Revit $year failed (code $LASTEXITCODE)." }
     $built += $year
 }
 
-if ($built.Count -eq 0) { throw 'Ни один год не собран: установленных версий Revit не найдено.' }
+if ($built.Count -eq 0) { throw 'No year was built: no installed Revit version was found.' }
 
 if (-not $NoDeploy) {
-    Write-Host "Готово: Revit $($built -join ', '). Перезапустите Revit — вкладка «Vlad Tools» появится на ленте." -ForegroundColor Green
+    Write-Host "Done: Revit $($built -join ', '). Restart Revit — the \"Vlad Tools\" tab will appear on the ribbon." -ForegroundColor Green
 }
 ```
 
-Решения этого скрипта, менять их не нужно:
+Decisions in this script that should not be changed:
 
-- **пропуск неустановленного года** вместо падения — на чужой машине может не быть какой-то версии;
-- **остановка на первой же ошибке компиляции** (`throw`) — молча собрать два года из трёх хуже,
-  чем не собрать ничего;
-- прежняя строка «Перезапустите Revit 2022» заменена на перечень фактически собранных лет.
+- **skipping a year that is not installed** rather than failing — another machine may be missing a version;
+- **stopping on the first compile failure** (`throw`) — silently building two years out of three is
+  worse than building none;
+- the old "Restart Revit 2022" line replaced with the list of years actually built.
 
-### Шаг 4. Проверка сборки
+### Step 4. Verifying the build
 
 ```powershell
 .\build.ps1 -NoDeploy
 ```
 
-Ожидается три блока — `── Revit 2022 ──`, `2024`, `2025` — у каждого «Сборка успешно завершена»,
-**0 ошибок**. Предупреждения: 0 для 2022, 7 × CS0618 для 2024, 7 × CS0618 + 1 × SYSLIB0014
-для 2025 — это норма, см. таблицы выше. Ни одного MSB3277 быть не должно (иначе не применился
-пункт 2.3).
+Three blocks are expected — `── Revit 2022 ──`, `2024`, `2025` — each with "Build succeeded",
+**0 errors**. Warnings: 0 for 2022, 7 × CS0618 for 2024, 7 × CS0618 + 1 × SYSLIB0014 for 2025 — that
+is normal, see the tables above. There must be no MSB3277 at all (otherwise point 2.3 was not applied).
 
-Затем — что вывод лёг куда надо:
+Then — that the output landed where it should:
 
 ```powershell
 Get-ChildItem src\VladTools\bin\R2022\Release, src\VladTools\bin\R2024\Release, src\VladTools\bin\R2025\Release
 ```
 
-В `R2022` и `R2024` — `VladTools.dll` + `.pdb`; в `R2025` — ещё и `VladTools.deps.json`.
-Никаких подпапок `net48` / `net8.0-windows` внутри быть не должно.
+`R2022` and `R2024` should have `VladTools.dll` + `.pdb`; `R2025` should have `VladTools.deps.json`
+too. There must be no TFM subfolders (`net48` / `net8.0-windows`) inside any of them.
 
-И, отдельно, что установка тоже отрабатывает (Revit при этом закрыть):
+And, separately, that installing works too (close Revit for this):
 
 ```powershell
 .\build.ps1
 Get-ChildItem "$env:AppData\Autodesk\Revit\Addins\2025\VladTools"
 ```
 
-### Шаг 5. Документация
+### Step 5. Documentation
 
-Правится в этой же сессии, до отчёта — так требует раздел «Поддержка этого файла» в CLAUDE.md.
+Edited in this same session, before reporting — as the "Keeping this file up to date" section of
+CLAUDE.md requires.
 
 **[CLAUDE.md](CLAUDE.md):**
 
-- «Что это» — надстройка для Revit 2022, 2024 **и 2025**.
-- «Сборка и запуск» — примеры команд; убрать фразу «`build.ps1` пока умеет собирать только год
-  по умолчанию» (после шага 3 она неверна) и написать, что без параметров собираются все три года,
-  а `-RevitVersion` берёт один; добавить `bin\R2025\`; добавить, что TFM теперь зависит от года.
-- «Ключевые решения» — новый пункт про **TFM по году**: почему `net48` и `net8.0-windows` уживаются
-  в одном csproj через `Condition`, почему WPF-ссылки условные, почему
-  `AppendTargetFrameworkToOutputPath false` обязателен, и почему `#if` по-прежнему не нужен.
-- «Перенос на другую версию Revit» — переписать: 2025 больше не «будущая работа», а сделанный год;
-  из списка отложенных предупреждений убрать `Definition.ParameterGroup` и
-  `LabelUtils.GetLabelFor(BuiltInParameterGroup)` (сделано в шаге 1), оставить `ElementId.IntegerValue`
-  и добавить `WebRequest.Create` / SYSLIB0014; сослаться на этот файл рядом со ссылкой на
-  `CHECKLIST-Revit2024.md`.
+- "What this is" — an add-in for Revit 2022, 2024 **and 2025**.
+- "Build and run" — updated command examples; remove the phrase "`build.ps1` can currently only
+  build the default year" (wrong after step 3) and say that with no arguments all three years are
+  built, and `-RevitVersion` takes one; add `bin\R2025\`; add that the TFM now depends on the year.
+- "Key decisions" — a new entry about **TFM by year**: why `net48` and `net8.0-windows` coexist in
+  one csproj through a `Condition`, why the WPF references are conditional, why
+  `AppendTargetFrameworkToOutputPath false` is mandatory, and why `#if` is still not needed.
+- "Porting to another Revit version" — rewrite: 2025 is no longer "future work" but a year that is
+  done; remove `Definition.ParameterGroup` and `LabelUtils.GetLabelFor(BuiltInParameterGroup)` from
+  the list of deferred warnings (done in step 1), keep `ElementId.IntegerValue` and add
+  `WebRequest.Create` / SYSLIB0014; link to this file next to the link to `CHECKLIST-Revit2024.md`.
 
 **[README.md](README.md):**
 
-- заголовок (строка 1) — «плагин для Revit 2022, 2024 и 2025»;
-- раздел сборки (строки ~401–409) — новый вызов `build.ps1` и TFM по году;
-- строка ~455 «Для Revit 2025+ дополнительно…» — переписать: для 2025 всё уже сделано,
-  «дополнительно» относится теперь к 2026+.
+- the title (line 1) — "an add-in for Revit 2022, 2024 and 2025";
+- the build section (around lines 401–409) — the new `build.ps1` call and TFM by year;
+- the line around 455, "For Revit 2025+ additionally…" — rewrite: for 2025 everything is already
+  done, "additionally" now refers to 2026+.
 
-**Этот файл** — по итогам работы дописать внизу раздел «Что сделано»: что собралось, какие
-предупреждения остались, что проверено в самом Revit, что проверить не удалось.
+**This file** — once the work is done, add a "What was done" section at the bottom: what built,
+which warnings remain, what was checked in Revit itself, what could not be checked.
 
-### Шаг 6. Ручная проверка в Revit 2025
+### Step 6. Manual verification in Revit 2025
 
-Автотестов в проекте нет, поэтому проверка ручная и обязательная — собрать и запустить мало.
-Закрыть все Revit, выполнить `.\build.ps1`, запустить **Revit 2025** и пройти:
+The project has no automated tests, so a manual check is mandatory — building and launching alone
+is not enough. Close every Revit, run `.\build.ps1`, launch **Revit 2025** and go through:
 
-1. Вкладка «Vlad Tools» на ленте, обе панели, все семь кнопок **с иконками** (иконки — главная
-   проверка того, что ресурсы читаются из отдельного `AssemblyLoadContext` .NET 8).
-2. Открыть любое `.rfa`: «3д миниатюра», «Удалить параметры», «Добавить формулы»,
-   «Переименовать вложенные» — окна открываются, таблицы заполнены, отмена работает.
-3. Открыть `.rvt`: «Удалить общие параметры» — **особое внимание колонке «Группа»**: это единственное
-   место, где менялся код (шаг 1). Названия групп должны быть человеческие и по-русски
-   («Размеры», «Идентификация»), а не пустые и не `autodesk.parameter.group:...`.
-   Ту же колонку проверить и в «Удалить параметры» в `.rfa`.
-4. «Очистка» — окно, счётчики, отработка хотя бы одного пункта.
-5. «Link Manager» — открыть окно; если есть доступ к BIM360, проверить вход (`AutodeskSession`)
-   и дерево папок; если есть Revit Server — проверить, отвечает ли служба
-   `RevitServerAdminRESTService2025`. Это **единственный пункт, который на этой машине проверить
-   нельзя: Revit Server не установлен.** Кода это не касается в любом случае — год службы берётся
-   из `ControlledApplication.VersionNumber`. Если служба не ответит, это вопрос к серверу и к тому,
-   поставляет ли Autodesk Revit Server для 2025, а не к надстройке.
-6. Убедиться, что **Revit 2022 и 2024 не сломались**: запустить хотя бы один из них и повторить
-   пункт 3 (колонка «Группа»).
-
----
-
-## Чего делать не надо
-
-- **Не трогать `ElementId.IntegerValue`.** `ElementId.Value` появился только в 2024, в 2022 его нет —
-  правка сломала бы сборку 2022. CS0618 в 2024/2025 остаётся сознательно.
-- **Не переписывать `JsonHttp` на `HttpClient`.** SYSLIB0014 — предупреждение, только на net8,
-  и это отдельная задача, не про совместимость.
-- **Не добавлять `#if`.** Для всех расхождений замена существует во всех трёх годах; появление
-  первой же директивы условной компиляции — признак, что выбрана не та замена.
-- **Не переводить 2022 и 2024 на `net8.0-windows`.** Они работают на .NET Framework 4.8,
-  net8-сборка в них не загрузится.
-- **Не менять `Microsoft.NET.Sdk` на WPF SDK и не заводить `.xaml`.** `UseWPF=true` внутри
-  `Microsoft.NET.Sdk` достаточно; окна как строились кодом, так и строятся.
-- **Не менять `AddInId`** в `VladTools.addin` и не заводить второй `.addin` — папки надстроек
-  у версий разные, конфликта нет.
-- **Не трогать `Directory.Build.props`** — он уже разводит `bin\R<год>\` / `obj\R<год>\` для любого года.
-- **Не удалять `bin\R2022\` и `bin\R2024\`** и не сводить вывод в общую папку: раздельные папки
-  защищают от ловушки CS0579, описанной в CLAUDE.md.
-- **Не добавлять `global.json`** и не фиксировать версию SDK: сборка проверена на том, что стоит
-  на машине (SDK 9.0.303 / 10.0.101 / 10.0.400-preview), таргет-пак .NET 8 подтягивается сам.
+1. The "Vlad Tools" tab on the ribbon, both panels, all seven buttons **with icons** (the icons are
+   the main check that resources are read correctly from a separate .NET 8 `AssemblyLoadContext`).
+2. Open any `.rfa`: "3D Thumbnail", "Delete Parameters", "Add Formulas",
+   "Rename Nested" — the windows open, the tables are filled in, cancelling works.
+3. Open a `.rvt`: "Delete Shared Parameters" — **pay special attention to the "Group" column**:
+   this is the only spot where the code changed (step 1). Group names should read as normal
+   English words ("Dimensions", "Identity Data"), not empty and not
+   `autodesk.parameter.group:...`. Check the same column in "Delete Parameters" in an `.rfa` too.
+4. "Cleanup" — the window, the counters, at least one item running through.
+5. "Link Manager" — open the window; if BIM360 access is available, check the sign-in
+   (`AutodeskSession`) and the folder tree; if Revit Server is available, check whether the
+   `RevitServerAdminRESTService2025` service answers. This is **the one item that cannot be
+   checked on this machine: Revit Server is not installed.** The code is unaffected either way —
+   the service year comes from `ControlledApplication.VersionNumber`. If the service does not
+   answer, that is a question for the server and for whether Autodesk ships Revit Server for
+   2025 at all, not for the add-in.
+6. Confirm that **Revit 2022 and 2024 are not broken**: launch at least one of them and repeat
+   point 3 (the "Group" column).
 
 ---
 
-## Приёмка
+## What not to do
 
-- [ ] `.\build.ps1 -NoDeploy` — три года, 0 ошибок, ни одного MSB3277.
-- [ ] `bin\R2025\Release\` содержит `VladTools.dll`, `.pdb`, `.deps.json` и **не содержит** подпапки TFM.
-- [ ] `.\build.ps1` при закрытом Revit кладёт файлы в `Addins\2022`, `Addins\2024`, `Addins\2025`.
-- [ ] В коде не осталось `ParameterGroup`, `BuiltInParameterGroup` и `GetLabelFor(` применительно
-      к группам — проверить поиском.
-- [ ] Нет ни одного `#if`.
-- [ ] Revit 2025: лента, иконки, все семь кнопок, колонка «Группа» заполнена по-русски.
-- [ ] Revit 2022 (или 2024): колонка «Группа» заполнена так же, как до правки.
-- [ ] CLAUDE.md и README.md обновлены (шаг 5), в них не осталось фраз «только 2022 и 2024»
-      и «build.ps1 умеет только год по умолчанию».
+- **Do not touch `ElementId.IntegerValue`.** `ElementId.Value` only arrived in 2024, it does not
+  exist in 2022 — the edit would break the 2022 build. The CS0618 on 2024/2025 stays deliberately.
+- **Do not rewrite `JsonHttp` to use `HttpClient`.** SYSLIB0014 is a warning, net8-only, and a
+  separate task, unrelated to compatibility.
+- **Do not add `#if`.** A replacement exists in all three years for every discrepancy; the moment
+  a conditional-compilation directive appears, it is a sign the wrong replacement was picked.
+- **Do not move 2022 and 2024 to `net8.0-windows`.** They run on .NET Framework 4.8, a net8 build
+  will not load in them.
+- **Do not switch `Microsoft.NET.Sdk` to the WPF SDK and do not add a `.xaml` file.**
+  `UseWPF=true` inside `Microsoft.NET.Sdk` is enough; windows keep being built in code as before.
+- **Do not change `AddInId`** in `VladTools.addin` and do not add a second `.addin` — the add-ins
+  folders differ by version, there is no conflict.
+- **Do not touch `Directory.Build.props`** — it already splits `bin\R<year>\` / `obj\R<year>\` for
+  any year.
+- **Do not delete `bin\R2022\` and `bin\R2024\`** and do not merge the output into one shared
+  folder: separate folders guard against the CS0579 trap described in CLAUDE.md.
+- **Do not add a `global.json`** and do not pin an SDK version: the build was verified against
+  whatever is installed on this machine (SDK 9.0.303 / 10.0.101 / 10.0.400-preview), the .NET 8
+  target pack is pulled in on its own.
 
 ---
 
-## Что сделано
+## Acceptance
 
-Шаги 1–5 выполнены полностью, ровно по этому чек-листу (тексты `VladTools.csproj` и `build.ps1` взяты
-из «эталона» без отклонений).
+- [ ] `.\build.ps1 -NoDeploy` — three years, 0 errors, not a single MSB3277.
+- [ ] `bin\R2025\Release\` contains `VladTools.dll`, `.pdb`, `.deps.json`, and **contains no** TFM subfolder.
+- [ ] With Revit closed, `.\build.ps1` puts files into `Addins\2022`, `Addins\2024`, `Addins\2025`.
+- [ ] No `ParameterGroup`, `BuiltInParameterGroup` or `GetLabelFor(` referring to groups is left in
+      the code — confirm with a search.
+- [ ] Not a single `#if` anywhere.
+- [ ] Revit 2025: the ribbon, the icons, all seven buttons, the "Group" column reads properly.
+- [ ] Revit 2022 (or 2024): the "Group" column reads the same as it did before the edit.
+- [ ] CLAUDE.md and README.md are updated (step 5), with no "2022 and 2024 only" or
+      "build.ps1 can only build the default year" phrases left in them.
 
-- **Шаг 1** — `GroupName` в `DeleteProjectParametersCommand.cs` и `DeleteSharedParametersCommand.cs`
-  переведён на `GetGroupTypeId()` + `GetLabelForGroup()`, как описано.
-- **Шаг 2–3** — `VladTools.csproj` и `build.ps1` заменены на предложенные тексты.
-- **Шаг 4** — `.\build.ps1 -NoDeploy` на реальном репозитории (не в песочнице): три блока,
-  **0 ошибок** во всех трёх, 0 предупреждений для 2022, 7×CS0618 для 2024, 8 (7×CS0618 + 1×SYSLIB0014)
-  для 2025 — совпадает с прогнозом. Ни одного MSB3277. `bin\R2022\Release` и `bin\R2024\Release` —
-  `VladTools.dll`+`.pdb`; `bin\R2025\Release` — ещё и `.deps.json`; подпапок TFM нигде нет.
-  `.\build.ps1` (с установкой, Revit был закрыт) разложил файлы по `Addins\2022`, `Addins\2024`,
-  `Addins\2025\VladTools` — включая `.deps.json` в 2025. `grep` по `ParameterGroup` в исходниках даёт
-  только две строки комментария (по одной на файл), `#if` в проекте нет ни одного.
-- **Шаг 5** — CLAUDE.md («Что это», «Сборка и запуск», «Ключевые решения» — новый пункт про TFM по году,
-  «Перенос на другую версию Revit») и README.md (заголовок, «Сборка и установка», «Перенос на другую
-  версию Revit») переписаны; заодно поправлены две строки README, которые устарели ещё раньше
-  (ручная правка `RevitVersion`/`ServiceVersion` в csproj — это уже год как не так, автоматизировано
-  через `-p:RevitVersion` и `App.OnStartup`).
+---
 
-**Шаг 6 (ручная проверка в самом Revit) не выполнен** — это интерактивная проверка внутри
-Revit.exe (открыть `.rfa`/`.rvt`, понажимать кнопки), а не то, что делается из командной строки;
-нужен человек с открытым Revit 2025 (и, по пункту 6 самого чек-листа, заодно 2022 или 2024).
-Собранные и установленные файлы к проверке готовы. Пункт про Revit Server 2025 по-прежнему нельзя
-закрыть на этой машине — сервер не установлен; изменений это не требует (год берётся из
-`ControlledApplication.VersionNumber` автоматически).
+## What was done
+
+Steps 1–5 were completed in full, exactly per this checklist (the `VladTools.csproj` and
+`build.ps1` texts were taken from the "reference" with no deviation).
+
+- **Step 1** — `GroupName` in `DeleteProjectParametersCommand.cs` and
+  `DeleteSharedParametersCommand.cs` was moved over to `GetGroupTypeId()` + `GetLabelForGroup()`, as described.
+- **Steps 2–3** — `VladTools.csproj` and `build.ps1` were replaced with the proposed texts.
+- **Step 4** — `.\build.ps1 -NoDeploy` on the real repository (not the sandbox): three blocks,
+  **0 errors** in all three, 0 warnings for 2022, 7×CS0618 for 2024, 8 (7×CS0618 + 1×SYSLIB0014)
+  for 2025 — matching the prediction. Not a single MSB3277. `bin\R2022\Release` and
+  `bin\R2024\Release` hold `VladTools.dll`+`.pdb`; `bin\R2025\Release` also holds `.deps.json`;
+  there are no TFM subfolders anywhere. `.\build.ps1` (with install, Revit was closed) laid out
+  files into `Addins\2022`, `Addins\2024`, `Addins\2025\VladTools` — including `.deps.json` for
+  2025. A `grep` for `ParameterGroup` in the source files gives only two comment lines (one per
+  file), there is not a single `#if` in the project.
+- **Step 5** — CLAUDE.md ("What this is", "Build and run", "Key decisions" — a new entry about TFM
+  by year, "Porting to another Revit version") and README.md (the title, "Build and install",
+  "Porting to another Revit version") were rewritten; two more README lines that had gone stale
+  even earlier were fixed along the way (manually editing `RevitVersion`/`ServiceVersion` in the
+  csproj — that stopped being true a year ago, it is automated through `-p:RevitVersion` and `App.OnStartup`).
+
+**Step 6 (manual verification inside Revit itself) was not completed** — it is an interactive
+check inside Revit.exe (opening an `.rfa`/`.rvt`, pressing buttons), not something that can be done
+from the command line; it needs a person with Revit 2025 open (and, per point 6 of the checklist
+itself, 2022 or 2024 too). The built and installed files are ready for that check. The point about
+Revit Server 2025 still cannot be closed on this machine — the server is not installed; this
+requires no changes either way (the year is taken from `ControlledApplication.VersionNumber` automatically).

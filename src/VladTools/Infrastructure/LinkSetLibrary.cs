@@ -6,23 +6,23 @@ using System.Text;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Откуда берётся модель связи. От этого зависит и путь, и то, как его записать в файл.</summary>
+    /// <summary>Where a link model comes from. Both the path and the way it is written to file depend on it.</summary>
     internal enum LinkOrigin
     {
-        /// <summary>Обычный файл: диск, сетевая папка.</summary>
+        /// <summary>An ordinary file: a disk or a network folder.</summary>
         File,
 
-        /// <summary>Revit Server: путь вида RSN://сервер/папка/модель.rvt.</summary>
+        /// <summary>Revit Server: a path of the form RSN://server/folder/model.rvt.</summary>
         Server,
 
-        /// <summary>BIM360/ACC: регион и два GUID — проекта и модели.</summary>
+        /// <summary>BIM360/ACC: a region and two GUIDs — the project's and the model's.</summary>
         Cloud
     }
 
     /// <summary>
-    /// Одна модель в сохранённом наборе. Для файла и Revit Server всё держится на пути,
-    /// для облака пути нет вовсе: облачная модель адресуется регионом и парой GUID,
-    /// а имя хранится отдельно — иначе в списке было бы не разобрать, что есть что.
+    /// One model in a saved set. For a file and for Revit Server everything rests on the path; a cloud
+    /// model has no path at all: it is addressed by a region and a pair of GUIDs, and its name is stored
+    /// separately — otherwise there would be no telling one list entry from another.
     /// </summary>
     internal sealed class LinkEntry
     {
@@ -54,10 +54,10 @@ namespace VladTools.Infrastructure
 
         public LinkOrigin Origin { get; }
 
-        /// <summary>Имя модели вместе с расширением — то, что видно в таблице.</summary>
+        /// <summary>The model name including the extension — what is visible in the table.</summary>
         public string Name { get; }
 
-        /// <summary>Путь к файлу или RSN-путь; у облачной модели пусто.</summary>
+        /// <summary>The file path or the RSN path; empty on a cloud model.</summary>
         public string Path { get; }
 
         public string Region { get; }
@@ -65,16 +65,16 @@ namespace VladTools.Infrastructure
         public string ModelGuid { get; }
 
         /// <summary>
-        /// Рабочий набор **открытого проекта**, в который встанет эта связь; пусто — активный набор,
-        /// как это делает сам Revit. Единственное изменяемое поле записи: набор выбирается в окне
-        /// и сохраняется вместе с набором связей, чтобы «АР в 01_Связи_АР» не расставлять заново
-        /// в каждом проекте.
+        /// The workset of the **open project** this link will be placed into; empty means the active
+        /// workset, as Revit itself does it. The only mutable field of the entry: the workset is chosen
+        /// in the window and saved together with the link set, so that "AR into 01_Link_AR" does not
+        /// have to be set up again in every project.
         /// </summary>
         public string Workset { get; set; } = string.Empty;
 
         /// <summary>
-        /// Ключ, по которому две записи считаются одной моделью: путь без учёта регистра
-        /// либо пара GUID. Им же ловятся дубли при добавлении и связи, уже стоящие в проекте.
+        /// The key by which two entries count as the same model: a case-insensitive path, or a pair of
+        /// GUIDs. The same key catches duplicates on adding and links already present in the project.
         /// </summary>
         public string Key => Origin == LinkOrigin.Cloud
             ? "cloud|" + ProjectGuid.ToLowerInvariant() + "|" + ModelGuid.ToLowerInvariant()
@@ -82,15 +82,15 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
-    /// Сохранённые наборы связей: «Стадия Р», «Смежники», «Подоснова». Набор — это список
-    /// моделей, который собирается один раз и подставляется в каждый следующий проект.
+    /// Saved link sets: "Stage D", "Consultants", "Underlay". A set is a list of models that is put
+    /// together once and then offered in every project that follows.
     ///
-    /// Для BIM360 набор — не просто удобство, а единственный способ обойтись без просмотра
-    /// облака: собранный однажды список GUID работает и тогда, когда до Autodesk не достучаться.
+    /// For BIM360 a set is not merely a convenience but the only way to do without browsing the cloud:
+    /// a GUID list assembled once still works when Autodesk cannot be reached.
     ///
-    /// Файл на набор: `%AppData%\VladTools\links\&lt;имя&gt;.txt`, строка на модель.
-    /// Разделитель полей — вертикальная черта: в путях Windows её быть не может,
-    /// а в именах облачных моделей — тем более.
+    /// One file per set: `%AppData%\VladTools\links\&lt;name&gt;.txt`, one line per model.
+    /// The field separator is the vertical bar: it cannot occur in Windows paths, and even less so in
+    /// the names of cloud models.
     /// </summary>
     internal static class LinkSetLibrary
     {
@@ -98,14 +98,14 @@ namespace VladTools.Infrastructure
 
         private static readonly string[] FileHeader =
         {
-            "# Набор связей VladTools — кнопка «Link Manager» (панель «Проект»).",
-            "# Строка на модель, поля разделены вертикальной чертой:",
-            "#   FILE   | путь к файлу",
-            "#   SERVER | RSN://сервер/папка/модель.rvt",
-            "#   CLOUD  | регион | GUID проекта | GUID модели | имя модели",
-            "# Последним полем можно дописать рабочий набор проекта, в который грузить связь;",
-            "# нет его — связь встанет в активный набор, как это делает сам Revit.",
-            "# Файл можно править вручную — он перечитывается при каждом открытии окна."
+            "# VladTools link set — the \"Link Manager\" button (the Project panel).",
+            "# One line per model, fields separated by a vertical bar:",
+            "#   FILE   | file path",
+            "#   SERVER | RSN://server/folder/model.rvt",
+            "#   CLOUD  | region | project GUID | model GUID | model name",
+            "# A project workset to load the link into may be appended as the last field;",
+            "# without it the link goes into the active workset, as Revit itself does.",
+            "# The file can be edited by hand — it is re-read every time the window opens."
         };
 
         /// <summary>%AppData%\VladTools\links</summary>
@@ -118,7 +118,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Имена сохранённых наборов по алфавиту. Папки ещё нет — пустой список.</summary>
+        /// <summary>The names of the saved sets in alphabetical order. An empty list if the folder does not exist yet.</summary>
         public static IReadOnlyList<string> Names()
         {
             try
@@ -138,7 +138,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Читает набор. Нет файла или он испорчен — пустой список: сломать этим кнопку нельзя.</summary>
+        /// <summary>Reads a set. No file or a corrupt one yields an empty list: that cannot break the button.</summary>
         public static IReadOnlyList<LinkEntry> Load(string setName)
         {
             try
@@ -158,19 +158,19 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Перезаписывает набор целиком.</summary>
+        /// <summary>Rewrites the whole set.</summary>
         public static void Save(string setName, IEnumerable<LinkEntry> entries)
         {
             var file = FilePathFor(setName);
             if (file == null)
-                throw new ArgumentException("Имя набора пустое или состоит из недопустимых знаков.");
+                throw new ArgumentException("The set name is empty or consists only of forbidden characters.");
 
             var lines = new List<string>(FileHeader) { string.Empty };
             lines.AddRange(entries.Where(entry => entry != null).Select(Format));
 
             Directory.CreateDirectory(FolderPath);
 
-            // BOM — чтобы кириллица открывалась в «Блокноте» как надо.
+            // The BOM keeps non-Latin names readable when the file is opened in Notepad.
             File.WriteAllLines(file, lines, new UTF8Encoding(true));
         }
 
@@ -181,7 +181,7 @@ namespace VladTools.Infrastructure
                 File.Delete(file);
         }
 
-        /// <summary>Путь к файлу набора; имя пустое или из одних недопустимых знаков — null.</summary>
+        /// <summary>The path to the set file; null if the name is empty or made only of forbidden characters.</summary>
         public static string FilePathFor(string setName)
         {
             var name = (setName ?? string.Empty).Trim();
@@ -196,25 +196,25 @@ namespace VladTools.Infrastructure
             return name.Length == 0 ? null : Path.Combine(FolderPath, name + ".txt");
         }
 
-        // ───────────────────────────── строка файла ─────────────────────────────
+        // ───────────────────────────── a file line ─────────────────────────────
 
-        /// <summary>Запись набора одной строкой файла. Тем же форматом кнопка «Базовый файл»
-        /// запоминает последнюю выбранную модель — чтобы не заводить второй.</summary>
+        /// <summary>A set entry as a single file line. The "Base File" button remembers the last chosen
+        /// model in the same format — so as not to invent a second one.</summary>
         public static string Format(LinkEntry entry)
         {
             var fields = entry.Origin == LinkOrigin.Cloud
                 ? new List<string> { "CLOUD", entry.Region, entry.ProjectGuid, entry.ModelGuid, entry.Name }
                 : new List<string> { entry.Origin == LinkOrigin.Server ? "SERVER" : "FILE", entry.Path };
 
-            // Рабочий набор — последним и только если он выбран: пустое поле в конце строки
-            // ничего не значит, а файл им замусорится.
+            // The workset comes last and only if one was chosen: an empty field at the end of a line
+            // means nothing and only litters the file.
             if (entry.Workset.Length > 0)
                 fields.Add(entry.Workset);
 
             return string.Join(" " + Separator + " ", fields);
         }
 
-        /// <summary>Разбирает строку, записанную <see cref="Format"/>; мусор и комментарий — null.</summary>
+        /// <summary>Parses a line written by <see cref="Format"/>; garbage and comments yield null.</summary>
         public static LinkEntry Parse(string line)
         {
             var text = (line ?? string.Empty).Trim();
@@ -234,7 +234,7 @@ namespace VladTools.Infrastructure
                     return parts[1].Length == 0 ? null : WithWorkset(LinkEntry.ForServer(parts[1]), parts, 2);
 
                 case "CLOUD":
-                    // Регион, GUID проекта, GUID модели и имя; без любого из GUID строка бессмысленна.
+                    // Region, project GUID, model GUID and name; without either GUID the line is meaningless.
                     if (parts.Length < 4 || parts[2].Length == 0 || parts[3].Length == 0)
                         return null;
 
@@ -246,7 +246,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Дописывает рабочий набор, если он в строке есть: у старых файлов этого поля нет.</summary>
+        /// <summary>Appends the workset if the line has one: older files do not have that field.</summary>
         private static LinkEntry WithWorkset(LinkEntry entry, string[] parts, int index)
         {
             if (parts.Length > index)

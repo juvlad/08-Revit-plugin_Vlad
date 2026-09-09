@@ -11,33 +11,34 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Принимает изменения координационного файла: ставит оси и уровни проекта туда, где они
-    /// теперь в связи, и переименовывает их вслед за ней.
+    /// Accepts changes from the coordination file: puts the project's grids and levels where they
+    /// now stand in the link, and renames them to follow it.
     ///
-    /// В Revit это «Совместная работа → Просмотр координации → Выбрать связь» и дальше по одному
-    /// изменению: развернуть узел, выбрать действие, повторить. На корпусе, где поехал десяток
-    /// осей, это десятки щелчков, и делается заново после каждой выдачи базового файла.
+    /// In Revit this is "Collaborate → Coordination Review → Select Link" and then one change at a
+    /// time: expand a node, pick an action, repeat. On a building where a dozen grids have shifted
+    /// this is dozens of clicks, and it is done again after every new base file is issued.
     ///
-    /// **Нажать «Принять» внутри самого «Просмотра координации» кнопка не может.** Этого диалога
-    /// в Revit API нет вовсе: из всего мониторинга наружу выведены только
+    /// **The button cannot press "Accept" inside "Coordination Review" itself.** That dialog does
+    /// not exist in the Revit API at all: of the whole monitoring feature only
     /// <c>Element.IsMonitoringLinkElement</c>, <c>IsMonitoringLocalElement</c>,
-    /// <c>GetMonitoredLinkElementIds</c> и <c>GetMonitoredLocalElementIds</c> — проверено
-    /// рефлексией по RevitAPI.dll 2022, 2024 и 2025, ни чтения списка изменений, ни действий над
-    /// ним там нет. Поэтому команда идёт с другой стороны: сама считает расхождения
-    /// (<see cref="CoordinationCatalog"/>) и сама двигает элементы — то есть делает ровно то,
-    /// что сделало бы действие «Переместить» в диалоге. Когда элемент встаёт на место, Revit
-    /// перестаёт считать его расхождением, и список «Просмотра координации» пустеет сам.
+    /// <c>GetMonitoredLinkElementIds</c> and <c>GetMonitoredLocalElementIds</c> are exposed —
+    /// checked by reflection against RevitAPI.dll 2022, 2024 and 2025, and there is neither a way
+    /// to read the change list nor to act on it. So the command comes at this from the other side:
+    /// it computes the differences itself (<see cref="CoordinationCatalog"/>) and moves the
+    /// elements itself — that is, it does exactly what the "Move" action in the dialog would do.
+    /// Once an element is back in place, Revit stops counting it as a difference, and
+    /// "Coordination Review" empties itself.
     ///
-    /// Чего команда не делает: не удаляет оси и уровни, пропавшие из координационного файла
-    /// (за уровнем ушло бы всё, что на нём стоит), и не заводит мониторинг на новые элементы
-    /// связи — создания связей мониторинга в API тоже нет. И то и другое показано в окне
-    /// строкой, чтобы разобрать вручную.
+    /// What the command does not do: it does not delete grids and levels that vanished from the
+    /// coordination file (a level would take everything standing on it with it), and it does not
+    /// set up monitoring on new link elements — creating monitoring links is not in the API either.
+    /// Both are shown in the window as a line, to be sorted out by hand.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class AcceptCoordinationCommand : IExternalCommand
     {
-        private const string DialogTitle = "Принять координационные изменения";
+        private const string DialogTitle = "Accept Coordination Changes";
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
@@ -49,8 +50,8 @@ namespace VladTools.Commands
             if (doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в проекте.\n" +
-                    "Мониторинг координационного файла живёт в модели раздела, а не в семействе.");
+                    "The command works only in a project.\n" +
+                    "Coordination-file monitoring lives in a discipline model, not in a family.");
                 return Result.Cancelled;
             }
 
@@ -62,10 +63,10 @@ namespace VladTools.Commands
                 if (scans.Count == 0)
                 {
                     TaskDialog.Show(DialogTitle,
-                        "В проекте нет ни одной оси или уровня, которые следят за связью.\n\n" +
-                        "Сравнивать не с чем: кнопка работает по связям мониторинга, а они заводятся " +
-                        "только вручную — «Совместная работа → Копирование/Мониторинг → Выбрать связь» " +
-                        "(этот режим открывает и кнопка «Базовый файл» последним шагом)." +
+                        "The project has no grid or level monitoring a link.\n\n" +
+                        "There is nothing to compare against: the button works off monitoring links, and " +
+                        "those are only ever set up by hand — \"Collaborate → Copy/Monitor → Select Link\" " +
+                        "(the \"Base File\" button also opens this mode as its last step)." +
                         Note(failures));
                     return Result.Cancelled;
                 }
@@ -82,14 +83,13 @@ namespace VladTools.Commands
                 var done = new List<string>();
                 var warnings = new WarningSuppressor();
 
-                using (var transaction = new Transaction(doc, "Принять координационные изменения"))
+                using (var transaction = new Transaction(doc, "Accept coordination changes"))
                 {
                     transaction.Start();
 
-                    // Сдвиг уровня тянет за собой всё, что на нём стоит, и Revit почти наверняка
-                    // о чём-нибудь предупредит: о разорванных присоединениях, о выехавших
-                    // элементах. Модальное окно на каждое превратило бы одну кнопку
-                    // в щёлканье по диалогам.
+                    // Shifting a level drags everything standing on it along, and Revit will almost
+                    // certainly warn about something: broken joins, elements left behind. A modal
+                    // dialog for each would turn one button into clicking through dialogs.
                     var options = transaction.GetFailureHandlingOptions();
                     options.SetFailuresPreprocessor(warnings);
                     transaction.SetFailureHandlingOptions(options);
@@ -118,21 +118,22 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── правка ─────────────────────────────
+        // ───────────────────────────── the edit ─────────────────────────────
 
         /// <summary>
-        /// Ставит ось или уровень туда, где он теперь в связи.
+        /// Puts a grid or a level where it now stands in the link.
         ///
-        /// У оси это поворот вокруг её середины плюс сдвиг поперёк себя — совмещается прямая,
-        /// а не отрезок: длину оси в проекте подрезают под свои виды, и к координации она
-        /// отношения не имеет. У уровня — просто новая отметка.
+        /// For a grid this is a rotation about its midpoint plus a sideways shift — it is the
+        /// infinite line that is aligned, not the segment: a grid's length in the project is
+        /// trimmed to fit its own views and has nothing to do with coordination. For a level it is
+        /// simply a new elevation.
         /// </summary>
         private static void Move(Document doc, CoordinationChangeRow row, List<string> done, List<string> failures)
         {
             var element = doc.GetElement(row.Update.HostId);
             if (element == null)
             {
-                failures.Add(row.Title + " — этого элемента в проекте уже нет");
+                failures.Add(row.Title + " — this element is no longer in the project");
                 return;
             }
 
@@ -140,9 +141,9 @@ namespace VladTools.Commands
 
             try
             {
-                // Оси и уровни базового файла обычно закреплены булавкой — иначе их двигают мышью.
-                // Закреплённый элемент Revit двигать не даёт, поэтому булавка снимается на время
-                // правки и возвращается сразу после неё.
+                // The grids and levels of a base file are usually pinned — otherwise someone drags
+                // them with the mouse. Revit will not move a pinned element, so the pin is removed
+                // for the duration of the edit and put back right after.
                 pinned = element.Pinned;
                 if (pinned)
                     element.Pinned = false;
@@ -168,7 +169,7 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                failures.Add(row.Title + " — переставить не удалось: " + LinkCatalog.Short(exception.Message));
+                failures.Add(row.Title + " — could not be repositioned: " + LinkCatalog.Short(exception.Message));
             }
             finally
             {
@@ -177,8 +178,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Возвращает булавку на место. Отказ здесь не должен срывать остальное: элемент уже
-        /// стоит правильно, просто не закреплён, — и об этом надо сказать, а не промолчать.
+        /// Puts the pin back. A failure here must not wreck the rest: the element is already in
+        /// the right place, just unpinned — and that has to be said, not passed over in silence.
         /// </summary>
         private static void Repin(Element element, bool pinned, List<string> failures, string title)
         {
@@ -191,14 +192,15 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                failures.Add(title + " — булавка не вернулась: " + LinkCatalog.Short(exception.Message));
+                failures.Add(title + " — the pin did not come back: " + LinkCatalog.Short(exception.Message));
             }
         }
 
         /// <summary>
-        /// Переименовывает оси и уровни вслед за связью — в несколько проходов, как удаление
-        /// параметров: пока имя занято соседом, которого тоже переименовывают, Revit его не отдаёт.
-        /// Проход без единого успеха означает, что дело не в очереди, — тогда в отчёт.
+        /// Renames grids and levels to follow the link — in several passes, as with deleting
+        /// parameters: while a name is held by a neighbour that is also being renamed, Revit will
+        /// not release it. A pass without a single success means the trouble is not the queue —
+        /// then it goes into the report.
         /// </summary>
         private static void Rename(
             Document doc,
@@ -218,14 +220,14 @@ namespace VladTools.Commands
                     var element = doc.GetElement(row.Update.HostId);
                     if (element == null)
                     {
-                        failures.Add(row.Title + " — этого элемента в проекте уже нет");
+                        failures.Add(row.Title + " — this element is no longer in the project");
                         continue;
                     }
 
                     try
                     {
                         element.Name = row.Update.NewName;
-                        done.Add(row.Title + " — переименован в «" + row.Update.NewName + "»");
+                        done.Add(row.Title + " — renamed to \"" + row.Update.NewName + "\"");
                     }
                     catch (Exception exception)
                     {
@@ -237,7 +239,7 @@ namespace VladTools.Commands
                 if (stuck.Count == left.Count)
                 {
                     foreach (var row in stuck)
-                        failures.Add(row.Title + " — переименовать не удалось: " + reasons[row]);
+                        failures.Add(row.Title + " — could not be renamed: " + reasons[row]);
 
                     return;
                 }
@@ -246,14 +248,14 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── просмотр координации ─────────────────────────────
+        // ───────────────────────────── coordination review ─────────────────────────────
 
         /// <summary>
-        /// Открывает «Просмотр координации → Выбрать связь».
+        /// Opens "Coordination Review → Select Link".
         ///
-        /// Не продолжение работы, а её проверка: нажать что-либо в этом диалоге из API нельзя,
-        /// но после того как элементы встали по файлу, его список должен опустеть. Команда
-        /// ставится в очередь Revit и срабатывает после закрытия отчёта.
+        /// Not a continuation of the work but a check on it: nothing in this dialog can be pressed
+        /// through the API, but once the elements are back in line with the file, its list should
+        /// be empty. The command is queued with Revit and fires after the report closes.
         /// </summary>
         private static void OpenReview(UIApplication application, List<string> done, List<string> failures)
         {
@@ -262,21 +264,21 @@ namespace VladTools.Commands
                 var command = RevitCommandId.LookupPostableCommandId(PostableCommand.CoordinationSelectLink);
                 if (command == null || !application.CanPostCommand(command))
                 {
-                    failures.Add("«Просмотр координации» сейчас недоступен — откройте его вручную " +
-                                 "(«Совместная работа → Просмотр координации»).");
+                    failures.Add("\"Coordination Review\" is not available right now — open it by hand " +
+                                 "(\"Collaborate → Coordination Review\").");
                     return;
                 }
 
                 application.PostCommand(command);
-                done.Add("Открывается «Просмотр координации → Выбрать связь» — проверьте, что список пуст");
+                done.Add("Opening \"Coordination Review → Select Link\" — check that the list is empty");
             }
             catch (Exception exception)
             {
-                failures.Add("Открыть «Просмотр координации» не удалось: " + LinkCatalog.Short(exception.Message));
+                failures.Add("Could not open \"Coordination Review\": " + LinkCatalog.Short(exception.Message));
             }
         }
 
-        // ───────────────────────────── отчёт ─────────────────────────────
+        // ───────────────────────────── the report ─────────────────────────────
 
         private static void Report(
             CoordinationScan scan,
@@ -286,35 +288,35 @@ namespace VladTools.Commands
         {
             const int limit = 15;
 
-            var text = scan != null ? "Координационный файл: " + scan.LinkName + ".\n\n" : string.Empty;
+            var text = scan != null ? "Coordination file: " + scan.LinkName + ".\n\n" : string.Empty;
 
             text += done.Count == 0
-                ? "Ничего не сделано."
-                : "Принято (" + done.Count + "):\n• " + string.Join("\n• ", done.Take(limit)) +
-                  (done.Count > limit ? "\n… и ещё " + (done.Count - limit) : string.Empty);
+                ? "Nothing was done."
+                : "Accepted (" + done.Count + "):\n• " + string.Join("\n• ", done.Take(limit)) +
+                  (done.Count > limit ? "\n… and " + (done.Count - limit) + " more" : string.Empty);
 
             if (failures.Count > 0)
             {
-                text += "\n\nНе получилось (" + failures.Count + "):\n• " +
+                text += "\n\nCould not be done (" + failures.Count + "):\n• " +
                         string.Join("\n• ", failures.Take(limit));
 
                 if (failures.Count > limit)
-                    text += "\n… и ещё " + (failures.Count - limit);
+                    text += "\n… and " + (failures.Count - limit) + " more";
             }
 
             if (warnings.Count > 0)
             {
-                text += "\n\nRevit предупредил (" + warnings.Count + "):\n• " +
+                text += "\n\nRevit warned (" + warnings.Count + "):\n• " +
                         string.Join("\n• ", warnings.Take(limit));
 
                 if (warnings.Count > limit)
-                    text += "\n… и ещё " + (warnings.Count - limit);
+                    text += "\n… and " + (warnings.Count - limit) + " more";
             }
 
             TaskDialog.Show(DialogTitle, text);
         }
 
-        /// <summary>Приписка к отказу «сравнивать нечего»: то, что не прочиталось, молчать не должно.</summary>
+        /// <summary>A note for the "nothing to compare" refusal: what could not be read must not stay unmentioned.</summary>
         private static string Note(IReadOnlyList<string> failures)
         {
             const int limit = 10;
@@ -322,10 +324,10 @@ namespace VladTools.Commands
             if (failures.Count == 0)
                 return string.Empty;
 
-            var text = "\n\nПри этом не удалось прочитать (" + failures.Count + "):\n• " +
+            var text = "\n\nAlong the way, could not be read (" + failures.Count + "):\n• " +
                        string.Join("\n• ", failures.Take(limit));
 
-            return failures.Count > limit ? text + "\n… и ещё " + (failures.Count - limit) : text;
+            return failures.Count > limit ? text + "\n… and " + (failures.Count - limit) + " more" : text;
         }
     }
 }

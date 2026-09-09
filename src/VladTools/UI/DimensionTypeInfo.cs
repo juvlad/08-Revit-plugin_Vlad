@@ -1,9 +1,9 @@
 namespace VladTools.UI
 {
     /// <summary>
-    /// Снимок типа размера для окна «Авторазмеры»: окно про Revit API не знает, поэтому
-    /// вместо <c>DimensionType</c> ему передаётся имя и числовой Id (long — переживает и net48,
-    /// и net8.0, где у <c>ElementId</c> разные внутренние представления).
+    /// A snapshot of a dimension type for the "Auto Dimensions" window: the window knows nothing
+    /// about the Revit API, so instead of a <c>DimensionType</c> it gets the name and a numeric id
+    /// (long — it survives both net48 and net8.0, where <c>ElementId</c> is represented differently).
     /// </summary>
     internal sealed class DimensionTypeInfo
     {

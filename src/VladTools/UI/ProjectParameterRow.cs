@@ -4,11 +4,11 @@ using Autodesk.Revit.DB;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Строка таблицы в окне «Удалить общие параметры проекта»: галочка, то, что видит
-    /// пользователь, плюс Id элемента-параметра, который команда удалит из документа.
-    /// Хранится именно Id, а не элемент: после удаления элемент становится негодным,
-    /// а по Id можно спросить документ, жив ли параметр ещё.
-    /// Галочка ставится и вручную, и правилом, поэтому строка сообщает об изменениях.
+    /// A table row in the "Delete Project Shared Parameters" window: the check box, what the user
+    /// sees, plus the id of the parameter element the command will delete from the document.
+    /// The id is stored rather than the element: once deleted the element becomes invalid, whereas
+    /// the id can still be used to ask the document whether the parameter is still alive.
+    /// The check box is set both by hand and by the rule, so the row reports its changes.
     /// </summary>
     internal sealed class ProjectParameterRow : INotifyPropertyChanged
     {
@@ -35,7 +35,7 @@ namespace VladTools.UI
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        /// <summary>Галочка «удалить этот параметр».</summary>
+        /// <summary>The "delete this parameter" check box.</summary>
         public bool IsSelected
         {
             get { return _isSelected; }
@@ -50,9 +50,9 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Параметр стоит меткой на размере хотя бы в одном загруженном семействе.
-        /// Заполняется не сразу: чтобы это узнать, надо открыть каждое семейство,
-        /// поэтому проверка запускается кнопкой в окне.
+        /// The parameter labels a dimension in at least one loaded family.
+        /// It is not filled in straight away: finding out requires opening every family,
+        /// so the scan is started by a button in the window.
         /// </summary>
         public bool UsedInDimensions
         {
@@ -68,28 +68,28 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Подпись для столбца «Размеры»: у непричастных параметров — пусто.</summary>
-        public string DimensionUse => UsedInDimensions ? "Метка размера" : string.Empty;
+        /// <summary>The caption for the "Dimensions" column: empty for parameters that are not involved.</summary>
+        public string DimensionUse => UsedInDimensions ? "Dimension label" : string.Empty;
 
-        /// <summary>Id элемента общего параметра в документе проекта.</summary>
+        /// <summary>The id of the shared parameter element in the project document.</summary>
         public ElementId Id { get; }
 
         public string Name { get; }
 
         public string Guid { get; }
 
-        /// <summary>«Экземпляр», «Тип» или «Нет привязки».</summary>
+        /// <summary>"Instance", "Type" or "Not bound".</summary>
         public string Binding { get; }
 
-        /// <summary>Группа параметра, как она подписана в интерфейсе Revit.</summary>
+        /// <summary>The parameter group as it is labelled in the Revit interface.</summary>
         public string Group { get; }
 
-        /// <summary>Категории, к которым параметр привязан; у непривязанного — пусто.</summary>
+        /// <summary>The categories the parameter is bound to; empty when it is not bound.</summary>
         public string Categories { get; }
 
         /// <summary>
-        /// Параметр привязан к категориям, то есть виден в «Управление → Параметры проекта».
-        /// Непривязанный остался в файле от загруженных семейств или от снятой привязки.
+        /// The parameter is bound to categories, that is, it is visible in "Manage → Project Parameters".
+        /// An unbound one is left over from loaded families or from a binding that was removed.
         /// </summary>
         public bool IsBound { get; }
 

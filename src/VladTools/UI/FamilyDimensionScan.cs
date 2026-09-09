@@ -4,12 +4,12 @@ using System.Collections.Generic;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Итог проверки загруженных семейств на метки размеров: какие общие параметры
-    /// держат геометрию и сколько семейств удалось при этом открыть.
+    /// The result of scanning the loaded families for dimension labels: which shared parameters
+    /// drive geometry, and how many families could be opened along the way.
     ///
-    /// Возвращается командой в окно «Удалить общие параметры проекта». В проекте меток
-    /// размеров не видно — их приходится искать внутри каждого семейства, поэтому окно
-    /// получает не сырые элементы Revit, а готовый список GUID.
+    /// The command returns it to the "Delete Shared Parameters" window. Dimension labels are
+    /// invisible from the project — they have to be looked for inside every family — so the window
+    /// gets a ready list of GUIDs rather than raw Revit elements.
     /// </summary>
     internal sealed class FamilyDimensionScan
     {
@@ -25,16 +25,16 @@ namespace VladTools.UI
             Failures = failures ?? new List<string>();
         }
 
-        /// <summary>GUID общих параметров, которыми помечен хотя бы один размер.</summary>
+        /// <summary>GUIDs of the shared parameters that label at least one dimension.</summary>
         public ISet<string> ParameterGuids { get; }
 
-        /// <summary>Сколько семейств пришлось открыть заново.</summary>
+        /// <summary>How many families had to be opened again.</summary>
         public int OpenedFamilies { get; }
 
-        /// <summary>Сколько взято из сохранённой проверки, без открытия.</summary>
+        /// <summary>How many were taken from the saved scan, without opening.</summary>
         public int ReusedFamilies { get; }
 
-        /// <summary>Семейства, которые открыть не удалось, с причиной.</summary>
+        /// <summary>Families that could not be opened, with the reason.</summary>
         public IReadOnlyList<string> Failures { get; }
     }
 }

@@ -8,24 +8,24 @@ using VladTools.UI;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Итог разбора образцовых размеров: готовые строки для окна и заметки по тем, что не разобрались.</summary>
+    /// <summary>The result of parsing the sample dimensions: ready rows for the window and notes on the ones that did not parse.</summary>
     internal sealed class DimensionSampleReadResult
     {
         public List<DimensionChainRow> Rows { get; } = new List<DimensionChainRow>();
         public List<string> Messages { get; } = new List<string>();
 
-        /// <summary>Куда смотрело большинство образцовых ниток — используется как направление всего шаблона.</summary>
+        /// <summary>Which way most of the sample chains faced — used as the direction of the whole template.</summary>
         public bool Outward { get; set; }
     }
 
     /// <summary>
-    /// Разбирает размеры, поставленные пользователем вручную, в шаблон ниток — это подбор,
-    /// а не парсер (см. CLAUDE.md, «Ключевые решения» — тот же статус, что у <c>FormulaParser</c>).
-    /// Ошибка подбора не страшна: строка в окне правится руками.
+    /// Parses the dimensions the user placed by hand into a chain template — this is a best guess,
+    /// not a parser (see CLAUDE.md, "Key decisions" — the same status as <c>FormulaParser</c>).
+    /// A wrong guess is not a problem: the row in the window can be edited by hand.
     ///
-    /// Для каждого образцового размера ищется помещение и сторона, которым он принадлежит
-    /// (по стенам, на которые ссылается размер, и по направлению, совпадающему со стороной),
-    /// дальше — знаковое смещение от стороны и вид нитки по составу ссылок.
+    /// For every sample dimension it looks for the room and the side it belongs to (by the walls the
+    /// dimension references, and by the direction matching that of the side), then works out the
+    /// signed offset from the side and the chain kind from the mix of references.
     /// </summary>
     internal static class DimensionSampleReader
     {
@@ -73,7 +73,7 @@ namespace VladTools.Infrastructure
             return result;
         }
 
-        // ───────────────────────────── один образцовый размер ─────────────────────────────
+        // ───────────────────────────── a single sample dimension ─────────────────────────────
 
         private sealed class ParsedSample
         {
@@ -101,21 +101,21 @@ namespace VladTools.Infrastructure
 
             if (!hasReferences)
             {
-                failure = "ссылки размера потеряны (элементы, на которые он опирался, изменились)";
+                failure = "the dimension references are lost (the elements it relied on have changed)";
                 return null;
             }
 
             var line = SafeCurve(dimension) as Line;
             if (line == null)
             {
-                failure = "не прямолинейный размер (радиальный/угловой) — авторазмеры такие не разбирают";
+                failure = "not a linear dimension (radial/angular) — auto dimensions do not parse these";
                 return null;
             }
 
             var references = SafeReferences(dimension);
             if (references.Count == 0)
             {
-                failure = "у размера нет ни одной ссылки";
+                failure = "the dimension has no references at all";
                 return null;
             }
 
@@ -141,7 +141,7 @@ namespace VladTools.Infrastructure
             var direction = (line.GetEndPoint(1) - line.GetEndPoint(0));
             if (direction.GetLength() < 1e-9)
             {
-                failure = "вырожденная линия размера";
+                failure = "degenerate dimension line";
                 return null;
             }
             direction = new XYZ(direction.X, direction.Y, 0).Normalize();
@@ -149,7 +149,7 @@ namespace VladTools.Infrastructure
             var match = MatchSide(wallRefs, direction, index);
             if (match == null)
             {
-                failure = "не удалось определить помещение и сторону по ссылкам размера";
+                failure = "could not work out the room and the side from the dimension references";
                 return null;
             }
 
@@ -164,9 +164,9 @@ namespace VladTools.Infrastructure
             DimensionChainKind kind;
             var approximate = false;
 
-            // Оси проёмов в образце — отдельный случай: «Всё вместе» их не ставит (см.
-            // DimensionReferenceCollector.CollectCombined), поэтому образец с осями и чем-то
-            // ещё точного соответствия в каталоге не имеет и помечается как приблизительный.
+            // Opening centres in a sample are a special case: "All combined" does not place them (see
+            // DimensionReferenceCollector.CollectCombined), so a sample with centres plus something
+            // else has no exact match in the catalogue and is marked as approximate.
             if (foreignCount > 0 && (ownCount > 2 || centerCount > 0))
             {
                 kind = DimensionChainKind.Combined;
@@ -222,15 +222,15 @@ namespace VladTools.Infrastructure
                 DimensionTypeName = sample.DimensionTypeName ?? string.Empty
             };
 
-            var note = "из " + sample.SourceLabel;
+            var note = "from " + sample.SourceLabel;
             if (sample.Approximate)
-                note += " — вид нитки определён приблизительно, проверьте";
+                note += " — the chain kind was guessed approximately, please check";
 
             row.Note = note;
             rows.Add(row);
         }
 
-        // ───────────────────────────── поиск помещения и стороны ─────────────────────────────
+        // ───────────────────────────── finding the room and the side ─────────────────────────────
 
         private sealed class RoomSideRef
         {
@@ -312,7 +312,7 @@ namespace VladTools.Infrastructure
                 .First();
         }
 
-        // ───────────────────────────── мелкие безопасные обёртки ─────────────────────────────
+        // ───────────────────────────── small safe wrappers ─────────────────────────────
 
         private static Curve SafeCurve(Dimension dimension)
         {
@@ -339,7 +339,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // ссылки недоступны — итог тот же, что и пустой список
+                // the references are unavailable — the outcome is the same as an empty list
             }
 
             return result;
@@ -389,15 +389,15 @@ namespace VladTools.Infrastructure
                 if (value.HasValue)
                 {
                     var mm = UnitUtils.ConvertFromInternalUnits(value.Value, UnitTypeId.Millimeters);
-                    return "размера " + mm.ToString("0", CultureInfo.InvariantCulture) + " мм";
+                    return "the " + mm.ToString("0", CultureInfo.InvariantCulture) + " mm dimension";
                 }
             }
             catch (Exception)
             {
-                // берём запасной вариант ниже
+                // fall through to the fallback below
             }
 
-            return "размера id " + dimension.Id.IntegerValue;
+            return "the dimension with id " + dimension.Id.IntegerValue;
         }
     }
 }

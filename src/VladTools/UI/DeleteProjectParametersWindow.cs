@@ -13,28 +13,28 @@ using System.Windows.Media;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно «Удалить общие параметры проекта»: таблица всех общих параметров открытого проекта
-    /// с галочкой слева у каждой строки. Удаляются отмеченные параметры.
+    /// The "Delete Project Shared Parameters" window: a table of every shared parameter in the
+    /// open project, with a check box on the left of each row. The checked parameters are deleted.
     ///
-    /// Галочки ставятся так же, как в окне «Удалить параметры» для семейства: вручную
-    /// (щелчок, двойной щелчок по строке, пробел, галочка в шапке — все сразу) и правилом
-    /// «начинаются с» / «содержат», которое работает как поиск: подходящие имена остаются
-    /// в таблице и отмечаются, остальные из неё уходят, а «Инвертировать поиск» меняет стороны
-    /// местами. К ним добавлен отбор «Показывать»: кроме параметров
-    /// проекта, в файле живут общие параметры, приехавшие с загруженными семействами,
-    /// и на глаз они друг от друга не отличаются.
+    /// Check boxes are set the same way as in the family "Delete Parameters" window: by hand
+    /// (a click, a double click on the row, the space bar, the header check box for all at once)
+    /// and by a "starts with" / "contains" rule that works like a search: matching names stay in
+    /// the table and get checked, the rest leave it, and "Invert the search" swaps the sides.
+    /// On top of that there is a "Show" filter: besides project parameters, the file also holds
+    /// shared parameters that arrived with loaded families, and by eye there is no telling them apart.
     ///
-    /// Удаляется только то, что показано в таблице: скрытая строка теряет галочку.
+    /// Only what is shown in the table gets deleted: a row that is hidden loses its check mark.
     ///
-    /// Отдельно — защита семейств: параметр, которым помечен размер внутри семейства,
-    /// держит его геометрию. В проекте этого не видно, узнать можно только открыв каждое
-    /// семейство, поэтому проверка не идёт сама, а запускается кнопкой «Проверить семейства».
+    /// Separately — a guard for families: a parameter that labels a dimension inside a family
+    /// holds its geometry together. This is invisible from the project; the only way to find out
+    /// is to open every family, so the check does not run by itself — it is started by the
+    /// "Scan Families" button.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class DeleteProjectParametersWindow : Window
     {
-        private const string WindowTitle = "Удалить общие параметры проекта";
+        private const string WindowTitle = "Delete Project Shared Parameters";
 
         private readonly IReadOnlyList<ProjectParameterRow> _all;
         private readonly ObservableCollection<ProjectParameterRow> _visible = new ObservableCollection<ProjectParameterRow>();
@@ -59,15 +59,15 @@ namespace VladTools.UI
         private int _pendingFamilies;
         private DateTime? _checkedAt;
 
-        /// <summary>Параметры, которые пользователь подтвердил к удалению.</summary>
+        /// <summary>The parameters the user confirmed for deletion.</summary>
         public IReadOnlyList<ProjectParameterRow> Selected { get; private set; } = new List<ProjectParameterRow>();
 
-        /// <param name="familyCount">Сколько всего семейств в проекте — для кнопки «Проверить заново».</param>
-        /// <param name="pendingFamilies">Сколько из них сохранённая проверка не покрывает.</param>
-        /// <param name="checkedAt">Когда сохранена проверка; её ещё не было — null.</param>
+        /// <param name="familyCount">How many families the project has in total — for the "Scan again" button.</param>
+        /// <param name="pendingFamilies">How many of them the saved scan does not cover.</param>
+        /// <param name="checkedAt">When the scan was saved; null if there never was one.</param>
         /// <param name="scanFamilies">
-        /// Проверка семейств на метки размеров; аргумент — «пройти заново, кэш не читать».
-        /// Всю работу с Revit делает команда.
+        /// The family scan for dimension labels; the argument is "scan again, ignore the cache".
+        /// All the work with Revit is done by the command.
         /// </param>
         public DeleteProjectParametersWindow(
             IReadOnlyList<ProjectParameterRow> parameters,
@@ -91,19 +91,19 @@ namespace VladTools.UI
             SnapsToDevicePixels = true;
 
             _scopeBox = new ComboBox { Width = 230, VerticalAlignment = VerticalAlignment.Center };
-            _scopeBox.Items.Add("Все общие параметры");
-            _scopeBox.Items.Add("Только параметры проекта");
-            _scopeBox.Items.Add("Только не привязанные");
+            _scopeBox.Items.Add("Every shared parameter");
+            _scopeBox.Items.Add("Project parameters only");
+            _scopeBox.Items.Add("Unbound only");
             _scopeBox.SelectedIndex = 0;
             _scopeBox.ToolTip =
-                "Удаляется только то, что показано в таблице.\n" +
-                "«Параметры проекта» — привязанные к категориям, те самые, что видны\n" +
-                "в «Управление → Параметры проекта».\n" +
-                "«Не привязанные» — общие параметры, оставшиеся в файле от загруженных\n" +
-                "семейств и от снятых привязок.";
+                "Only what is shown in the table gets deleted.\n" +
+                "\"Project parameters\" — bound to categories, the ones visible in\n" +
+                "\"Manage → Project Parameters\".\n" +
+                "\"Unbound\" — shared parameters left in the file from loaded families\n" +
+                "and from bindings that were removed.";
             _scopeBox.SelectionChanged += (s, e) => RebuildVisible();
 
-            // Проверка хоть чего-то уже есть — значит галочке есть что прятать.
+            // Some scan already exists — so there is something for the check box to hide.
             var known = _familyCount == 0 || _pendingFamilies < _familyCount;
 
             _scanButton = new Button
@@ -113,33 +113,33 @@ namespace VladTools.UI
                 VerticalAlignment = VerticalAlignment.Center,
                 IsEnabled = _scanFamilies != null && _familyCount > 0,
                 ToolTip =
-                    "Открывает загруженное семейство и смотрит, каким общим параметром\n" +
-                    "помечены его размеры. Результат сохраняется в профиле Windows,\n" +
-                    "поэтому в следующий раз открываются только новые и изменившиеся семейства.\n\n" +
-                    "Когда открывать нечего, кнопка проходит проверку заново по всем семействам:\n" +
-                    "Revit помечает семейство изменённым только при сохранении, поэтому\n" +
-                    "перезагруженное в этом сеансе семейство сохранённая проверка не заметит."
+                    "Opens a loaded family and looks at which shared parameter labels its\n" +
+                    "dimensions. The result is saved in the Windows profile, so next time\n" +
+                    "only new and changed families are opened.\n\n" +
+                    "When there is nothing left to open, the button scans every family again:\n" +
+                    "Revit only marks a family changed on save, so a family reloaded during\n" +
+                    "this session will not be noticed by the saved scan."
             };
             _scanButton.Click += OnScanFamilies;
 
             _skipDimensionsBox = new CheckBox
             {
-                Content = "Не показывать параметры, используемые в размерах",
+                Content = "Hide parameters used on dimensions",
                 IsChecked = known,
                 IsEnabled = known,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 0, 0),
                 ToolTip =
-                    "Параметр, которым помечен размер, держит геометрию семейства.\n" +
-                    "Удалить его из проекта — значит сломать параметрику.\n" +
-                    "Галочка включается, когда проверка семейств пройдена хотя бы частично."
+                    "A parameter that labels a dimension holds the family geometry together.\n" +
+                    "Deleting it from the project means breaking the parametrics.\n" +
+                    "The check box turns on once the family scan has covered at least part of them."
             };
             _skipDimensionsBox.Checked += (s, e) => RebuildVisible();
             _skipDimensionsBox.Unchecked += (s, e) => RebuildVisible();
 
             _ruleBox = new ComboBox { Width = 250, VerticalAlignment = VerticalAlignment.Center };
-            _ruleBox.Items.Add("Отобрать параметры, начинающиеся с");
-            _ruleBox.Items.Add("Отобрать параметры, содержащие");
+            _ruleBox.Items.Add("Match parameters starting with");
+            _ruleBox.Items.Add("Match parameters containing");
             _ruleBox.SelectedIndex = 0;
             _ruleBox.SelectionChanged += (s, e) => RebuildVisible();
 
@@ -155,7 +155,7 @@ namespace VladTools.UI
 
             _caseBox = new CheckBox
             {
-                Content = "Учитывать регистр",
+                Content = "Match case",
                 VerticalAlignment = VerticalAlignment.Center
             };
             _caseBox.Checked += (s, e) => RebuildVisible();
@@ -163,13 +163,13 @@ namespace VladTools.UI
 
             _invertBox = new CheckBox
             {
-                Content = "Инвертировать поиск",
+                Content = "Invert the search",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 0, 0),
                 ToolTip =
-                    "Правило работает наоборот: в таблице остаются параметры, которые ему НЕ подходят.\n" +
-                    "Например «содержащие» + «ADSK» + инверсия — все параметры, кроме ADSK-овских.\n" +
-                    "Пустая строка правила по-прежнему показывает весь список и не отмечает ничего."
+                    "The rule works in reverse: the table keeps the parameters that do NOT match it.\n" +
+                    "For example, \"containing\" + \"ADSK\" + invert leaves every parameter except the ADSK ones.\n" +
+                    "An empty rule still shows the whole list and checks nothing."
             };
             _invertBox.Checked += (s, e) => RebuildVisible();
             _invertBox.Unchecked += (s, e) => RebuildVisible();
@@ -179,7 +179,7 @@ namespace VladTools.UI
                 IsChecked = false,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Отметить или снять все показанные параметры"
+                ToolTip = "Check or clear every shown parameter"
             };
             _selectAll.Checked += (s, e) => SetAllSelected(true);
             _selectAll.Unchecked += (s, e) => SetAllSelected(false);
@@ -189,7 +189,7 @@ namespace VladTools.UI
 
             _deleteButton = new Button
             {
-                Content = "Удалить",
+                Content = "Delete",
                 MinWidth = 130,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -199,7 +199,7 @@ namespace VladTools.UI
 
             var cancelButton = new Button
             {
-                Content = "Отмена",
+                Content = "Cancel",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -216,23 +216,23 @@ namespace VladTools.UI
             RebuildVisible();
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button cancelButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // отбор
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // защита семейств
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // правило
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // filter
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // family guard
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // rule
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Удаляются отмеченные общие параметры — вместе со значениями во всех элементах проекта. " +
-                       "Правило ниже оставляет в таблице только подходящие по имени и сразу их отмечает; " +
-                       "дальше галочки правятся вручную.",
+                Text = "The checked shared parameters are deleted — together with their values on every project element. " +
+                       "The rule below leaves only the names that match in the table and checks them right away; " +
+                       "the check marks can then be edited by hand.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -242,7 +242,7 @@ namespace VladTools.UI
             var scopePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
             scopePanel.Children.Add(new TextBlock
             {
-                Text = "Показывать:",
+                Text = "Show:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
@@ -306,7 +306,8 @@ namespace VladTools.UI
                 Margin = new Thickness(0, 10, 0, 8)
             };
 
-            // Галочка стоит слева от параметра — первым столбцом, с галочкой «все» в шапке.
+            // The check box sits to the left of the parameter — the first column, with an
+            // "all" check box in the header.
             grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = _selectAll,
@@ -316,15 +317,15 @@ namespace VladTools.UI
                 CellTemplate = BuildCheckBoxTemplate()
             });
 
-            grid.Columns.Add(TextColumn("Имя", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(TextColumn("Экземпляр/Тип", "Binding", new DataGridLength(110)));
-            grid.Columns.Add(TextColumn("Размеры", "DimensionUse", new DataGridLength(110)));
-            grid.Columns.Add(TextColumn("Категории", "Categories", new DataGridLength(230)));
-            grid.Columns.Add(TextColumn("Группа", "Group", new DataGridLength(150)));
+            grid.Columns.Add(TextColumn("Name", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(TextColumn("Instance/Type", "Binding", new DataGridLength(110)));
+            grid.Columns.Add(TextColumn("Dimensions", "DimensionUse", new DataGridLength(110)));
+            grid.Columns.Add(TextColumn("Categories", "Categories", new DataGridLength(230)));
+            grid.Columns.Add(TextColumn("Group", "Group", new DataGridLength(150)));
             grid.Columns.Add(TextColumn("GUID", "Guid", new DataGridLength(240)));
 
-            // Двойной щелчок по строке и пробел тоже переключают галочку —
-            // попадать в маленький квадрат необязательно.
+            // A double click on a row and the space bar also toggle the check box —
+            // hitting the small square is not the only way.
             grid.MouseDoubleClick += (s, e) => ToggleSelectedRows();
             grid.PreviewKeyDown += OnGridKeyDown;
 
@@ -348,7 +349,7 @@ namespace VladTools.UI
             };
         }
 
-        /// <summary>Галочка в ячейке: со своим шаблоном она срабатывает с первого щелчка.</summary>
+        /// <summary>A check box in a cell: with its own template it reacts to the first click.</summary>
         private static DataTemplate BuildCheckBoxTemplate()
         {
             var checkBox = new FrameworkElementFactory(typeof(CheckBox));
@@ -360,7 +361,7 @@ namespace VladTools.UI
             return new DataTemplate { VisualTree = checkBox };
         }
 
-        // ───────────────────────────── отбор ─────────────────────────────
+        // ───────────────────────────── filtering ─────────────────────────────
 
         private NameRule Rule => _ruleBox.SelectedIndex == 1 ? NameRule.Contains : NameRule.StartsWith;
 
@@ -370,8 +371,8 @@ namespace VladTools.UI
             _caseBox.IsChecked == true ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
         /// <summary>
-        /// Строка попадает в таблицу. Скрытая строка — не просто невидимая: удалить её нельзя,
-        /// поэтому она теряет галочку.
+        /// Whether a row belongs in the table. A hidden row is not merely invisible: it cannot be
+        /// deleted, so it loses its check mark.
         /// </summary>
         private bool InScope(ProjectParameterRow row)
         {
@@ -379,8 +380,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Пустое правило не прячет ничего: пустой строке подходит любое имя — в том числе
-        /// при инверсии, иначе одна галочка убирала бы из таблицы всё разом.
+        /// An empty rule hides nothing: an empty string matches any name — including under
+        /// inversion, otherwise one check box would clear the whole table at once.
         /// </summary>
         private bool MatchesPattern(ProjectParameterRow row)
         {
@@ -408,17 +409,17 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Параметр держит размер в семействе, и пользователь просил такие не показывать.</summary>
+        /// <summary>The parameter labels a dimension in a family, and the user asked not to show such ones.</summary>
         private bool HiddenByDimensions(ProjectParameterRow row)
         {
             return _skipDimensionsBox.IsChecked == true && row.UsedInDimensions;
         }
 
         /// <summary>
-        /// Пересобирает таблицу. Правило работает как поиск: оставляет в списке только подходящие
-        /// имена и сразу их отмечает, остальные строки уходят из таблицы и теряют галочку —
-        /// удаляется только то, что видно. Пустое правило показывает всё и не отмечает ничего,
-        /// чтобы «ничего не вписал» не означало «удалить всё».
+        /// Rebuilds the table. The rule works like a search: it leaves only the matching names in
+        /// the list and checks them right away, the rest leave the table and lose their check mark —
+        /// only what is visible gets deleted. An empty rule shows everything and checks nothing, so
+        /// that "typed nothing in" never means "delete everything".
         /// </summary>
         private void RebuildVisible()
         {
@@ -443,14 +444,14 @@ namespace VladTools.UI
             SetMany(row => value && InScope(row));
         }
 
-        /// <summary>Переключает галочки у выделенных в таблице строк — двойным щелчком или пробелом.</summary>
+        /// <summary>Toggles the check marks of the rows selected in the table — by double click or the space bar.</summary>
         private void ToggleSelectedRows()
         {
             var rows = _grid.SelectedItems.OfType<ProjectParameterRow>().ToList();
             if (rows.Count == 0)
                 return;
 
-            // Разнобой приводим к одному состоянию: если отмечены не все — отмечаем все.
+            // A mix is brought to one state: if not all are checked, we check all of them.
             var value = !rows.All(row => row.IsSelected);
             var affected = new HashSet<ProjectParameterRow>(rows);
 
@@ -458,8 +459,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Пакетная простановка галочек: итог пересчитываем один раз в конце,
-        /// а не на каждую строку.
+        /// Setting check marks in bulk: the totals are recomputed once, at the end,
+        /// rather than for every row.
         /// </summary>
         private void SetMany(Func<ProjectParameterRow, bool> value)
         {
@@ -502,18 +503,18 @@ namespace VladTools.UI
             if (marked == 0)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Показано: " + _visible.Count + " из " + _all.Count +
-                               " общих параметров проекта. Не отмечено ни одного." + DimensionNote();
+                _status.Text = "Shown: " + _visible.Count + " of " + _all.Count +
+                               " shared parameters in the project. Nothing is checked." + DimensionNote();
             }
             else
             {
                 _status.Foreground = Brushes.Firebrick;
-                _status.Text = "Будет удалено: " + marked + " из " + _visible.Count +
-                               " показанных." + DimensionNote();
+                _status.Text = "Will be deleted: " + marked + " of " + _visible.Count +
+                               " shown." + DimensionNote();
             }
 
             _deleteButton.IsEnabled = marked > 0;
-            _deleteButton.Content = marked > 0 ? "Удалить (" + marked + ")" : "Удалить";
+            _deleteButton.Content = marked > 0 ? "Delete (" + marked + ")" : "Delete";
 
             _syncingSelectAll = true;
             _selectAll.IsChecked = _visible.Count == 0 || marked == 0
@@ -522,41 +523,41 @@ namespace VladTools.UI
             _syncingSelectAll = false;
         }
 
-        /// <summary>Приписка к строке состояния: как обстоит дело с проверкой и что из-за неё скрыто.</summary>
+        /// <summary>A note for the status line: how the scan stands and what it hides.</summary>
         private string DimensionNote()
         {
             if (_familyCount == 0)
                 return string.Empty;
 
             var hidden = _all.Count(row => MatchesScope(row) && HiddenByDimensions(row));
-            var note = hidden > 0 ? " Скрыто как метки размеров: " + hidden + "." : string.Empty;
+            var note = hidden > 0 ? " Hidden as dimension labels: " + hidden + "." : string.Empty;
 
             if (_pendingFamilies >= _familyCount)
-                return " Семейства на метки размеров не проверялись.";
+                return " The families have not been scanned for dimension labels.";
 
             if (_pendingFamilies > 0)
-                return note + " Не проверено семейств: " + _pendingFamilies + ".";
+                return note + " Families not scanned: " + _pendingFamilies + ".";
 
             return note + (_checkedAt.HasValue
-                ? " Проверка семейств от " + _checkedAt.Value.ToString("dd.MM.yyyy HH:mm") + "."
+                ? " Family scan from " + _checkedAt.Value.ToString("dd.MM.yyyy HH:mm") + "."
                 : string.Empty);
         }
 
-        // ───────────────────────────── проверка семейств ─────────────────────────────
+        // ───────────────────────────── the family scan ─────────────────────────────
 
-        /// <summary>Проверять нечего — значит кнопка предлагает пройти всё заново, минуя сохранённое.</summary>
+        /// <summary>Nothing left to scan — so the button offers to run everything again, bypassing the saved scan.</summary>
         private bool ForcesRescan => _pendingFamilies == 0;
 
         private string ScanButtonText()
         {
             return ForcesRescan
-                ? "Проверить заново (" + _familyCount + ")"
-                : "Проверить семейства (" + _pendingFamilies + ")";
+                ? "Scan again (" + _familyCount + ")"
+                : "Scan families (" + _pendingFamilies + ")";
         }
 
         /// <summary>
-        /// Открывает загруженные семейства и отмечает параметры, которыми помечены размеры.
-        /// Работа долгая и блокирующая, поэтому сначала спрашиваем — сама по себе она не идёт.
+        /// Opens the loaded families and marks the parameters that label dimensions.
+        /// This is a long, blocking job, so we ask first — it never starts on its own.
         /// </summary>
         private void OnScanFamilies(object sender, RoutedEventArgs e)
         {
@@ -578,7 +579,7 @@ namespace VladTools.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, "Проверить семейства не удалось.\n\n" + exception.Message,
+                MessageBox.Show(this, "Could not scan the families.\n\n" + exception.Message,
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -590,13 +591,13 @@ namespace VladTools.UI
             foreach (var row in _all)
                 row.UsedInDimensions = scan.ParameterGuids.Contains(row.Guid);
 
-            // Осталось непроверенным ровно то, что не удалось открыть.
+            // What is left unscanned is exactly what could not be opened.
             _pendingFamilies = scan.Failures.Count;
             _checkedAt = DateTime.Now;
             _scanButton.Content = ScanButtonText();
             _skipDimensionsBox.IsEnabled = true;
 
-            // Простановка галочки сама вызовет пересборку; если она уже стоит, событие не придёт.
+            // Checking the box will trigger a rebuild by itself; if it is already checked, no event fires.
             if (_skipDimensionsBox.IsChecked == true)
                 RebuildVisible();
             else
@@ -608,18 +609,18 @@ namespace VladTools.UI
         private bool Confirm(bool force)
         {
             var text = force
-                ? "Проверка пройдёт заново по всем семействам (" + _familyCount + "), " +
-                  "сохранённый результат будет заменён.\n\n" +
-                  "Это нужно после перезагрузки семейств в текущем сеансе: Revit помечает семейство " +
-                  "изменённым только при сохранении, и сохранённая проверка такой правки не замечает."
-                : "В проекте не видно, каким параметром помечен размер внутри семейства — " +
-                  "чтобы это узнать, надо открыть семейство.\n\n" +
-                  "Открыть предстоит: " + _pendingFamilies + " из " + _familyCount +
-                  "; остальные возьмутся из сохранённой проверки.";
+                ? "The scan will run again over every family (" + _familyCount + "), " +
+                  "replacing the saved result.\n\n" +
+                  "This is needed after reloading families during the current session: Revit only marks " +
+                  "a family changed on save, and the saved scan will not notice such an edit."
+                : "The project cannot show which parameter labels a dimension inside a family — " +
+                  "finding out requires opening the family.\n\n" +
+                  "Left to open: " + _pendingFamilies + " of " + _familyCount +
+                  "; the rest will come from the saved scan.";
 
             var answer = MessageBox.Show(
                 this,
-                text + "\n\nRevit на это время перестанет отвечать. Продолжить?",
+                text + "\n\nRevit will stop responding while this runs. Continue?",
                 WindowTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
@@ -632,49 +633,49 @@ namespace VladTools.UI
         {
             var used = _all.Count(row => row.UsedInDimensions);
 
-            var text = "Открыто семейств: " + scan.OpenedFamilies +
-                       ", взято из сохранённой проверки: " + scan.ReusedFamilies +
-                       " (всего в проекте " + _familyCount + ").\n" +
-                       "Общих параметров, которыми помечены размеры: " + used + ".\n\n" +
-                       "Результат сохранён — в следующий раз окно откроется уже с проверкой.";
+            var text = "Families opened: " + scan.OpenedFamilies +
+                       ", taken from the saved scan: " + scan.ReusedFamilies +
+                       " (" + _familyCount + " in the project in total).\n" +
+                       "Shared parameters that label dimensions: " + used + ".\n\n" +
+                       "The result is saved — next time the window opens already scanned.";
 
             if (scan.Failures.Count > 0)
             {
                 const int limit = 10;
-                text += "\n\nНе удалось открыть (" + scan.Failures.Count + "):\n• " +
+                text += "\n\nCould not be opened (" + scan.Failures.Count + "):\n• " +
                         string.Join("\n• ", scan.Failures.Take(limit));
 
                 if (scan.Failures.Count > limit)
-                    text += "\n… и ещё " + (scan.Failures.Count - limit);
+                    text += "\n… and " + (scan.Failures.Count - limit) + " more";
 
-                text += "\n\nПараметры этих семейств проверены не были — удаляйте их с оглядкой.";
+                text += "\n\nThe parameters of these families were not checked — delete them with caution.";
             }
 
             MessageBox.Show(this, text, WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnDelete(object sender, RoutedEventArgs e)
         {
             var marked = Marked();
             if (marked.Count == 0)
             {
-                MessageBox.Show(this, "Не отмечено ни одного параметра.", WindowTitle,
+                MessageBox.Show(this, "No parameter is checked.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             var answer = MessageBox.Show(
                 this,
-                "Удалить из проекта " + marked.Count + " общих параметров?\n\n" +
-                Preview(marked) + "\n\nВместе с параметром пропадут его значения во всех элементах проекта, " +
-                "а также поля спецификаций и фильтры, которые на него ссылались.\n" +
+                "Delete " + marked.Count + " shared parameters from the project?\n\n" +
+                Preview(marked) + "\n\nAlong with the parameter its values on every project element will " +
+                "disappear too, together with the schedule fields and filters that referred to it.\n" +
                 (_pendingFamilies == 0
                     ? string.Empty
-                    : "Не проверено семейств: " + _pendingFamilies + " — среди отмеченных может оказаться параметр, " +
-                      "который держит геометрию семейства.\n") +
-                "Действие отменяется только через «Отменить» (Ctrl+Z) в Revit.",
+                    : "Families not scanned: " + _pendingFamilies + " — a parameter that holds a family's " +
+                      "geometry together may be among the checked ones.\n") +
+                "This can only be undone through \"Undo\" (Ctrl+Z) in Revit.",
                 WindowTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -693,7 +694,7 @@ namespace VladTools.UI
             var shown = string.Join("\n", rows.Take(limit).Select(row => "• " + row.Name));
 
             return rows.Count > limit
-                ? shown + "\n… и ещё " + (rows.Count - limit)
+                ? shown + "\n… and " + (rows.Count - limit) + " more"
                 : shown;
         }
     }

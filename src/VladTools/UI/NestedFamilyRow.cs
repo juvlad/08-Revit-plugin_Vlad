@@ -5,29 +5,29 @@ using Autodesk.Revit.DB;
 
 namespace VladTools.UI
 {
-    /// <summary>Что именно стоит за строкой: вложенное семейство или его типоразмер.</summary>
+    /// <summary>What exactly stands behind the row: a nested family or one of its types.</summary>
     internal enum NestedKind
     {
         Family,
         Symbol
     }
 
-    /// <summary>Результат проверки нового имени — от него зависит текст и цвет столбца «Статус».</summary>
+    /// <summary>The result of validating the new name — the text and colour of the "Status" column depend on it.</summary>
     internal enum RenameStatus
     {
-        /// <summary>Новое имя совпадает со старым: строка остаётся как есть.</summary>
+        /// <summary>The new name matches the old one: the row stays as it is.</summary>
         Unchanged,
 
-        /// <summary>Имя годное и отличается от текущего — будет записано.</summary>
+        /// <summary>The name is valid and differs from the current one — it will be written.</summary>
         Ready,
 
-        /// <summary>Имя пустое, с запрещёнными знаками или уже занято другим объектом.</summary>
+        /// <summary>The name is empty, contains forbidden characters, or is already taken by another object.</summary>
         Error
     }
 
     /// <summary>
-    /// Строка таблицы в окне «Переименовать вложенные»: галочка, текущее имя, новое имя и проверка.
-    /// Хранит сам элемент Revit — команде нужно, чему присваивать новое имя.
+    /// A table row in the "Rename Nested" window: the check box, the current name, the new name and the validation.
+    /// It holds the Revit element itself — the command needs something to assign the new name to.
     /// </summary>
     internal sealed class NestedFamilyRow : INotifyPropertyChanged
     {
@@ -48,23 +48,23 @@ namespace VladTools.UI
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        /// <summary>Элемент Revit, которому будет присвоено новое имя.</summary>
+        /// <summary>The Revit element the new name will be assigned to.</summary>
         public Element Element { get; }
 
         public NestedKind Kind { get; }
 
         public string KindText
         {
-            get { return Kind == NestedKind.Family ? "Семейство" : "Типоразмер"; }
+            get { return Kind == NestedKind.Family ? "Family" : "Type"; }
         }
 
-        /// <summary>Имя в документе на текущий момент.</summary>
+        /// <summary>The name in the document as it stands now.</summary>
         public string CurrentName { get; }
 
-        /// <summary>Для типоразмера — имя семейства, которому он принадлежит.</summary>
+        /// <summary>For a type — the name of the family it belongs to.</summary>
         public string OwnerName { get; }
 
-        /// <summary>Сколько экземпляров этого семейства расставлено в открытом семействе.</summary>
+        /// <summary>How many instances of this family are placed in the open family.</summary>
         public int Instances { get; }
 
         public string InstancesText
@@ -72,7 +72,7 @@ namespace VladTools.UI
             get { return Instances > 0 ? Instances.ToString() : "—"; }
         }
 
-        /// <summary>Галочка «переименовать эту строку».</summary>
+        /// <summary>The "rename this row" check box.</summary>
         public bool IsSelected
         {
             get { return _isSelected; }
@@ -87,8 +87,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Имя, которое получится после переименования. Правило подставляет его само,
-        /// но ячейка редактируется — правка руками важнее правила и им не затирается.
+        /// The name that will result from the rename. The rule fills it in by itself, but the cell is
+        /// editable — a hand edit outranks the rule and is never overwritten by it.
         /// </summary>
         public string NewName
         {
@@ -97,7 +97,7 @@ namespace VladTools.UI
             {
                 var text = value ?? string.Empty;
 
-                // Сюда пишет только редактор ячейки: значит, строку правили руками.
+                // Only the cell editor writes here: so the row was edited by hand.
                 IsManual = true;
 
                 if (_newName == text)
@@ -108,7 +108,7 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Имя в этой строке задано руками, а не правилом.</summary>
+        /// <summary>The name in this row was set by hand rather than by the rule.</summary>
         public bool IsManual { get; private set; }
 
         public string TrimmedNewName
@@ -142,13 +142,13 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Строка, которая действительно уйдёт в переименование.</summary>
+        /// <summary>A row that will actually be renamed.</summary>
         public bool WillRename
         {
             get { return _isSelected && _status == RenameStatus.Ready; }
         }
 
-        /// <summary>Подстановка имени правилом: в отличие от NewName не помечает строку как правленую.</summary>
+        /// <summary>Filling the name in from the rule: unlike NewName it does not mark the row as hand-edited.</summary>
         public void SetPreview(string name)
         {
             var text = name ?? string.Empty;
@@ -159,7 +159,7 @@ namespace VladTools.UI
             Raise(nameof(NewName));
         }
 
-        /// <summary>Возвращает строку к исходному имени и снимает пометку о ручной правке.</summary>
+        /// <summary>Returns the row to its original name and clears the hand-edited flag.</summary>
         public void ResetPreview()
         {
             IsManual = false;

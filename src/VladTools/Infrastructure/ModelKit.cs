@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Одна найденная модель комплекта: чей раздел, что за модель и где нашлась.</summary>
+    /// <summary>One model found for the kit: whose discipline it is, which model, and where it was found.</summary>
     internal sealed class ModelKitHit
     {
         public ModelKitHit(string discipline, LinkEntry entry, string folder, bool isKnown)
@@ -19,35 +19,35 @@ namespace VladTools.Infrastructure
 
         public LinkEntry Entry { get; }
 
-        /// <summary>Имя папки, в которой модель лежит: «3.0_AR».</summary>
+        /// <summary>The name of the folder the model lies in: "3.0_AR".</summary>
         public string Folder { get; }
 
-        /// <summary>Модель уже в таблице связей или в проекте — предлагать её второй раз незачем.</summary>
+        /// <summary>The model is already in the link table or in the project — no point offering it twice.</summary>
         public bool IsKnown { get; }
     }
 
-    /// <summary>Итог обхода: что нашлось, сколько папок прочитано и что прочитать не удалось.</summary>
+    /// <summary>The result of the walk: what was found, how many folders were read, and what could not be.</summary>
     internal sealed class ModelKitScan
     {
         public List<ModelKitHit> Hits { get; } = new List<ModelKitHit>();
 
-        /// <summary>Папки, которые хранилище не отдало: обход из-за одной такой не прерывается.</summary>
+        /// <summary>Folders the store would not hand over: one of these does not abort the walk.</summary>
         public List<string> Failures { get; } = new List<string>();
 
-        /// <summary>Сколько папок прочитано — по нему видно, что обход шёл там, где ожидалось.</summary>
+        /// <summary>How many folders were read — it shows the walk went where it was expected to.</summary>
         public int Folders { get; set; }
 
-        /// <summary>Обход упёрся в предел по числу папок: показанное может быть неполным.</summary>
+        /// <summary>The walk hit the folder-count limit: what is shown may be incomplete.</summary>
         public bool IsTruncated { get; set; }
 
         /// <summary>
-        /// Папка, в которой обход в итоге и шёл. Может отличаться от заказанной: если в ней
-        /// папок разделов не нашлось, поиск поднимается на уровень выше — открытая модель
-        /// вполне может лежать в «01_Base Model» рядом с ними, а не над ними.
+        /// The folder the walk actually ran in. It may differ from the one asked for: if no discipline
+        /// folders were found in it, the search climbs a level up — the open model may well lie in
+        /// "01_Base Model" beside them rather than above them.
         /// </summary>
         public ModelFolder Root { get; set; }
 
-        /// <summary>Разделы, для которых не нашлось ни одной модели, — в порядке заказанного списка.</summary>
+        /// <summary>The disciplines no model was found for, in the order of the requested list.</summary>
         public IReadOnlyList<string> Missing(IEnumerable<string> asked)
         {
             var found = new HashSet<string>(Hits.Select(hit => hit.Discipline), StringComparer.OrdinalIgnoreCase);
@@ -57,45 +57,45 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
-    /// Подбор комплекта связей по номеру корпуса: «в модель корпуса B01 нужны АР, КР, ES, PS,
-    /// PT, OV и VK того же корпуса».
+    /// Assembling a link kit by building number: "the model of building B01 needs AR, KR, ES, PS,
+    /// PT, OV and VK of the same building".
     ///
-    /// Держится на том, как устроены папки проекта, и ни на чём больше: рядом лежат папки
-    /// разделов — <c>3.0_AR</c>, <c>4.2_KR</c>, <c>5.1_ES</c>, — а в имени каждой модели стоит
-    /// номер корпуса (<c>MK3-VSC-B01-AR</c>). Значит, комплект можно собрать самому: взять папки,
-    /// в имени которых код раздела стоит отдельным словом, и в каждой — модели с нужным корпусом.
+    /// It rests on how the project folders are laid out and on nothing else: the discipline folders lie
+    /// side by side — <c>3.0_AR</c>, <c>4.2_KR</c>, <c>5.1_ES</c> — and every model name carries the
+    /// building number (<c>MK3-VSC-B01-AR</c>). So the kit can assemble itself: take the folders whose
+    /// name carries a discipline code as a separate word, and in each of them the models of the right building.
     ///
-    /// Это эвристика того же уровня, что <see cref="FormulaParser"/> и <see cref="DisciplineCatalog"/>:
-    /// набор простых правил по токенам имени, а не разбор соглашения об именовании. Поэтому
-    /// найденное показывается таблицей до того, как что-то будет связано, а раздел, в котором
-    /// моделей оказалось несколько, отмечается без галочки — гадать тут нельзя.
+    /// This is a heuristic of the same level as <see cref="FormulaParser"/> and <see cref="DisciplineCatalog"/>:
+    /// a set of simple rules over name tokens, not a parser of a naming convention. That is why what was
+    /// found is shown in a table before anything is linked, and a discipline that turned up several
+    /// models is listed without a check mark — guessing is not allowed here.
     ///
-    /// Обход намеренно узкий: корень и папки разделов в нём, а не всё дерево проекта. Каждая
-    /// папка облака — это запрос по сети, и полный обход проекта с сотней папок означал бы
-    /// минуту ожидания вместо секунды.
+    /// The walk is deliberately narrow: the root and the discipline folders inside it, not the whole
+    /// project tree. Every cloud folder is a network request, and a full walk of a project with a
+    /// hundred folders would mean a minute of waiting instead of a second.
     /// </summary>
     internal static class ModelKit
     {
-        /// <summary>Номер корпуса в имени модели обычно третий: <c>MK3-VSC-B01-AR</c>.</summary>
+        /// <summary>The building number is usually the third piece of a model name: <c>MK3-VSC-B01-AR</c>.</summary>
         public const int DefaultBuildingToken = 3;
 
-        /// <summary>Сколько уровней вложенности проходить внутри папки раздела при «искать во вложенных».</summary>
+        /// <summary>How many nesting levels to walk inside a discipline folder when "search nested folders" is on.</summary>
         private const int InnerDepth = 2;
 
         /// <summary>
-        /// Предел на число прочитанных папок. Защита от промаха мимо корня: если корнем окажется
-        /// вершина проекта, обход не должен превратиться в получасовой опрос облака.
+        /// The limit on how many folders are read. A guard against missing the root: if the root turns
+        /// out to be the top of the project, the walk must not become a half-hour interrogation of the cloud.
         /// </summary>
         private const int FolderLimit = 60;
 
-        /// <summary>Сколько папок просмотреть на втором заходе, когда в корне разделов не нашлось.</summary>
+        /// <summary>How many folders to inspect on the second pass, when no disciplines were found in the root.</summary>
         private const int SecondPassLimit = 25;
 
         /// <summary>
-        /// Номер корпуса из имени модели: <paramref name="position"/>-й кусок имени, считая с единицы.
-        /// Имя дробится тем же разбором, что у <see cref="DisciplineCatalog"/>, поэтому дефисы,
-        /// подчёркивания и расширение уходят сами: <c>MK3-VSC-B01-AR.rvt</c> → третий кусок <c>B01</c>.
-        /// Кусков меньше — пустая строка: подставлять «какой-нибудь» нельзя, ошибка была бы тихой.
+        /// The building number from a model name: the <paramref name="position"/>-th piece of the name, counting from one.
+        /// The name is split by the same parser as in <see cref="DisciplineCatalog"/>, so hyphens,
+        /// underscores and the extension fall away by themselves: <c>MK3-VSC-B01-AR.rvt</c> → the third piece, <c>B01</c>.
+        /// With fewer pieces, an empty string: substituting "some piece or other" is not allowed, the error would be silent.
         /// </summary>
         public static string Building(string modelName, int position)
         {
@@ -105,12 +105,12 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Папка, с которой начинать поиск, по папке самой открытой модели: если та названа
-        /// разделом («3.0_AR»), искать надо уровнем выше — там, где стоят папки остальных
-        /// разделов; иначе — прямо в ней.
+        /// The folder to start the search from, derived from the open model's own folder: if that one is
+        /// named after a discipline ("3.0_AR"), the search must go a level up — where the other
+        /// disciplines' folders stand; otherwise, right inside it.
         ///
-        /// Стоит одного-двух запросов к облаку, поэтому зовётся один раз, при открытии окна,
-        /// и под курсором ожидания.
+        /// It costs one or two cloud requests, so it is called once, when the window opens, and under a
+        /// wait cursor.
         /// </summary>
         public static ModelFolder Root(ModelFolder folder, IReadOnlyList<string> disciplines)
         {
@@ -119,9 +119,9 @@ namespace VladTools.Infrastructure
 
             var named = ModelStore.WithCloudName(folder);
 
-            // Раздел ищется и по списку комплекта, и по общему списку кодов: папка может
-            // называться разделом, которого в комплекте нет («2.0_PZU»), — подниматься
-            // всё равно надо.
+            // The discipline is looked up in both the kit list and the general code list: a folder may
+            // be named after a discipline that is not in the kit ("2.0_PZU") — we still have to
+            // climb up in that case as well.
             var codes = (disciplines ?? DisciplineCatalog.KitDefaults).Concat(DisciplineCatalog.Defaults).ToList();
             if (DisciplineCatalog.Detect(named.Name, codes).Length == 0)
                 return named;
@@ -133,12 +133,12 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Не поднялись — ищем там, где стоим, а папку можно указать руками.
+                // We did not climb — we search where we stand, and the folder can be given by hand.
                 return named;
             }
         }
 
-        /// <summary>Куски имени без расширения — из них пользователь и выбирает номер корпуса.</summary>
+        /// <summary>The pieces of the name without the extension — the user picks the building number among them.</summary>
         public static IReadOnlyList<string> Tokens(string modelName)
         {
             var name = (modelName ?? string.Empty).Trim();
@@ -150,11 +150,11 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Собирает комплект: обходит папки разделов в <paramref name="root"/> и берёт из них
-        /// модели, в имени которых стоит <paramref name="building"/>.
+        /// Assembles the kit: walks the discipline folders in <paramref name="root"/> and takes from them
+        /// the models whose names carry <paramref name="building"/>.
         /// </summary>
-        /// <param name="deep">Заходить и во вложенные папки раздела («3.0_AR\Модели»).</param>
-        /// <param name="isKnown">Модель уже в таблице или в проекте — по ключу <see cref="LinkEntry.Key"/>.</param>
+        /// <param name="deep">Descend into nested discipline folders too ("3.0_AR\Models").</param>
+        /// <param name="isKnown">The model is already in the table or in the project — by the <see cref="LinkEntry.Key"/>.</param>
         public static ModelKitScan Find(
             ModelFolder root,
             string building,
@@ -176,10 +176,10 @@ namespace VladTools.Infrastructure
             var items = Read(current, scan);
             var folders = DisciplineFolders(items, codes);
 
-            // Папок разделов в заказанной папке нет — смотрим уровнем выше. Открытая модель
-            // не обязана лежать в папке своего раздела: она вполне может стоять в «01_Base
-            // Model» или «0.0_Federated Model», то есть рядом с папками разделов, а не в них.
-            // Один запрос, зато поиск не возвращает пустоту там, где всё на месте.
+            // There are no discipline folders in the requested folder — we look a level up. The open
+            // model need not lie in its own discipline folder: it may well sit in "01_Base Model" or
+            // "0.0_Federated Model", that is, beside the discipline folders rather than inside them.
+            // One request, and in exchange the search does not come back empty where everything is in place.
             if (folders.Count == 0)
             {
                 var above = Above(current, scan);
@@ -197,8 +197,8 @@ namespace VladTools.Infrastructure
                 }
             }
 
-            // Папки разделов бывают и уровнем ниже («03_Модели\3.0_AR»).
-            // Заход стоит запроса на папку, поэтому делается, только когда искать больше негде.
+            // Discipline folders are sometimes a level down too ("03_Models\3.0_AR").
+            // Descending costs a request per folder, so it is done only when there is nowhere else to look.
             if (folders.Count == 0)
             {
                 foreach (var item in items.Where(item => item.IsFolder).Take(SecondPassLimit))
@@ -210,8 +210,8 @@ namespace VladTools.Infrastructure
                 }
             }
 
-            // Модели, лежащие прямо в папке поиска, тоже считаются: раздел у них берётся
-            // из имени. Так комплект собирается и там, где папок разделов нет вовсе.
+            // Models lying directly in the search folder count too: their discipline is taken from the
+            // name. That is how the kit is assembled where there are no discipline folders at all.
             foreach (var item in items.Where(item => !item.IsFolder))
                 Take(scan, seen, item.Entry, DisciplineCatalog.Detect(item.Entry.Name, codes), current.Name, building, isKnown);
 
@@ -223,9 +223,9 @@ namespace VladTools.Infrastructure
             return scan;
         }
 
-        // ───────────────────────────── обход ─────────────────────────────
+        // ───────────────────────────── the walk ─────────────────────────────
 
-        /// <summary>Папка уровнем выше; не получилось — null и строка в непрочитанные.</summary>
+        /// <summary>The folder one level up; on failure, null plus a line among the unread ones.</summary>
         private static ModelFolder Above(ModelFolder folder, ModelKitScan scan)
         {
             try
@@ -236,12 +236,12 @@ namespace VladTools.Infrastructure
             }
             catch (Exception exception)
             {
-                scan.Failures.Add("папка выше " + folder.Display + " — " + LinkCatalog.Short(exception.Message));
+                scan.Failures.Add("the folder above " + folder.Display + " — " + LinkCatalog.Short(exception.Message));
                 return null;
             }
         }
 
-        /// <summary>Папки, чьё имя несёт код раздела отдельным словом: «3.0_AR» → AR.</summary>
+        /// <summary>Folders whose name carries a discipline code as a separate word: "3.0_AR" → AR.</summary>
         private static List<Tuple<ModelFolder, string>> DisciplineFolders(IEnumerable<StoreItem> items, IReadOnlyList<string> codes)
         {
             var folders = new List<Tuple<ModelFolder, string>>();
@@ -285,8 +285,8 @@ namespace VladTools.Infrastructure
                 if (depth <= 0)
                     continue;
 
-                // Вложенная папка чужого раздела внутри своей — не наше дело: её разберёт
-                // собственный проход по этому разделу, если он заказан.
+                // A nested folder of another discipline inside this one is not our business: its own
+                // pass over that discipline will handle it, if it was requested.
                 var inner = DisciplineCatalog.Detect(item.Name, codes);
                 if (inner.Length > 0 && !string.Equals(inner, code, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -295,7 +295,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Кладёт модель в итог, если у неё есть раздел и нужный номер корпуса в имени.</summary>
+        /// <summary>Puts a model into the result if it has a discipline and the right building number in its name.</summary>
         private static void Take(
             ModelKitScan scan,
             HashSet<string> seen,
@@ -332,8 +332,8 @@ namespace VladTools.Infrastructure
             }
             catch (Exception exception)
             {
-                // Одна непрочитанная папка не должна отменять весь комплект: остальные разделы
-                // соберутся, а про эту будет сказано отдельной строкой.
+                // A single unread folder must not cancel the whole kit: the other disciplines will
+                // still assemble, and this one gets a line of its own.
                 scan.Failures.Add(folder.Display + " — " + LinkCatalog.Short(exception.Message));
                 return new List<StoreItem>();
             }

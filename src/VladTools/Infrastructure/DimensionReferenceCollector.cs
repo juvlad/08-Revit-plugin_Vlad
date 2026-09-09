@@ -6,7 +6,7 @@ using VladTools.UI;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Итог сбора ссылок под одну нитку: либо готовый набор для <c>NewDimension</c>, либо причина отказа.</summary>
+    /// <summary>The result of collecting references for one chain: either a ready set for <c>NewDimension</c>, or the reason it failed.</summary>
     internal sealed class DimensionReferenceResult
     {
         private DimensionReferenceResult(ReferenceArray references, string failureReason, string warning)
@@ -20,9 +20,10 @@ namespace VladTools.Infrastructure
         public string FailureReason { get; }
 
         /// <summary>
-        /// Нитку построить удалось, но не полностью честно — например, угол стороны не нашёлся
-        /// и взята ближайшая грань. Пустая строка — всё в порядке. Уходит отдельным разделом
-        /// отчёта: молча отдать укороченную нитку хуже, чем не отдать её вовсе (см. CLAUDE.md).
+        /// The chain was built, but not entirely honestly — the corner of the side, say, was not
+        /// found and the nearest face was taken instead. An empty string means everything is fine.
+        /// This goes into a report section of its own: silently handing over a shortened chain is
+        /// worse than not handing one over at all (see CLAUDE.md).
         /// </summary>
         public string Warning { get; }
 
@@ -40,32 +41,34 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
-    /// Собирает <see cref="ReferenceArray"/> под нитку размеров по каталогу видов
-    /// (<see cref="DimensionChainKind"/>). Один экземпляр — на весь запуск команды: геометрия
-    /// стены читается один раз и кэшируется по <c>ElementId</c>, иначе на модели в сотни
-    /// помещений команда встанет.
+    /// Collects a <see cref="ReferenceArray"/> for a dimension chain, from the catalogue of chain
+    /// kinds (<see cref="DimensionChainKind"/>). One instance lives for the whole run of the
+    /// command: wall geometry is read once and cached by <c>ElementId</c>, otherwise the command
+    /// would grind to a halt on a model with hundreds of rooms.
     ///
-    /// Общий приём для всех видов: у стены (её solid-геометрии) собираются плоские грани,
-    /// нормаль которых параллельна направлению стороны. Для прямой стены это ровно её торцы
-    /// и грани откосов проёмов — вырезка проёма всегда добавляет пару таких граней (см. CLAUDE.md,
-    /// «Ключевые решения» — проверено разведкой этапа 0). Точки проецируются на ось стороны
-    /// и сортируются; дубликаты ближе 1 мм схлопываются.
+    /// The shared trick behind every kind: a wall's solid geometry is searched for the planar
+    /// faces whose normal is parallel to the side's direction. For a straight wall these are
+    /// exactly its ends and the jamb faces of its openings — cutting an opening always adds a pair
+    /// of such faces (see CLAUDE.md, "Key decisions" — confirmed by the stage-0 investigation). The
+    /// points are projected onto the side's axis and sorted; duplicates closer than 1 mm collapse
+    /// into one.
     /// </summary>
     internal sealed class DimensionReferenceCollector
     {
         private const double SameOffsetToleranceMm = 1.0;
         private const double JointToleranceMm = 5.0;
-        private const double NormalDotTolerance = 0.99; // ~8°, запас на неточности геометрии стены
-        private const double PerpendicularDotTolerance = 0.05; // ~87–93° считаются перпендикулярными
+        private const double NormalDotTolerance = 0.99; // ~8°, margin for wall-geometry inaccuracies
+        private const double PerpendicularDotTolerance = 0.05; // ~87–93° is treated as perpendicular
 
         /// <summary>
-        /// Насколько далеко от геометрического конца стороны ещё можно считать грань «углом».
-        /// Не ноль, потому что граница помещения не обязана лежать на грани стены: при
-        /// <c>SpatialElementBoundaryLocation.Center</c> она идёт по осевой, и грань примыкающей
-        /// стены отстоит от конца стороны на половину её толщины. Но и не бесконечность —
-        /// именно бесконечный поиск («возьми крайнюю грань, какая есть») и давал укороченную
-        /// нитку: у стены со скошенным торцом крайней гранью оказывался откос первого проёма
-        /// в полуметре от угла, и нитка начиналась от двери, а не от стены.
+        /// How far from the geometric end of a side a face can still count as a "corner". Not
+        /// zero, because a room boundary need not lie on a wall face: at
+        /// <c>SpatialElementBoundaryLocation.Center</c> it runs along the centreline, and the
+        /// adjoining wall's face sits half its thickness away from the end of the side. But not
+        /// infinite either — it was precisely an unbounded search ("take whatever end face there
+        /// is") that produced a shortened chain: on a wall with a mitred end, the nearest face
+        /// turned out to be the jamb of the first opening, half a metre from the corner, and the
+        /// chain started at the door rather than at the wall.
         /// </summary>
         private const double CornerWindowMm = 600.0;
 
@@ -85,10 +88,11 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Собирает ссылки для одной стороны. <paramref name="loopSides"/> — все стороны той же
-        /// петли того же помещения: угол нитки и нитка «Перегородки» ищутся по соседним сторонам.
-        /// <paramref name="includeAdjacentThickness"/> — захватывать ли крайними засечками обе
-        /// грани примыкающей стены, то есть показывать её толщину (см. <see cref="BuildCorners"/>).
+        /// Collects the references for one side. <paramref name="loopSides"/> is every side of the
+        /// same loop of the same room: the chain's corner and the "Partitions" chain are found
+        /// through the neighbouring sides. <paramref name="includeAdjacentThickness"/> says whether
+        /// the end ticks should pick up both faces of the adjoining wall, that is, show its
+        /// thickness (see <see cref="BuildCorners"/>).
         /// </summary>
         public DimensionReferenceResult Collect(
             RoomSide side,
@@ -97,10 +101,10 @@ namespace VladTools.Infrastructure
             bool includeAdjacentThickness)
         {
             if (side.IsCurved)
-                return DimensionReferenceResult.Fail("сторона криволинейна — авторазмеры её пропускают");
+                return DimensionReferenceResult.Fail("the side is curved — auto dimensions skip it");
 
             if (!side.HasWall)
-                return DimensionReferenceResult.Fail("на стороне нет ни одной стены");
+                return DimensionReferenceResult.Fail("the side has no wall at all");
 
             var corners = BuildCorners(side, loopSides, includeAdjacentThickness);
 
@@ -125,16 +129,16 @@ namespace VladTools.Infrastructure
                     return CollectCombined(side, loopSides, corners);
 
                 default:
-                    return DimensionReferenceResult.Fail("неизвестный вид нитки");
+                    return DimensionReferenceResult.Fail("unknown chain kind");
             }
         }
 
-        // ───────────────────────────── виды ниток ─────────────────────────────
+        // ───────────────────────────── chain kinds ─────────────────────────────
 
         private DimensionReferenceResult CollectWallFaces(RoomSide side, CornerSet corners)
         {
             if (side.WallJointOffsets.Count == 0)
-                return DimensionReferenceResult.Fail("сторона собрана из одной стены без стыков — нитка «Грани стен» тут не нужна");
+                return DimensionReferenceResult.Fail("the side is made of a single wall with no joints — the \"Wall faces\" chain is not needed here");
 
             var joints = corners.Interior(OwnWallHits(side))
                 .Where(hit => side.WallJointOffsets.Any(offset => Math.Abs(offset - hit.T) <= FeetOf(JointToleranceMm)))
@@ -150,8 +154,8 @@ namespace VladTools.Infrastructure
             if (centers.Count == 0)
             {
                 return DimensionReferenceResult.Fail(
-                    "у проёмов на этой стороне нет осевой плоскости (семейство её не публикует) — " +
-                    "нитка «Оси проёмов» недоступна");
+                    "the openings on this side have no centre plane (the family does not publish it) — " +
+                    "the \"Opening centres\" chain is unavailable");
             }
 
             return Build(Merge(corners.Hits, centers), corners);
@@ -162,20 +166,20 @@ namespace VladTools.Infrastructure
             var neighborHits = corners.Interior(NeighborPartitionHits(side, loopSides));
 
             if (neighborHits.Count == 0)
-                return DimensionReferenceResult.Fail("к этой стороне не примыкает ни одна перегородка");
+                return DimensionReferenceResult.Fail("no partition meets this side");
 
             return Build(Merge(corners.Hits, neighborHits), corners);
         }
 
         /// <summary>
-        /// «Всё вместе» — то, из чего состоит нитка кладочного плана: толщина примыкающей стены,
-        /// простенки, откосы проёмов и толщины примыкающих перегородок, всё на одной линии.
+        /// "All combined" — what a masonry-plan chain is made of: the thickness of the adjoining
+        /// wall, piers, opening jambs, and the thickness of the adjoining partitions, all on one line.
         ///
-        /// Осей проёмов здесь намеренно нет, хотя по имени вида их можно было бы ждать: ось
-        /// делит каждый проём пополам и добавляет засечку посреди каждой двери — на кладочном
-        /// плане такой засечки нет ни разу (сверено с образцом «Кладочный план. Фрагмент 2»),
-        /// а нитку она делает вдвое гуще и нечитаемой. Кому нужны оси — берёт отдельную
-        /// нитку «Оси проёмов» рядом.
+        /// Opening centres are deliberately absent here, even though the name might suggest
+        /// otherwise: a centre line splits every opening in half and adds a tick in the middle of
+        /// every door — a masonry plan never has such a tick (checked against the "Masonry plan.
+        /// Fragment 2" sample), and it would make the chain twice as dense and unreadable. Whoever
+        /// needs centres takes the separate "Opening centres" chain alongside this one.
         /// </summary>
         private DimensionReferenceResult CollectCombined(RoomSide side, IReadOnlyList<RoomSide> loopSides, CornerSet corners)
         {
@@ -186,33 +190,36 @@ namespace VladTools.Infrastructure
             var result = Merge(corners.Hits, corners.Interior(extra));
 
             if (Dedup(result).Count < 2)
-                return DimensionReferenceResult.Fail("на стороне нечего засекать — ни граней, ни проёмов, ни перегородок");
+                return DimensionReferenceResult.Fail("nothing to pick up on this side — no faces, no openings, no partitions");
 
             return Build(result, corners);
         }
 
-        // ───────────────────────────── углы стороны ─────────────────────────────
+        // ───────────────────────────── the corners of a side ─────────────────────────────
 
         /// <summary>
-        /// Две (или четыре — с толщинами) угловые точки стороны.
+        /// The two (or four — with thicknesses) corner points of a side.
         ///
-        /// Угол берётся **не** с торцевой грани самой стороны: у стены в реальном углу Revit
-        /// почти всегда строит скошенный (митрованный) торец, чтобы соседние стены сходились
-        /// без зазора, и нормаль такой грани уже не параллельна оси стороны — её не находит
-        /// <see cref="FaceHitsForWall"/> (см. допуск <see cref="NormalDotTolerance"/>).
-        /// Продольная грань соседней (перпендикулярной) стены, наоборот, не митруется никогда —
-        /// это плоская грань на всю длину стены, поэтому угол ищется через неё.
+        /// A corner is taken **not** from the end face of the side's own wall: at a real corner
+        /// Revit almost always builds a mitred end so that the neighbouring walls meet without a
+        /// gap, and such a face's normal is no longer parallel to the side's axis — <see
+        /// cref="FaceHitsForWall"/> will not find it (see the <see cref="NormalDotTolerance"/>
+        /// tolerance). The longitudinal face of the neighbouring (perpendicular) wall, on the other
+        /// hand, is never mitred — it is a flat face running the wall's whole length, so the corner
+        /// is found through it instead.
         ///
-        /// Когда <paramref name="includeThickness"/> включён, с каждого конца берётся не одна
-        /// грань соседней стены, а обе — ближняя (собственно угол) и дальняя, за углом. Первым
-        /// и последним звеном нитки тогда становится толщина примыкающей стены: ровно так
-        /// устроена каждая нитка на кладочном плане («120 | 3775 | 120»), и ровно этого не
-        /// хватало — толщина появлялась то с одной стороны, то ни с одной, в зависимости от
-        /// того, попал ли торец своей стены под допуск нормали.
+        /// When <paramref name="includeThickness"/> is on, each end takes not one face of the
+        /// neighbouring wall but two — the near one (the corner itself) and the far one, beyond the
+        /// corner. The first and last link of the chain then becomes the adjoining wall's
+        /// thickness: that is exactly how every chain on a masonry plan is built ("120 | 3775 |
+        /// 120"), and that was exactly what was missing — the thickness would show up on one side
+        /// or on neither, depending on whether the own wall's end happened to fall within the
+        /// normal tolerance.
         ///
-        /// Дальняя грань берётся только если она лежит **за** углом, вне пролёта стороны:
-        /// во внутреннем (вогнутом) углу обе грани соседа стоят внутри пролёта, и там толщина
-        /// не звено нитки, а обычная перегородка — её найдёт <see cref="NeighborPartitionHits"/>.
+        /// The far face is taken only if it lies **beyond** the corner, outside the span of the
+        /// side: at an internal (concave) corner both of the neighbour's faces sit inside the span,
+        /// and there the thickness is not a chain link but an ordinary partition — <see
+        /// cref="NeighborPartitionHits"/> will find that instead.
         /// </summary>
         private CornerSet BuildCorners(RoomSide side, IReadOnlyList<RoomSide> loopSides, bool includeThickness)
         {
@@ -241,23 +248,24 @@ namespace VladTools.Infrastructure
 
             var approximate = new List<string>();
             if (start.IsApproximate)
-                approximate.Add("начало");
+                approximate.Add("start");
             if (end.IsApproximate)
-                approximate.Add("конец");
+                approximate.Add("end");
 
             if (approximate.Count > 0)
             {
-                set.Warning = "не нашёлся угол стороны (" + string.Join(" и ", approximate) + ") — " +
-                              "нитка построена от ближайшей грани, проверьте её вручную";
+                set.Warning = "the corner of the side was not found (" + string.Join(" and ", approximate) + ") — " +
+                              "the chain was built from the nearest face, check it by hand";
             }
 
             return set;
         }
 
         /// <summary>
-        /// Угол одного конца стороны: ближняя грань (сам угол) и, если просили и она есть,
-        /// дальняя за углом (даёт толщину примыкающей стены). Порядок поиска — от надёжного
-        /// к запасному, и последняя ступень честно помечается как приблизительная.
+        /// The corner of one end of a side: the near face (the corner itself) and, if asked for and
+        /// available, the far one beyond the corner (gives the thickness of the adjoining wall).
+        /// The search order goes from reliable to fallback, and the last resort is honestly marked
+        /// as approximate.
         /// </summary>
         private EndCorner FindEndCorner(
             RoomSide side,
@@ -283,7 +291,7 @@ namespace VladTools.Infrastructure
 
             if (inner != null && includeThickness)
             {
-                // «За углом» — наружу от пролёта стороны: для начала это меньшие T, для конца большие.
+                // "Beyond the corner" — outward from the span of the side: smaller T for the start, larger T for the end.
                 var beyond = candidates
                     .Where(hit => previous ? hit.T < inner.T - margin : hit.T > inner.T + margin)
                     .Where(hit => Math.Abs(hit.T - inner.T) <= window)
@@ -297,15 +305,16 @@ namespace VladTools.Infrastructure
             if (inner != null)
                 return new EndCorner { Inner = inner, Outer = outer };
 
-            // Соседа нет (граница помещения без стены, залом не на 90°) или его грани не читаются —
-            // пробуем торец собственной стены, но только если он и правда стоит у конца стороны.
+            // No neighbour (a room boundary with no wall, a kink that is not 90°) or its faces
+            // cannot be read — we try the own wall's end, but only if it really does sit at the
+            // end of the side.
             inner = Nearest(own, target, window, previous);
             if (inner != null)
                 return new EndCorner { Inner = inner };
 
-            // Ни того, ни другого: сторона начинается посреди стены (коридор за разделителем
-            // помещений) или торец скошен и не читается. Ссылки в этой точке не существует —
-            // берём крайнюю доступную грань, но помечаем нитку как приблизительную.
+            // Neither one: the side starts in the middle of a wall (a corridor beyond a room
+            // separator) or the end is mitred and unreadable. No reference exists at this point —
+            // we take the nearest face available, but mark the chain as approximate.
             if (own.Count == 0)
                 return new EndCorner();
 
@@ -317,13 +326,14 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Ближайшая к <paramref name="target"/> точка, но не дальше <paramref name="window"/> от неё.
+        /// The point nearest to <paramref name="target"/>, but no farther than
+        /// <paramref name="window"/> from it.
         ///
-        /// При равном расстоянии берётся та, что лежит внутрь пролёта стороны, а не наружу. Ничья
-        /// тут не выдумана: при <c>SpatialElementBoundaryLocation.Center</c> граница идёт по осевой,
-        /// и обе грани примыкающей стены отстоят от конца стороны ровно на половину её толщины —
-        /// без явного правила выбор зависел бы от порядка граней в геометрии, то есть был бы разным
-        /// на одинаковых углах.
+        /// On a tie, the one lying inward of the side's span wins over the one lying outward. The
+        /// tie is not contrived: at <c>SpatialElementBoundaryLocation.Center</c> the boundary runs
+        /// along the centreline, and both faces of the adjoining wall sit exactly half its
+        /// thickness from the end of the side — without an explicit rule the choice would depend
+        /// on the order of faces in the geometry, that is, it would differ between identical corners.
         /// </summary>
         private static Hit Nearest(List<Hit> hits, double target, double window, bool previous)
         {
@@ -334,22 +344,22 @@ namespace VladTools.Infrastructure
                 .FirstOrDefault();
         }
 
-        /// <summary>Ближняя и дальняя грани одного конца стороны — итог работы <see cref="FindEndCorner"/>.</summary>
+        /// <summary>The near and far faces of one end of a side — the result of <see cref="FindEndCorner"/>.</summary>
         private sealed class EndCorner
         {
-            /// <summary>Грань в самом углу — та, от которой считается длина стороны.</summary>
+            /// <summary>The face right at the corner — the one the side's length is measured from.</summary>
             public Hit Inner;
 
-            /// <summary>Грань за углом (даёт толщину примыкающей стены); null — не просили или её нет.</summary>
+            /// <summary>The face beyond the corner (gives the adjoining wall's thickness); null if not asked for or absent.</summary>
             public Hit Outer;
 
-            /// <summary>Угол не найден по геометрии, взята ближайшая грань — нитка требует проверки.</summary>
+            /// <summary>The corner was not found by geometry, the nearest face was taken — the chain needs checking.</summary>
             public bool IsApproximate;
         }
 
         /// <summary>
-        /// Угловые точки стороны и диапазон между ними — всё, что нужно остальным видам ниток,
-        /// чтобы не пересобирать углы по второму разу и не спорить с ними о границах.
+        /// A side's corner points and the range between them — everything the other chain kinds
+        /// need so as not to rebuild the corners a second time and argue with them about boundaries.
         /// </summary>
         private sealed class CornerSet
         {
@@ -360,15 +370,17 @@ namespace VladTools.Infrastructure
             public string Warning;
 
             /// <summary>
-            /// Оставляет только точки строго между двумя угловыми — то, что вне этого диапазона,
-            /// не проём и не стык, а сама угловая грань (или грань примыкающей стены за углом),
-            /// просто найденная вторично через геометрию стороны.
+            /// Leaves only the points strictly between the two corner ones — anything outside this
+            /// range is not an opening and not a joint, but the corner face itself (or the
+            /// adjoining wall's face beyond the corner), simply found a second time through the
+            /// side's own geometry.
             ///
-            /// Без отсева стена, не идеально подрезанная в углу, давала свою угловую грань ещё
-            /// раз, вдобавок к настоящему углу от соседней стены, — и рядом с углом появлялась
-            /// лишняя короткая засечка примерно в толщину соседней стены. Допуск тот же, каким
-            /// <see cref="Dedup"/> схлопывает совпадающие точки, чтобы граница диапазона не резала
-            /// точку, которая и так по сути совпадает с угловой.
+            /// Without this filter, a wall not perfectly trimmed at the corner would give its own
+            /// corner face a second time, on top of the real corner from the neighbouring wall —
+            /// and a short spurious tick, roughly the neighbouring wall's thickness, would appear
+            /// next to the corner. The tolerance is the same one <see cref="Dedup"/> uses to
+            /// collapse matching points, so the edge of the range does not cut off a point that
+            /// essentially coincides with the corner anyway.
             /// </summary>
             public List<Hit> Interior(List<Hit> hits)
             {
@@ -380,9 +392,9 @@ namespace VladTools.Infrastructure
             }
         }
 
-        // ───────────────────────────── общие помощники ─────────────────────────────
+        // ───────────────────────────── shared helpers ─────────────────────────────
 
-        /// <summary>Грани собственных стен стороны, чья нормаль параллельна оси стороны — торцы и откосы проёмов разом.</summary>
+        /// <summary>The faces of a side's own walls whose normal is parallel to the side's axis — ends and jambs at once.</summary>
         private List<Hit> OwnWallHits(RoomSide side)
         {
             var hits = new List<Hit>();
@@ -392,7 +404,7 @@ namespace VladTools.Infrastructure
             return hits;
         }
 
-        /// <summary>Осевые плоскости дверей и окон в стенах стороны — только для нитки «Оси проёмов».</summary>
+        /// <summary>The centre planes of doors and windows in a side's walls — only for the "Opening centres" chain.</summary>
         private List<Hit> OpeningCenterHits(RoomSide side)
         {
             var centers = new List<Hit>();
@@ -415,12 +427,12 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Перпендикулярные стороны той же петли, примыкающие слева/справа к нашей — то есть
-        /// перегородки, из-за которых граница делает заход внутрь помещения и обратно
-        /// (см. RoomSideBuilder: такой заход всегда рвёт слияние на отдельные стороны), а на
-        /// обычном прямоугольном углу — соседняя стена того же помещения. Их грани ищутся тем же
-        /// способом, что и свои, но нормаль проверяется относительно оси нашей стороны — у
-        /// перпендикулярной стены это как раз её продольные грани.
+        /// Perpendicular sides of the same loop meeting ours from the left or the right — that is,
+        /// partitions that make the boundary step into the room and back out (see
+        /// RoomSideBuilder: such a step always splits the merge into separate sides), or, at an
+        /// ordinary right-angle corner, the neighbouring wall of the same room. Their faces are
+        /// found the same way as the side's own, but the normal is checked against our side's
+        /// axis — for a perpendicular wall that is exactly its longitudinal faces.
         /// </summary>
         private List<Hit> NeighborPartitionHits(RoomSide side, IReadOnlyList<RoomSide> loopSides)
         {
@@ -440,19 +452,21 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Соседняя по петле сторона (в сторону начала или конца), способная дать угол:
-        /// не криволинейная, со своей стеной и перпендикулярная нашей.
+        /// The neighbouring side of the loop (towards the start or the end) able to give a corner:
+        /// not curved, with its own wall, and perpendicular to ours.
         ///
-        /// <paramref name="walk"/> разрешает шагать по петле дальше первого соседа. Это нужно
-        /// поиску угла: между двумя стенами угла нередко стоит короткий кусок границы без стены
-        /// (разделитель помещений, дверь в проёме без стены) или коллинеарное продолжение — и на
-        /// нём поиск раньше обрывался, а нитка уезжала на запасной вариант. Стороны, параллельные
-        /// нашей, при этом пропускаются как та же линия; первая же непараллельная и
-        /// неперпендикулярная (залом не на 90°) обрывает поиск — за ней угла уже нет.
+        /// <paramref name="walk"/> allows stepping past the first neighbour along the loop. The
+        /// corner search needs this: between the two walls of a corner there is often a short
+        /// stretch of boundary with no wall (a room separator, a door in an opening with no wall)
+        /// or a collinear continuation — and the search used to stop there, falling back to the
+        /// approximate case. Sides parallel to ours are skipped as the same line along the way; the
+        /// first one that is neither parallel nor perpendicular (a kink that is not 90°) stops the
+        /// search — there is no corner past it.
         ///
-        /// Поиску перегородок шагать, наоборот, **нельзя**: угол проверяется ещё и по расстоянию
-        /// (см. <see cref="CornerWindowMm"/>), а засечка перегородки — нет, и дальняя стена,
-        /// спроецированная на нашу ось где-то посреди пролёта, стала бы засечкой на пустом месте.
+        /// The partition search, in contrast, **must not** walk: a corner is also checked by
+        /// distance (see <see cref="CornerWindowMm"/>), but a partition's tick is not, and a far
+        /// wall projected onto our axis somewhere in the middle of the span would become a tick out
+        /// of nowhere.
         /// </summary>
         private static RoomSide LoopNeighbor(RoomSide side, IReadOnlyList<RoomSide> loopSides, bool previous, bool walk)
         {
@@ -476,23 +490,23 @@ namespace VladTools.Infrastructure
                     return null;
 
                 if (neighbor.IsCurved)
-                    return null; // за скруглением угла нет
+                    return null; // no corner past a rounded one
 
                 var dot = Math.Abs(neighbor.Direction.DotProduct(side.Direction));
 
                 if (dot <= PerpendicularDotTolerance)
-                    return neighbor.HasWall ? neighbor : null; // перпендикулярна — это и есть угол
+                    return neighbor.HasWall ? neighbor : null; // perpendicular — this is the corner
 
                 if (dot >= NormalDotTolerance)
-                    continue; // продолжение той же линии (вставка без стены) — смотрим дальше
+                    continue; // a continuation of the same line (an insert with no wall) — keep looking
 
-                return null; // залом не на 90° — угла тут нет
+                return null; // a kink that is not 90° — no corner here
             }
 
             return null;
         }
 
-        /// <summary>Объединяет несколько списков в один — просто чтобы не плодить AddRange на местах вызова.</summary>
+        /// <summary>Merges several lists into one — just so AddRange does not have to be repeated at every call site.</summary>
         private static List<Hit> Merge(List<Hit> first, List<Hit> second)
         {
             var result = new List<Hit>(first);
@@ -541,7 +555,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // падаем ниже, на bounding box
+                // fall through to the bounding box below
             }
 
             try
@@ -552,7 +566,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // не смогли — просто нет точки
+                // could not — simply no point
             }
 
             return null;
@@ -579,7 +593,7 @@ namespace VladTools.Infrastructure
         {
             try
             {
-                // Без общих (Shared) — их считает хозяин исходной модели; без связей — только открытый документ.
+                // No shared inserts — those belong to the host of the source model; no links — the open document only.
                 return wall.FindInserts(true, false, true, false) ?? new List<ElementId>();
             }
             catch (Exception)
@@ -710,13 +724,13 @@ namespace VladTools.Infrastructure
             }
         }
 
-        // ───────────────────────────── сборка результата ─────────────────────────────
+        // ───────────────────────────── building the result ─────────────────────────────
 
         private static DimensionReferenceResult Build(List<Hit> hits, CornerSet corners)
         {
             var distinct = Dedup(hits);
             if (distinct.Count < 2)
-                return DimensionReferenceResult.Fail("засекать нечего — меньше двух точек на нитку");
+                return DimensionReferenceResult.Fail("nothing to pick up — fewer than two points for a chain");
 
             var array = new ReferenceArray();
             foreach (var hit in distinct)
@@ -725,7 +739,7 @@ namespace VladTools.Infrastructure
             return DimensionReferenceResult.Ok(array, corners.Warning);
         }
 
-        /// <summary>Сортирует по оси стороны и схлопывает точки ближе 1 мм — та же грань, найденная дважды.</summary>
+        /// <summary>Sorts along the side's axis and collapses points closer than 1 mm — the same face, found twice.</summary>
         private static List<Hit> Dedup(List<Hit> hits)
         {
             var tolerance = FeetOf(SameOffsetToleranceMm);

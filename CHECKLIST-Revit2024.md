@@ -1,35 +1,35 @@
-# Чек-лист: поддержка Revit 2022 + Revit 2024
+# Checklist: supporting Revit 2022 + Revit 2024
 
-Задание для исполнителя (модель Sonnet). Цель: одна кодовая база собирается и работает
-и в **Revit 2022**, и в **Revit 2024**.
+A task for the executor (the Sonnet model). Goal: one codebase builds and works on both
+**Revit 2022** and **Revit 2024**.
 
-Всё, что здесь написано, **проверено на реальных сборках** `RevitAPI.dll` 22.0.0.0 и 24.3.40.0,
-установленных на этой машине (рефлексия по обеим сборкам + пробная компиляция).
-Не переспрашивай и не перепроверяй факты из раздела «Что уже выяснено» — они получены измерением,
-а не догадкой. Проверять нужно **свои правки**, а не эти вводные.
+Everything written here has **been verified against the real `RevitAPI.dll` builds** 22.0.0.0 and
+24.3.40.0, installed on this machine (reflection over both assemblies + a trial compile). Do not
+re-ask or re-verify the facts in the "Already established" section — they came from measurement,
+not a guess. What needs checking is **your own edits**, not these inputs.
 
 ---
 
-## Что уже выяснено (исходные данные, не требуют проверки)
+## Already established (given facts, no need to verify)
 
-### Главное
+### The main point
 
-**Текущий код компилируется против Revit 2024 API без единой ошибки.**
-Пробная сборка `dotnet build -p:RevitVersion=2024` даёт: **0 ошибок, 13 предупреждений CS0618**
-(устаревшие API). То есть переезд — это не переписывание, а аккуратная зачистка.
+**The current code compiles against the Revit 2024 API without a single error.**
+A trial build with `dotnet build -p:RevitVersion=2024` gives: **0 errors, 13 CS0618 warnings**
+(deprecated APIs). So the move is not a rewrite, just a careful cleanup.
 
-### Что совпадает и трогать не нужно
+### What is the same and needs no touching
 
-| Факт | Значение |
+| Fact | Value |
 | --- | --- |
-| .NET у Revit 2024 | тот же `net48` (`supportedRuntime v4.0` в `Revit.exe.config` обеих версий). **TFM менять не надо** |
-| `RevitAPI.dll` | **не подписана строгим именем** ни в 2022, ни в 2024 |
-| Формат `.addin` | одинаковый; `AddInId` может остаться прежним GUID — папки надстроек у версий разные |
-| Лента (`UIControlledApplication`, `RibbonPanel`, `PushButtonData`, `TaskDialog`, `MainWindowHandle`) | без изменений |
-| Перечисления `ImportPlacement`, `WorksetConfigurationOption`, `ViewDetailLevel` | состав совпадает |
-| `DisplayStyle` | в 2024 добавлено значение `Textures`; `Realistic` на месте — влияния нет |
+| Revit 2024's .NET | the same `net48` (`supportedRuntime v4.0` in `Revit.exe.config` for both versions). **No need to change the TFM** |
+| `RevitAPI.dll` | **not strong-named** in either 2022 or 2024 |
+| `.addin` format | identical; `AddInId` can keep the same GUID — the add-ins folders differ by version |
+| The ribbon (`UIControlledApplication`, `RibbonPanel`, `PushButtonData`, `TaskDialog`, `MainWindowHandle`) | unchanged |
+| The `ImportPlacement`, `WorksetConfigurationOption`, `ViewDetailLevel` enums | the same members |
+| `DisplayStyle` | 2024 adds a `Textures` value; `Realistic` is still there — no impact |
 
-Проверены поимённо и **существуют в обеих версиях, не устарели** (правок не требуют):
+Checked by name and **present in both versions, not deprecated** (need no edits):
 `Category.GetCategory`, `Parameter.Set(int)`, `RevitLinkType.Create`/`LoadFrom`,
 `RevitLinkInstance.Create`, `RevitLinkOptions`, `WorksharingUtils.GetUserWorksetInfo`,
 `ModelPathUtils.ConvertCloudGUIDsToCloudPath(string, Guid, Guid)`, `Dimension.FamilyLabel`,
@@ -39,352 +39,355 @@
 `FamilyManager.RemoveParameter`, `SharedParameterElement.GuidValue`,
 `WorksetTable.GetActiveWorksetId`, `ControlledApplication.VersionNumber`.
 
-### Что устарело в 2024 (13 предупреждений CS0618)
+### What is deprecated in 2024 (13 CS0618 warnings)
 
-| API | Где | Замена, существующая **и в 2022, и в 2024** |
+| API | Where | Replacement that exists **in both 2022 and 2024** |
 | --- | --- | --- |
-| `ElementId.IntegerValue` | `CleanupCommand.cs:615,619,628,632`; `RenameNestedFamiliesCommand.cs:140 (×2),146` | нет прямой — обходится без неё (см. шаги 3.1–3.2) |
-| `Definition.ParameterGroup` | `DeleteProjectParametersCommand.cs:204,208`; `DeleteSharedParametersCommand.cs:155,159` | `Definition.GetGroupTypeId()` — **есть в 2022** |
-| `LabelUtils.GetLabelFor(BuiltInParameterGroup)` | `DeleteProjectParametersCommand.cs:204`; `DeleteSharedParametersCommand.cs:155` | `LabelUtils.GetLabelForGroup(ForgeTypeId)` — **есть в 2022** |
+| `ElementId.IntegerValue` | `CleanupCommand.cs:615,619,628,632`; `RenameNestedFamiliesCommand.cs:140 (×2),146` | no direct one — worked around instead (see steps 3.1–3.2) |
+| `Definition.ParameterGroup` | `DeleteProjectParametersCommand.cs:204,208`; `DeleteSharedParametersCommand.cs:155,159` | `Definition.GetGroupTypeId()` — **present in 2022** |
+| `LabelUtils.GetLabelFor(BuiltInParameterGroup)` | `DeleteProjectParametersCommand.cs:204`; `DeleteSharedParametersCommand.cs:155` | `LabelUtils.GetLabelForGroup(ForgeTypeId)` — **present in 2022** |
 
-### Что есть только в одной версии
+### What exists in only one version
 
-| API | 2022 | 2024 | Вывод |
+| API | 2022 | 2024 | Conclusion |
 | --- | --- | --- | --- |
-| `ElementId.Value` | нет | есть | **использовать нельзя** |
-| `ElementId(long)` | нет | есть | использовать нельзя |
-| `Document.GetAllUnusedElements` / `GetUnusedElements` | нет | есть | использовать нельзя (см. блок 4) |
+| `ElementId.Value` | no | yes | **must not be used** |
+| `ElementId(long)` | no | yes | must not be used |
+| `Document.GetAllUnusedElements` / `GetUnusedElements` | no | yes | must not be used (see block 4) |
 
-Проверено отдельно: `ElementId.ToString()` переопределён в обеих версиях и возвращает
-голое число — `new ElementId(12345).ToString() == "12345"`. Это основание для шага 3.2.
+Checked separately: `ElementId.ToString()` is overridden in both versions and returns the bare
+number — `new ElementId(12345).ToString() == "12345"`. This is the basis for step 3.2.
 
-### Единственная настоящая ошибка времени выполнения
+### The one genuine runtime bug
 
 `Infrastructure/RevitServerClient.cs:52` — `private const string ServiceVersion = "2022";`
-подставляется в URL (`RevitServerClient.cs:83`):
-`http://<сервер>/RevitServerAdminRESTService2022/AdminRESTService.svc/...`
-На сервере Revit Server 2024 такого адреса нет — служба ответит **404**, и кнопка
-«Revit Server…» в «Link Manager» просто не покажет папки. Компилятор об этом молчит.
+is inserted into the URL (`RevitServerClient.cs:83`):
+`http://<server>/RevitServerAdminRESTService2022/AdminRESTService.svc/...`
+On a Revit Server 2024 that address does not exist — the service answers **404**, and the "Revit
+Server…" button in "Link Manager" simply shows no folders. The compiler says nothing about this.
 
-### SSONET (вход в Autodesk для BIM360)
+### SSONET (Autodesk sign-in for BIM360)
 
-Состав `Autodesk.Revit.AdWebServicesBase` между версиями изменился: в 2024 **пропали**
-`GetTokenExpiryDate`, `IsTokenExpired`, `RefreshToken`, `GetLoginCookie`, `GetServiceEntitlement`.
-Но `AutodeskSession` вызывает только `GetInstance`, `IsLoggedIn`, `GetLoginUserName`,
-`IsOAuth2TokenExpired`, `GetOAuth2AccessToken`, `RefreshOAuth2Token` — **все шесть есть в обеих**.
-Правок не требуется; менять рефлексию на прямые ссылки нельзя (см. блок 4).
-
----
-
-## Стратегия
-
-**Две DLL из одного исходника — по одной на год.** Не одна общая DLL.
-
-Почему не одна: `RevitAPI.dll` не подписана, поэтому DLL, собранная под 2022, технически
-загрузится и в 2024, — но это незадокументированное поведение, и оно перестанет работать,
-как только в коде появится хоть один API, изменивший сигнатуру. Сборка под каждый год даёт
-доказательство от компилятора, а не надежду.
-
-**При этом `#if` в коде быть не должно.** Для всех устаревших API замена существует в обеих
-версиях, поэтому код остаётся один и тот же — различаются только ссылки на `RevitAPI.dll`
-и папка установки. Директива `REVIT2024` заводится в csproj **про запас**, но в этой задаче
-не применяется ни разу. Если тебе показалось, что `#if` нужен, — сначала перечитай таблицу
-замен выше: скорее всего, ты взял 2024-only API там, где есть общий.
+The makeup of `Autodesk.Revit.AdWebServicesBase` changed between versions: in 2024,
+`GetTokenExpiryDate`, `IsTokenExpired`, `RefreshToken`, `GetLoginCookie`, `GetServiceEntitlement`
+**are gone**. But `AutodeskSession` only calls `GetInstance`, `IsLoggedIn`, `GetLoginUserName`,
+`IsOAuth2TokenExpired`, `GetOAuth2AccessToken`, `RefreshOAuth2Token` — **all six exist in both**.
+No edit is needed; do not replace the reflection with direct references (see block 4).
 
 ---
 
-## Блок 1. Сборка на два года
+## Strategy
 
-### 1.1 `src/VladTools/VladTools.csproj` — сделать `RevitVersion` переопределяемым
+**Two DLLs from one source tree — one per year.** Not a single shared DLL.
 
-Сейчас: `<RevitVersion>2022</RevitVersion>` — жёстко.
-Нужно: значение по умолчанию, которое перебивается ключом `-p:RevitVersion=2024`.
+Why not one: `RevitAPI.dll` is unsigned, so a DLL built for 2022 will technically load in 2024 too
+— but that is undocumented behaviour, and it will stop working the moment even one API with a
+changed signature shows up in the code. Building separately for each year gives proof from the
+compiler, not hope.
+
+**At the same time, there must be no `#if` in the code.** A replacement exists in both versions for
+every deprecated API, so the code stays exactly the same — only the `RevitAPI.dll` references and
+the install folder differ. A `REVIT2024` directive is set up in the csproj **as a spare**, but it
+is not used even once in this task. If it seems like `#if` is needed, re-read the replacement table
+above first — most likely a 2024-only API was picked where a shared one exists.
+
+---
+
+## Block 1. Building for two years
+
+### 1.1 `src/VladTools/VladTools.csproj` — make `RevitVersion` overridable
+
+Right now: `<RevitVersion>2022</RevitVersion>` — hard-coded.
+Needed: a default value that is overridden by the `-p:RevitVersion=2024` switch.
 
 ```xml
 <RevitVersion Condition="'$(RevitVersion)' == ''">2022</RevitVersion>
 ```
 
-> Формально `-p:` и так перебивает свойство из файла (глобальные свойства MSBuild),
-> но `Condition` делает намерение явным и переживает вынос свойства в `Directory.Build.props`.
+> Formally, `-p:` already overrides a property from the file (an MSBuild global property), but the
+> `Condition` makes the intent explicit and survives moving the property into
+> `Directory.Build.props`.
 
-### 1.2 Развести выходные папки по годам — **обязательно**
+### 1.2 Split the output folders by year — **mandatory**
 
-Сейчас `AppendTargetFrameworkToOutputPath=false`, и обе сборки пишут в один
-`bin\Release` + `obj\Release`. Собрав 2024 после 2022, ты **молча положишь
-2024-ю DLL в папку надстроек Revit 2022** — Revit при запуске упадёт или не покажет вкладку.
-Это самая дорогая ошибка в задании; она уже воспроизводилась при подготовке чек-листа.
+Right now, `AppendTargetFrameworkToOutputPath=false`, and both builds write into a single
+`bin\Release` + `obj\Release`. Building 2024 after 2022, you would **silently put the 2024 DLL
+into Revit 2022's add-ins folder** — Revit would either crash on startup or never show the tab.
+This is the most expensive mistake in the task; it has already been reproduced while preparing
+this checklist.
 
-Добавить в тот же `PropertyGroup`:
+Add to the same `PropertyGroup`:
 
 ```xml
 <BaseOutputPath>bin\R$(RevitVersion)\</BaseOutputPath>
 <BaseIntermediateOutputPath>obj\R$(RevitVersion)\</BaseIntermediateOutputPath>
 ```
 
-> `BaseIntermediateOutputPath` должен стоять **до** импорта SDK, иначе `restore` его не увидит.
-> В SDK-стиле это значит: либо в `Directory.Build.props`, либо задавать ключом `-p:` из `build.ps1`.
-> Проверь, что после сборки обеих версий существуют и `bin\R2022\Release\VladTools.dll`,
-> и `bin\R2024\Release\VladTools.dll`, и что это **разные** файлы (сравни размер/хэш).
-> Если развести `obj` в csproj не выходит — не изобретай: разведи только `bin`,
-> а между годами в `build.ps1` вызывай очистку промежуточной папки.
+> `BaseIntermediateOutputPath` has to sit **before** the SDK import, otherwise `restore` will not
+> see it. In SDK-style projects that means either `Directory.Build.props`, or setting it via `-p:`
+> from `build.ps1`.
+> Check that after building both versions, both `bin\R2022\Release\VladTools.dll` and
+> `bin\R2024\Release\VladTools.dll` exist, and that they are **different** files (compare
+> size/hash). If splitting `obj` in the csproj does not work out, do not improvise: split only
+> `bin`, and clear the intermediate folder between years in `build.ps1`.
 
-### 1.3 Название продукта — по году
+### 1.3 Product name — by year
 
 ```xml
-<Product>VladTools для Revit $(RevitVersion)</Product>
+<Product>VladTools for Revit $(RevitVersion)</Product>
 ```
 
-### 1.4 Константа компиляции про запас
+### 1.4 A compile constant, as a spare
 
 ```xml
 <DefineConstants>$(DefineConstants);REVIT$(RevitVersion)</DefineConstants>
 ```
 
-В этой задаче **не использовать**. Заводится, чтобы следующий переезд (2025+, где `net48`
-уже не годится) не начинался с правки csproj.
+**Not used** in this task. It is set up so the next move (2025+, where `net48` no longer fits)
+does not have to start by editing the csproj.
 
-### 1.5 Проверка наличия Revit перед сборкой
+### 1.5 Check that Revit is present before building
 
-Если папки `C:\Program Files\Autodesk\Revit $(RevitVersion)` нет, MSBuild выдаст
-невнятное «metadata file not found». Добавить понятную ошибку:
+If the `C:\Program Files\Autodesk\Revit $(RevitVersion)` folder does not exist, MSBuild produces a
+vague "metadata file not found". Add a clear error instead:
 
 ```xml
 <Target Name="CheckRevitDir" BeforeTargets="BeforeBuild">
   <Error Condition="!Exists('$(RevitDir)\RevitAPI.dll')"
-         Text="Revit $(RevitVersion) не найден в $(RevitDir). Соберите под установленную версию: -p:RevitVersion=2022" />
+         Text="Revit $(RevitVersion) was not found at $(RevitDir). Build for an installed version: -p:RevitVersion=2022" />
 </Target>
 ```
 
-### 1.6 `build.ps1` — собирать и ставить оба года
+### 1.6 `build.ps1` — build and install both years
 
-- Добавить параметр `[string[]]$RevitVersion = @('2022','2024')`.
-- Цикл по годам; для каждого — `dotnet build $project -c $Configuration -p:DeployToRevit=$deploy -p:RevitVersion=$v`.
-- Год, для которого Revit не установлен, **пропускать с предупреждением**, а не валить всю сборку:
-  проверять `Test-Path "C:\Program Files\Autodesk\Revit $v"`.
-- Итоговое сообщение — по годам: «Перезапустите Revit 2022 / Revit 2024».
-- Предупреждение про запущенный Revit оставить (Revit держит `VladTools.dll`).
-- Сохранить прежние сценарии вызова: `.\build.ps1`, `-Configuration Debug`, `-NoDeploy`
-  должны продолжать работать. Добавить `.\build.ps1 -RevitVersion 2024` для одного года.
+- Add a `[string[]]$RevitVersion = @('2022','2024')` parameter.
+- Loop over the years; for each — `dotnet build $project -c $Configuration -p:DeployToRevit=$deploy -p:RevitVersion=$v`.
+- A year with no Revit installed should be **skipped with a warning**, not fail the whole build:
+  check `Test-Path "C:\Program Files\Autodesk\Revit $v"`.
+- The final message — per year: "Restart Revit 2022 / Revit 2024".
+- Keep the warning about a running Revit (Revit holds `VladTools.dll` locked).
+- Keep the existing call patterns working: `.\build.ps1`, `-Configuration Debug`, `-NoDeploy`
+  should still work as before. Add `.\build.ps1 -RevitVersion 2024` for a single year.
 
-### 1.7 Установка `.addin`
+### 1.7 Installing the `.addin`
 
-`RevitAddinsDir` уже собран из `$(RevitVersion)` — убедись, что таргет `DeployToRevitAddins`
-после правок кладёт файлы именно в `%AppData%\Autodesk\Revit\Addins\2022\` и `...\2024\`
-соответственно, и что `VladTools.addin` копируется в **обе**. Сам файл манифеста
-не меняется и остаётся один на репозиторий.
+`RevitAddinsDir` is already built from `$(RevitVersion)` — confirm that after the edits the
+`DeployToRevitAddins` target puts the files into `%AppData%\Autodesk\Revit\Addins\2022\` and
+`...\2024\` respectively, and that `VladTools.addin` is copied into **both**. The manifest file
+itself is unchanged and remains a single one per repository.
 
 ---
 
-## Блок 2. Исправить Revit Server (единственная реальная поломка)
+## Block 2. Fixing Revit Server (the only real breakage)
 
 ### 2.1 `Infrastructure/RevitServerClient.cs`
 
-`ServiceVersion` из `const` сделать изменяемым статическим свойством со значением по умолчанию
-`"2022"` (чтобы поведение без инициализации не изменилось):
+Turn `ServiceVersion` from a `const` into a mutable static property with a default of `"2022"`
+(so that the un-initialised behaviour does not change):
 
 ```csharp
 /// <summary>
-/// Версия REST-службы Revit Server: её имя включает год (RevitServerAdminRESTService2024),
-/// и на чужой год сервер отвечает 404. Значение ставит App.OnStartup по версии
-/// запущенного Revit — здесь только запасное на случай, если надстройка не стартовала.
+/// The Revit Server REST service version: its name includes the year (RevitServerAdminRESTService2024),
+/// and the server answers 404 for the wrong year. App.OnStartup sets the value from the
+/// version of the running Revit — what is here is only a fallback, in case the add-in did not start.
 /// </summary>
 public static string ServiceVersion { get; set; } = "2022";
 ```
 
-Строку 83 (сборку URL) не трогать — она подхватит новое значение сама.
+Leave line 83 (building the URL) untouched — it will pick up the new value on its own.
 
-### 2.2 `App.cs` — задать версию при старте
+### 2.2 `App.cs` — set the version at startup
 
-В начале `OnStartup`, до создания панелей:
+At the start of `OnStartup`, before creating the panels:
 
 ```csharp
-// Имя REST-службы Revit Server включает год Revit; берём его у самого Revit,
-// чтобы одна и та же сборка не промахивалась мимо службы.
+// The Revit Server REST service name includes the Revit year; we take it from Revit itself,
+// so the same build does not miss the service.
 RevitServerClient.ServiceVersion = application.ControlledApplication.VersionNumber;
 ```
 
-`ControlledApplication.VersionNumber` возвращает `"2022"` / `"2024"` — проверено в обеих версиях.
+`ControlledApplication.VersionNumber` returns `"2022"` / `"2024"` — confirmed in both versions.
 
-### 2.3 Поправить комментарий
+### 2.3 Fix the comment
 
-XML-doc у `ServiceVersion` сейчас велит «при переезде поменять здесь». После правки это
-указание становится неверным — переписать (образец выше), а не оставлять рядом.
+The `ServiceVersion` XML doc currently says "change this on the move". After the fix, that
+instruction is wrong — rewrite it (see the example above), rather than leaving it next to the new code.
 
 ---
 
-## Блок 3. Убрать устаревшие API — без единого `#if`
+## Block 3. Removing deprecated APIs — with not a single `#if`
 
-Цель блока: **0 предупреждений CS0618** при сборке под 2024, при этом сборка под 2022
-продолжает давать 0 ошибок и 0 предупреждений.
+The goal of this block: **0 CS0618 warnings** when building for 2024, while the 2022 build still
+gives 0 errors and 0 warnings.
 
 ### 3.1 `Commands/RenameNestedFamiliesCommand.cs:137–147`
 
-`Dictionary<int, int>` с ключом `id.IntegerValue` → `Dictionary<ElementId, int>` с ключом `id`.
-`ElementId` реализует `Equals`/`GetHashCode` в обеих версиях, поэтому годится как ключ напрямую.
+`Dictionary<int, int>` keyed by `id.IntegerValue` → `Dictionary<ElementId, int>` keyed by `id`.
+`ElementId` implements `Equals`/`GetHashCode` in both versions, so it works as a key directly.
 
-Поправить сигнатуры `Bump` и `Count`, а также объявления словарей `bySymbol` / `byFamily`
-в вызывающем коде (найди их выше по файлу — они объявлены как `Dictionary<int, int>`).
+Fix the signatures of `Bump` and `Count`, and the `bySymbol` / `byFamily` dictionary declarations
+in the calling code (find them further up the file — they are declared as `Dictionary<int, int>`).
 
 ### 3.2 `Commands/CleanupCommand.cs:615, 619, 628, 632`
 
-`"id " + id.IntegerValue` → `"id " + id`, и `"id " + element.Id.IntegerValue` → `"id " + element.Id`.
+`"id " + id.IntegerValue` → `"id " + id`, and `"id " + element.Id.IntegerValue` → `"id " + element.Id`.
 
-Основание: `ElementId.ToString()` переопределён и возвращает голое число в обеих версиях
-(проверено: `new ElementId(12345).ToString() == "12345"`). Текст отчёта не меняется.
+Basis: `ElementId.ToString()` is overridden and returns the bare number in both versions
+(confirmed: `new ElementId(12345).ToString() == "12345"`). The report text does not change.
 
-После правки **прочитай обе перегрузки `SafeName` целиком** и убедись, что строка
-в отчёте по-прежнему выглядит как `id 123456`, а не `id Autodesk.Revit.DB.ElementId`.
+After the edit, **read both overloads of `SafeName` in full** and confirm the report line still
+reads `id 123456`, not `id Autodesk.Revit.DB.ElementId`.
 
-### 3.3 `GroupName` — в двух командах сразу
+### 3.3 `GroupName` — in two commands at once
 
-Файлы: `Commands/DeleteSharedParametersCommand.cs:148–160`
-и `Commands/DeleteProjectParametersCommand.cs:197–209`. Методы **побайтово одинаковые**.
+Files: `Commands/DeleteSharedParametersCommand.cs:148–160` and
+`Commands/DeleteProjectParametersCommand.cs:197–209`. The methods are **byte-for-byte identical**.
 
-Было:
+Before:
 
 ```csharp
 try { return LabelUtils.GetLabelFor(definition.ParameterGroup); }
 catch (Exception) { return definition.ParameterGroup.ToString(); }
 ```
 
-Стало (обе части существуют и в 2022, и в 2024):
+After (both halves exist in both 2022 and 2024):
 
 ```csharp
 try { return LabelUtils.GetLabelForGroup(definition.GetGroupTypeId()); }
 catch (Exception) { return string.Empty; }
 ```
 
-**Осторожно, две ловушки:**
+**Two traps, watch out:**
 
-1. `GetGroupTypeId()` у параметра без группы возвращает **пустой** `ForgeTypeId`, и
-   `GetLabelForGroup` на нём бросает исключение. Отсюда `try` остаётся обязательным.
-2. В запасной ветке **нельзя** возвращать `definition.ParameterGroup.ToString()` — это ровно
-   тот устаревший API, который мы убираем, и предупреждение никуда не денется.
-   Если хочется, чтобы в колонке было хоть что-то вместо пустоты, вернуть техническое имя:
+1. `GetGroupTypeId()` on a parameter with no group returns an **empty** `ForgeTypeId`, and
+   `GetLabelForGroup` throws on it. Hence the `try` stays mandatory.
+2. In the fallback branch, **do not** return `definition.ParameterGroup.ToString()` — that is
+   exactly the deprecated API being removed, and the warning would not go away.
+   If you want something rather than emptiness in the column, return the technical name instead:
    `var group = definition.GetGroupTypeId(); return group == null ? string.Empty : group.TypeId;`
-   — но тогда убедись, что колонка «Группа» не заполнилась строками вида
-   `autodesk.parameter.group:general-2.0.0` там, где раньше было русское название.
-   Пустая строка предпочтительнее машинного идентификатора.
+   — but then confirm the "Group" column is not filled with strings like
+   `autodesk.parameter.group:general-2.0.0` where a readable label used to sit.
+   An empty string is preferable to a machine identifier.
 
-Дублирование метода в двух командах **оставить как есть**: вынос в общий класс —
-отдельная задача, в этот чек-лист она не входит.
+Duplicating the method in two commands is **left as is**: extracting it into a shared class is a
+separate task, not part of this checklist.
 
-### 3.4 Проверка блока
+### 3.4 Checking the block
 
 ```powershell
 dotnet build "src\VladTools\VladTools.csproj" -c Release -p:DeployToRevit=false -p:RevitVersion=2022
 dotnet build "src\VladTools\VladTools.csproj" -c Release -p:DeployToRevit=false -p:RevitVersion=2024
 ```
 
-Обе команды: **Ошибок: 0, Предупреждений: 0**. Любое оставшееся CS0618 — незакрытый пункт.
+Both commands: **Errors: 0, Warnings: 0**. Any remaining CS0618 is an unfinished item.
 
 ---
 
-## Блок 4. Что НЕ трогать (защита от лишних правок)
+## Block 4. What NOT to touch (a guard against unnecessary edits)
 
-Эти места выглядят похожими на предыдущий блок, но менять их **нельзя**. Проверено поимённо.
+These spots look similar to the previous block, but they **must not** be changed. Checked by name.
 
-| Место | Почему не трогать |
+| Spot | Why not to touch it |
 | --- | --- |
-| `LinkManagerCommand.cs:198` — `parameter.Set(workset.IntegerValue)` | Это `WorksetId.IntegerValue`, а не `ElementId`. В 2024 **не устарел**, предупреждения не даёт. `WorksetId.Value` не существует **ни в одной** из версий — попытка «исправить по аналогии» сломает сборку |
-| `Create3DThumbnailCommand.cs:142` — `new ElementId(builtInCategory)` | Перегрузка `ElementId(BuiltInCategory)` в 2024 **не устарела**. Устарела только `ElementId(int)`, а её в коде нет |
-| `CleanupCommand` — ручной подсчёт неиспользуемых семейств | `Document.GetAllUnusedElements` есть **только в 2024**. Замена потребовала бы `#if` и изменила бы поведение (набор элементов у API шире, чем считает `UsedTypeIds`). Явно **вне задачи**, даже если в CLAUDE.md это упомянуто как желательное на будущее |
-| `Infrastructure/AutodeskSession.cs` — доступ рефлексией | Именно рефлексия и делает код совместимым: состав `AdWebServicesBase` между 2022 и 2024 изменился. Прямые ссылки на `SSONET.dll` привяжут сборку к одному году |
-| `ModelPathUtils.ConvertCloudGUIDsToCloudPath` | Перегрузка `(string, Guid, Guid)` одинакова в обеих версиях |
-| Тип SDK проекта / переход на XAML | Проект намеренно на `Microsoft.NET.Sdk`, окна собираются кодом. К совместимости отношения не имеет |
-| `TargetFramework` | Revit 2024 — это `net48`. Менять на `net8.0-windows` не нужно (это про 2025+) |
+| `LinkManagerCommand.cs:198` — `parameter.Set(workset.IntegerValue)` | This is `WorksetId.IntegerValue`, not `ElementId`'s. **Not deprecated** in 2024, gives no warning. `WorksetId.Value` does not exist **in either** version — trying to "fix by analogy" would break the build |
+| `Create3DThumbnailCommand.cs:142` — `new ElementId(builtInCategory)` | The `ElementId(BuiltInCategory)` overload is **not deprecated** in 2024. Only `ElementId(int)` is deprecated, and it is not in the code |
+| `CleanupCommand` — manually counting unused families | `Document.GetAllUnusedElements` exists **only in 2024**. Replacing it would require `#if` and would change the behaviour (the API's element set is broader than what `UsedTypeIds` counts). Clearly **out of scope**, even though CLAUDE.md mentions it as desirable for later |
+| `Infrastructure/AutodeskSession.cs` — reflection-based access | Reflection is exactly what keeps the code compatible: the makeup of `AdWebServicesBase` changed between 2022 and 2024. Direct references to `SSONET.dll` would tie the build to one year |
+| `ModelPathUtils.ConvertCloudGUIDsToCloudPath` | The `(string, Guid, Guid)` overload is the same in both versions |
+| The project's SDK type / a move to XAML | The project deliberately uses `Microsoft.NET.Sdk`, windows are built in code. Unrelated to compatibility |
+| `TargetFramework` | Revit 2024 is `net48`. No need to change it to `net8.0-windows` (that is about 2025+) |
 
 ---
 
-## Блок 5. Документация — обязательна в этой же сессии
+## Block 5. Documentation — mandatory in the same session
 
-Правило из CLAUDE.md: файл поддерживается в актуальном состоянии **до** отчёта о работе,
-устаревшее заменяется, а не дописывается рядом.
+The rule from CLAUDE.md: the file is kept up to date **before** reporting the work as done;
+what is outdated is replaced, not appended next to.
 
 ### 5.1 `CLAUDE.md`
 
-- **«Что это»** — «Надстройка для Autodesk Revit 2022» → «для Autodesk Revit 2022 и 2024».
-- **«Сборка и запуск»** — новые команды (`build.ps1` без ключа собирает оба года,
-  `-RevitVersion 2024` — один), новые пути вывода `bin\R2022` / `bin\R2024`,
-  требование «установлен Revit 2022 и/или 2024».
-- **«Перенос на другую версию Revit»** — раздел переписать целиком. Сейчас он описывает
-  переезд «одной строкой `<RevitVersion>`» и перечисляет `LabelUtils.GetLabelFor(ParameterGroup)`,
-  `new ElementId(BuiltInCategory)` и `ElementId.IntegerValue` как «проверить при переезде».
-  После работы: первые и третий пункт **уже сделаны**, второй проверен и безопасен;
-  вместо этого описать, как добавить третий год (`build.ps1` + проверка `ServiceVersion`),
-  и что для 2025+ дополнительно нужен `net8.0-windows` и там же придётся вернуться
-  к `ElementId.Value` через `#if`.
-- **«Ключевые решения»** — добавить два пункта:
-  - почему в коде нет ни одного `#if`: для каждого устаревшего API замена существует
-    и в 2022, и в 2024 (`GetGroupTypeId`, `GetLabelForGroup`, `ElementId` как ключ словаря,
-    `ElementId.ToString()`), а `ElementId.Value` и `GetAllUnusedElements` — только 2024,
-    и потому не используются;
-  - почему `RevitServerClient.ServiceVersion` теперь задаётся в рантайме из
-    `ControlledApplication.VersionNumber`, а не константой;
-  - **ловушка сборки**: без разведённых `bin`/`obj` по годам вторая сборка перезаписывает
-    первую и в папку надстроек Revit 2022 уезжает DLL, собранная под 2024.
+- **"What this is"** — "An add-in for Autodesk Revit 2022" → "for Autodesk Revit 2022 and 2024".
+- **"Build and run"** — the new commands (`build.ps1` with no flag builds both years,
+  `-RevitVersion 2024` builds one), the new output paths `bin\R2022` / `bin\R2024`,
+  the requirement "Revit 2022 and/or 2024 installed".
+- **"Porting to another Revit version"** — rewrite the whole section. Right now it describes the
+  move as "one line, `<RevitVersion>`" and lists `LabelUtils.GetLabelFor(ParameterGroup)`,
+  `new ElementId(BuiltInCategory)` and `ElementId.IntegerValue` as "check on the move". After this
+  work: the first and third points are **already done**, the second is checked and safe;
+  describe instead how to add a third year (`build.ps1` + checking `ServiceVersion`), and that
+  2025+ will additionally need `net8.0-windows` and will have to revisit `ElementId.Value`
+  through `#if`.
+- **"Key decisions"** — add two points:
+  - why there is not a single `#if` in the code: a replacement exists for every deprecated API in
+    both 2022 and 2024 (`GetGroupTypeId`, `GetLabelForGroup`, `ElementId` as a dictionary key,
+    `ElementId.ToString()`), while `ElementId.Value` and `GetAllUnusedElements` are 2024-only and
+    therefore unused;
+  - why `RevitServerClient.ServiceVersion` is now set at runtime from
+    `ControlledApplication.VersionNumber`, rather than being a constant;
+  - **the build trap**: without splitting `bin`/`obj` by year, the second build overwrites the
+    first, and the DLL built for 2024 ends up in Revit 2022's add-ins folder.
 
 ### 5.2 `README.md`
 
-Требования («Revit 2022 или 2024»), установка и сборка по годам. Описание кнопок
-не меняется — поведение прежнее.
+Requirements ("Revit 2022 or 2024"), install and build by year. The button descriptions do not
+change — the behaviour is the same as before.
 
-### 5.3 Заголовок csproj
+### 5.3 The csproj title
 
-`<Product>` уже правится в шаге 1.3 — сверь, что нигде больше не осталось строки
-«для Revit 2022» (кроме сгенерированных файлов в `obj\`, их править не нужно).
-
----
-
-## Блок 6. Проверка
-
-### 6.1 Компиляция (делает исполнитель)
-
-- [ ] `-p:RevitVersion=2022` → Ошибок: 0, Предупреждений: 0
-- [ ] `-p:RevitVersion=2024` → Ошибок: 0, Предупреждений: 0
-- [ ] `.\build.ps1 -NoDeploy` собирает **оба** года подряд без ошибок
-- [ ] `bin\R2022\Release\VladTools.dll` и `bin\R2024\Release\VladTools.dll` существуют
-      и **различаются** (сравнить `Get-FileHash`)
-- [ ] `.\build.ps1` кладёт в `%AppData%\Autodesk\Revit\Addins\2022\VladTools\`
-      и `...\Addins\2024\VladTools\` **разные** DLL, и в каждой папке-родителе лежит `VladTools.addin`
-
-### 6.2 Ручная проверка в Revit (делает пользователь — оформи как список для него)
-
-Исполнитель Revit не запускает. Подготовь пользователю готовый список, **по обеим версиям**:
-
-Семейства (открыть любой `.rfa`):
-- [ ] «3д миниатюра» — вид создаётся, соединители скрыты
-- [ ] «Удалить параметры» — окно открывается, **колонка «Группа» заполнена русскими названиями**
-      («Данные», «Размеры» и т. п.), а не пустая и не `autodesk.parameter.group:…`
-- [ ] «Добавить формулы» — формула применяется
-- [ ] «Переименовать вложенные» — переименование проходит, счётчик использований в колонке верный
-      (это проверка шага 3.1: словарь сменил тип ключа)
-
-Проект (открыть `.rvt`):
-- [ ] «Удалить общие параметры» — **колонка «Группа»** заполнена так же, как в семействах;
-      кнопка «Проверить семейства» отрабатывает
-- [ ] «Очистка» — счётчики находят элементы; в отчёте об ошибках элемент без имени
-      подписан как `id 123456`, а не типом (это проверка шага 3.2)
-- [ ] «Link Manager» → «Revit Server…» — **дерево папок открывается** (это проверка блока 2;
-      в 2024 до правки был бы 404)
-- [ ] «Link Manager» → «BIM360…» — список хабов открывается под вошедшим пользователем
-- [ ] Связь создаётся, ложится в заданный рабочий набор проекта
-
-### 6.3 Приоритет проверок
-
-Если времени мало, в первую очередь: **колонка «Группа»** (блок 3.3 — самое заметное
-пользователю изменение), **Revit Server в 2024** (блок 2 — единственная поломка) и
-**какая DLL попала в какую папку** (блок 1.2 — самая дорогая ошибка).
+`<Product>` is already fixed in step 1.3 — confirm no "for Revit 2022" string is left anywhere else
+(other than generated files under `obj\`, which do not need editing).
 
 ---
 
-## Порядок выполнения
+## Block 6. Verification
 
-1. Блок 1 (сборка) — иначе нечем проверять остальное.
-2. Блок 3 (устаревшие API) — тут же убедиться в 0 предупреждений на обеих версиях.
-3. Блок 2 (Revit Server) — правка мелкая, но её легко забыть: компилятор молчит.
-4. Блок 5 (документация).
-5. Блок 6.1 (проверка сборки) и подготовка списка 6.2 для пользователя.
+### 6.1 Compiling (done by the executor)
 
-Отчёт в конце: что сделано, вывод обеих сборок с числом ошибок и предупреждений,
-что осталось на ручную проверку в Revit.
+- [ ] `-p:RevitVersion=2022` → Errors: 0, Warnings: 0
+- [ ] `-p:RevitVersion=2024` → Errors: 0, Warnings: 0
+- [ ] `.\build.ps1 -NoDeploy` builds **both** years in a row with no errors
+- [ ] `bin\R2022\Release\VladTools.dll` and `bin\R2024\Release\VladTools.dll` exist and
+      **differ** (compare with `Get-FileHash`)
+- [ ] `.\build.ps1` puts **different** DLLs into `%AppData%\Autodesk\Revit\Addins\2022\VladTools\`
+      and `...\Addins\2024\VladTools\`, and `VladTools.addin` sits in each parent folder
+
+### 6.2 Manual verification in Revit (done by the user — prepare it as a list for them)
+
+The executor does not launch Revit. Prepare a ready checklist for the user, **for both versions**:
+
+Families (open any `.rfa`):
+- [ ] "3D Thumbnail" — the view is created, connectors are hidden
+- [ ] "Delete Parameters" — the window opens, **the "Group" column is filled with readable
+      labels** ("Data", "Dimensions", and the like), not empty and not `autodesk.parameter.group:…`
+- [ ] "Add Formulas" — a formula is applied
+- [ ] "Rename Nested" — renaming goes through, the usage-count column is correct
+      (this checks step 3.1: the dictionary's key type changed)
+
+Project (open a `.rvt`):
+- [ ] "Delete Shared Parameters" — the **"Group" column** is filled the same way as in families;
+      the "Scan Families" button runs through
+- [ ] "Cleanup" — the counters find elements; in the failure report an unnamed element is labelled
+      `id 123456`, not by its type (this checks step 3.2)
+- [ ] "Link Manager" → "Revit Server…" — **the folder tree opens** (this checks block 2;
+      before the fix, 2024 would have given a 404)
+- [ ] "Link Manager" → "BIM360…" — the hub list opens under the signed-in user
+- [ ] A link is created and lands in the requested project workset
+
+### 6.3 Priority of the checks
+
+If time is short, check first: **the "Group" column** (block 3.3 — the change most visible to the
+user), **Revit Server on 2024** (block 2 — the only real breakage), and **which DLL landed in
+which folder** (block 1.2 — the most expensive mistake).
+
+---
+
+## Order of work
+
+1. Block 1 (build) — otherwise there is nothing to check the rest with.
+2. Block 3 (deprecated APIs) — confirm 0 warnings on both versions right away.
+3. Block 2 (Revit Server) — a small fix, but easy to forget: the compiler says nothing about it.
+4. Block 5 (documentation).
+5. Block 6.1 (build verification) and preparing the 6.2 list for the user.
+
+Final report: what was done, the output of both builds with the error and warning counts,
+what is left for manual checking in Revit.

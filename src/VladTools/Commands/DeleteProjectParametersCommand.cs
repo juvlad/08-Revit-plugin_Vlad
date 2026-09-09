@@ -11,25 +11,25 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Удаляет из открытого проекта общие параметры — те, что отмечены галочкой в окне.
-    /// Показывает весь список общих параметров файла: и параметры проекта (привязанные
-    /// к категориям), и те, что приехали с загруженными семействами.
+    /// Deletes shared parameters from the open project — the ones checked in the window.
+    /// Shows the whole list of shared parameters in the file: both project parameters (bound to
+    /// categories) and the ones that arrived with loaded families.
     ///
-    /// Типовая работа: после стадии П в модели остаются сотни чужих параметров,
-    /// и их надо снести пачкой по общему началу имени.
+    /// A routine job: after the DD stage a model is left with hundreds of somebody else's
+    /// parameters, and they have to be swept away in a batch by a common name prefix.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class DeleteProjectParametersCommand : IExternalCommand
     {
-        private const string DialogTitle = "Удалить общие параметры проекта";
+        private const string DialogTitle = "Delete Project Shared Parameters";
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             var uidoc = commandData?.Application?.ActiveUIDocument;
             if (uidoc == null)
             {
-                message = "Нет активного документа.";
+                message = "There is no active document.";
                 return Result.Cancelled;
             }
 
@@ -37,8 +37,8 @@ namespace VladTools.Commands
             if (doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в проекте.\n" +
-                    "В редакторе семейств параметры удаляет кнопка «Удалить параметры».");
+                    "The command works only in a project.\n" +
+                    "In the family editor, parameters are deleted by the \"Delete Parameters\" button.");
                 return Result.Cancelled;
             }
 
@@ -48,13 +48,13 @@ namespace VladTools.Commands
 
                 if (rows.Count == 0)
                 {
-                    TaskDialog.Show(DialogTitle, "В этом проекте нет общих параметров.");
+                    TaskDialog.Show(DialogTitle, "This project has no shared parameters.");
                     return Result.Cancelled;
                 }
 
                 var families = EditableFamilies(doc);
 
-                // Сохранённую проверку применяем сразу: ради этого её и храним.
+                // The saved scan is applied right away — that is exactly what it is kept for.
                 var pending = ApplySavedScan(doc, families, rows);
 
                 var window = new DeleteProjectParametersWindow(
@@ -73,13 +73,13 @@ namespace VladTools.Commands
                 var failures = new List<string>();
                 var warnings = new WarningSuppressor();
 
-                using (var transaction = new Transaction(doc, "Удалить общие параметры проекта"))
+                using (var transaction = new Transaction(doc, "Delete project shared parameters"))
                 {
                     transaction.Start();
 
-                    // Удаление параметра тянет за собой предупреждения Revit (поля спецификаций,
-                    // фильтры видов). На сотне параметров модальные окна сорвали бы пакетную
-                    // работу, поэтому предупреждения гасятся и уходят в итоговый отчёт.
+                    // Deleting a parameter drags Revit warnings along (schedule fields, view
+                    // filters). On a hundred parameters, modal dialogs would wreck the batch job,
+                    // so the warnings are suppressed and go into the final report.
                     var options = transaction.GetFailureHandlingOptions();
                     options.SetFailuresPreprocessor(warnings);
                     transaction.SetFailureHandlingOptions(options);
@@ -115,8 +115,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Привязки параметров проекта, разложенные по Id самого параметра: по элементу
-        /// общего параметра узнать его категории напрямую нельзя, только через карту привязок.
+        /// Project parameter bindings, keyed by the parameter element's own id: a shared parameter
+        /// element cannot report its categories directly, only through the binding map.
         /// </summary>
         private static Dictionary<ElementId, ElementBinding> CollectBindings(Document doc)
         {
@@ -146,7 +146,7 @@ namespace VladTools.Commands
 
             return new ProjectParameterRow(
                 element.Id,
-                definition?.Name ?? "(без имени)",
+                definition?.Name ?? "(unnamed)",
                 GuidText(element),
                 BindingText(binding),
                 GroupName(definition),
@@ -169,9 +169,9 @@ namespace VladTools.Commands
         private static string BindingText(ElementBinding binding)
         {
             if (binding == null)
-                return "Нет привязки";
+                return "Not bound";
 
-            return binding is InstanceBinding ? "Экземпляр" : "Тип";
+            return binding is InstanceBinding ? "Instance" : "Type";
         }
 
         private static string CategoriesText(ElementBinding binding)
@@ -199,9 +199,9 @@ namespace VladTools.Commands
             if (definition == null)
                 return string.Empty;
 
-            // GetGroupTypeId вместо ParameterGroup: в Revit 2025 и сам BuiltInParameterGroup,
-            // и Definition.ParameterGroup убраны совсем. Новая пара есть уже в 2022,
-            // поэтому код остаётся общим для всех трёх лет.
+            // GetGroupTypeId instead of ParameterGroup: in Revit 2025 both BuiltInParameterGroup
+            // itself and Definition.ParameterGroup are gone entirely. The new pair already exists
+            // in 2022, so the code stays shared across all three years.
             ForgeTypeId group;
             try
             {
@@ -212,7 +212,7 @@ namespace VladTools.Commands
                 return string.Empty;
             }
 
-            // У параметра без группы ForgeTypeId пустой, а GetLabelForGroup на таком бросает.
+            // A parameter with no group has an empty ForgeTypeId, and GetLabelForGroup throws on it.
             if (group == null || string.IsNullOrEmpty(group.TypeId))
                 return string.Empty;
 
@@ -226,11 +226,11 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── проверка семейств ─────────────────────────────
+        // ───────────────────────────── the family scan ─────────────────────────────
 
         /// <summary>
-        /// Семейства, которые вообще можно открыть на редактирование: контекстные (в проекте)
-        /// и нередактируемые Revit не отдаёт, и спрашивать его об этом бесполезно.
+        /// Families that can be opened for editing at all: Revit will not hand over an in-place
+        /// family or a non-editable one, and there is no point asking it about those.
         /// </summary>
         private static List<Family> EditableFamilies(Document doc)
         {
@@ -243,8 +243,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Проставляет строкам то, что известно из сохранённой проверки, и возвращает,
-        /// сколько семейств она не покрывает — их и предложит открыть кнопка в окне.
+        /// Fills the rows with what the saved scan already knows, and returns how many families
+        /// it does not cover — those are what the button in the window will offer to open.
         /// </summary>
         private static int ApplySavedScan(
             Document doc,
@@ -276,10 +276,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Запись о семействе, которой ещё можно верить. Версия элемента у Revit меняется
-        /// на сохранении и синхронизации, а не на каждой правке, поэтому перезагруженное
-        /// в этом же сеансе семейство она не поймает — на такой случай в окне есть
-        /// «Проверить заново», которое сюда не заглядывает.
+        /// A family record that can still be trusted. Revit changes an element's version on save
+        /// and synchronisation, not on every edit, so it will not catch a family reloaded during
+        /// this same session — for that case the window has "Scan again", which never looks in here.
         /// </summary>
         private static FamilyLabelRecord Saved(IReadOnlyDictionary<string, FamilyLabelRecord> saved, Family family)
         {
@@ -294,15 +293,15 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Собирает GUID общих параметров, которыми помечены размеры загруженных семейств.
-        /// Другого пути нет: метка размера живёт только внутри документа семейства,
-        /// из проекта её не видно.
+        /// Gathers the GUIDs of the shared parameters that label dimensions in the loaded families.
+        /// There is no other way: a dimension label lives only inside the family document,
+        /// invisible from the project.
         ///
-        /// Открываются только семейства, которых нет в сохранённой проверке или у которых
-        /// сменилась версия; при <paramref name="force"/> — все подряд. Результат тут же
-        /// сохраняется, чтобы в следующий раз окно открылось уже с проверкой.
-        /// Семейство, которое открыть не удалось, уходит в список причин, не кэшируется
-        /// и не роняет проверку.
+        /// Only families missing from the saved scan or whose version has changed are opened;
+        /// with <paramref name="force"/>, every one of them. The result is saved right away, so
+        /// that next time the window opens already scanned.
+        /// A family that could not be opened goes into the list of reasons, is not cached and
+        /// does not bring the scan down.
         /// </summary>
         private static FamilyDimensionScan ScanDimensionLabels(Document doc, IReadOnlyList<Family> families, bool force)
         {
@@ -344,7 +343,7 @@ namespace VladTools.Commands
             return new FamilyDimensionScan(guids, opened, reused, failures);
         }
 
-        /// <summary>Открывает семейство и читает метки его размеров; не открылось — null и строка в отказы.</summary>
+        /// <summary>Opens a family and reads its dimension labels; on failure, null plus a line among the failures.</summary>
         private static FamilyLabelRecord Read(Family family, List<string> failures)
         {
             Document familyDoc = null;
@@ -363,8 +362,8 @@ namespace VladTools.Commands
             {
                 if (familyDoc != null)
                 {
-                    // EditFamily отдаёт независимую копию: её надо закрыть, иначе она
-                    // останется висеть в памяти до конца сеанса Revit.
+                    // EditFamily hands back an independent copy: it has to be closed, otherwise it
+                    // stays hanging in memory until the end of the Revit session.
                     try { familyDoc.Close(false); }
                     catch (Exception) { }
                 }
@@ -372,8 +371,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// GUID общих параметров, которыми помечены размеры документа.
-        /// <c>Dimension.FamilyLabel</c> у неразмечаемого размера бросает исключение вместо null.
+        /// The GUIDs of the shared parameters that label the document's dimensions.
+        /// <c>Dimension.FamilyLabel</c> throws instead of returning null on a dimension that cannot be labelled.
         /// </summary>
         private static List<string> CollectDimensionLabels(Document familyDoc)
         {
@@ -389,7 +388,7 @@ namespace VladTools.Commands
                 }
                 catch (Exception)
                 {
-                    // Размер, который пометить нельзя, метки и не несёт.
+                    // A dimension that cannot be labelled carries no label either.
                 }
             }
 
@@ -416,16 +415,16 @@ namespace VladTools.Commands
             }
             catch (Exception)
             {
-                return "(семейство без имени)";
+                return "(unnamed family)";
             }
         }
 
-        // ───────────────────────────── удаление ─────────────────────────────
+        // ───────────────────────────── deletion ─────────────────────────────
 
         /// <summary>
-        /// Удаляет параметры по одному: отказ на одном не должен срывать всю пачку.
-        /// Revit может унести несколько элементов за раз (параметр вместе со ссылками на него),
-        /// поэтому перед удалением проверяем, жив ли элемент ещё.
+        /// Deletes the parameters one by one: a failure on one must not wreck the whole batch.
+        /// Revit can take several elements away at once (a parameter together with what references
+        /// it), so before deleting we check whether the element is still alive.
         /// </summary>
         private static void Remove(
             Document doc,
@@ -448,7 +447,7 @@ namespace VladTools.Commands
                     if (removed != null && removed.Count > 0)
                         deleted.Add(row.Name);
                     else
-                        failures.Add(row.Name + " — Revit не отдал параметр на удаление");
+                        failures.Add(row.Name + " — Revit would not release the parameter for deletion");
                 }
                 catch (Exception exception)
                 {
@@ -463,27 +462,27 @@ namespace VladTools.Commands
             IReadOnlyList<string> warnings)
         {
             var text = deleted.Count > 0
-                ? "Удалено параметров: " + deleted.Count + "."
-                : "Ни один параметр не удалён.";
+                ? "Parameters deleted: " + deleted.Count + "."
+                : "No parameter was deleted.";
 
             if (failures.Count > 0)
             {
                 const int limit = 15;
-                text += "\n\nНе удалось удалить (" + failures.Count + "):\n• " +
+                text += "\n\nCould not be deleted (" + failures.Count + "):\n• " +
                         string.Join("\n• ", failures.Take(limit));
 
                 if (failures.Count > limit)
-                    text += "\n… и ещё " + (failures.Count - limit);
+                    text += "\n… and " + (failures.Count - limit) + " more";
             }
 
             if (warnings.Count > 0)
             {
                 const int limit = 5;
-                text += "\n\nПредупреждения Revit (" + warnings.Count + "):\n• " +
+                text += "\n\nRevit warnings (" + warnings.Count + "):\n• " +
                         string.Join("\n• ", warnings.Take(limit));
 
                 if (warnings.Count > limit)
-                    text += "\n… и ещё " + (warnings.Count - limit);
+                    text += "\n… and " + (warnings.Count - limit) + " more";
             }
 
             TaskDialog.Show(DialogTitle, text);

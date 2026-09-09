@@ -5,19 +5,19 @@ using System.Windows.Media;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Строка таблицы ниток в окне «Авторазмеры»: вид нитки, смещение от грани стены,
-    /// тип размера и состояние (годна ли нитка к расстановке — заполняется при «Расставить»
-    /// или при загрузке образца/шаблона).
+    /// A row of the chain table in the "Auto Dimensions" window: the chain kind, the offset from the
+    /// wall face, the dimension type and the state (whether the chain is fit to be placed — filled in
+    /// on "Place" or when a sample or template is loaded).
     ///
-    /// Ряды заполняются как разбором образца (<c>DimensionSampleReader</c>), так и руками
-    /// в самом окне — поэтому все поля читаются/пишутся свободно, без валидации на уровне
-    /// строки: проверка целиком лежит на окне (см. правило «пустое правило не выбирает всё»
-    /// в CLAUDE.md — здесь тот же принцип: строка не может незаметно стать «правильной»).
+    /// Rows are filled in both by sample parsing (<c>DimensionSampleReader</c>) and by hand in the
+    /// window itself — so every field is read and written freely, without validation at the row
+    /// level: validation belongs entirely to the window (see the "an empty rule does not select
+    /// everything" rule in CLAUDE.md — the same principle applies here: a row cannot quietly become "valid").
     ///
-    /// <see cref="StatusText"/>/<see cref="HasError"/> — это результат проверки строки окном
-    /// (смещение положительное, тип размера найден); <see cref="Note"/> — отдельная, не цветная
-    /// подсказка «откуда взялась строка» (например, из какого образцового размера), её незачем
-    /// стирать при каждой проверке.
+    /// <see cref="StatusText"/> and <see cref="HasError"/> hold the result of the window validating the
+    /// row (the offset is positive, the dimension type was found); <see cref="Note"/> is a separate,
+    /// uncoloured hint about where the row came from (which sample dimension, say), and there is no
+    /// reason to wipe it on every validation.
     /// </summary>
     internal sealed class DimensionChainRow : INotifyPropertyChanged
     {
@@ -31,7 +31,7 @@ namespace VladTools.UI
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        /// <summary>Галочка «использовать эту нитку при расстановке».</summary>
+        /// <summary>The "use this chain when placing" check box.</summary>
         public bool IsEnabled
         {
             get { return _isEnabled; }
@@ -44,21 +44,21 @@ namespace VladTools.UI
             set { Set(ref _kind, value, nameof(Kind)); }
         }
 
-        /// <summary>Смещение линии размера от грани стороны, в миллиметрах. Может быть отрицательным (наружу).</summary>
+        /// <summary>The offset of the dimension line from the side face, in millimetres. May be negative (outwards).</summary>
         public double OffsetMm
         {
             get { return _offsetMm; }
             set { Set(ref _offsetMm, value, nameof(OffsetMm)); }
         }
 
-        /// <summary>Имя типа размера — не Id: шаблон должен переноситься между проектами.</summary>
+        /// <summary>The dimension type name, not its id: a template has to travel between projects.</summary>
         public string DimensionTypeName
         {
             get { return _dimensionTypeName; }
             set { Set(ref _dimensionTypeName, value ?? string.Empty, nameof(DimensionTypeName)); }
         }
 
-        /// <summary>Откуда взялась строка (например, «из размера 3925 мм») — только текст, без проверки.</summary>
+        /// <summary>Where the row came from ("from the 3925 mm dimension", say) — plain text, not validated.</summary>
         public string Note
         {
             get { return _note; }

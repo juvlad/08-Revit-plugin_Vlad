@@ -10,43 +10,41 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно кнопки «Базовый файл»: одна координационная модель и список того, что с ней
-    /// сделать при загрузке в модель раздела.
+    /// The "Base File" button's window: one coordination model and a list of what to do with it
+    /// when loading it into a discipline model.
     ///
-    /// Работа, которую окно собирает в один щелчок, в Revit выглядит так: связать
-    /// координационный файл, получить из него общие координаты, переименовать площадку,
-    /// закрепить связь булавкой, перейти в «00_Shared levels and grids» и только потом
-    /// начать копирование уровней и осей. Пять диалогов в разных углах ленты, и порядок
-    /// между ними важен.
+    /// The work the window gathers into one click looks like this in Revit: link the coordination
+    /// file, acquire shared coordinates from it, rename the site, pin the link, switch to
+    /// "00_Shared levels and grids", and only then start copying the levels and grids. Five
+    /// dialogs scattered across the ribbon, and the order between them matters.
     ///
-    /// Сам координационный файл окно предлагает само: базовые файлы всего проекта лежат
-    /// в одной папке рядом с папками разделов, а в имени открытой модели стоит номер корпуса
-    /// (<c>MK3-VSC-B01-VOIDS</c>), — значит, нужный файл зовётся <c>MK3-VSC-B01-BM</c> и искать
-    /// его в дереве не за чем (<see cref="BaseFileFinder"/>). Подобранное только предлагается:
-    /// разбор имён — эвристика, поэтому под именем модели написано, откуда она взялась,
-    /// а когда подходящих несколько — не подставляется ни одна.
+    /// The window offers the coordination file itself: every building's base files live in one
+    /// folder next to the discipline folders, and the open model's name carries the building
+    /// number (<c>MK3-VSC-B01-VOIDS</c>) — so the file needed is called <c>MK3-VSC-B01-BM</c> and
+    /// there is no need to hunt for it in a tree (<see cref="BaseFileFinder"/>). What is guessed
+    /// is only offered: parsing names is a heuristic, so the caption under the model name says
+    /// where it came from, and when several models match, none is filled in.
     ///
-    /// Последний шаг — копирование мониторингом — окно не обещает: API Revit создавать
-    /// связи мониторинга не умеет вовсе (есть только чтение уже существующих). Всё, что
-    /// можно сделать честно, — открыть сам режим «Копирование/Мониторинг», и это последняя
-    /// галочка в списке.
+    /// The window does not promise the last step — copy-monitoring: the Revit API cannot create
+    /// monitoring links at all (only reading existing ones is possible). All that can honestly be
+    /// done is to open "Copy/Monitor" itself, and that is the last check box in the list.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class BaseFileWindow : Window
     {
-        private const string WindowTitle = "Базовый файл";
+        private const string WindowTitle = "Base File";
 
         private readonly IReadOnlyList<LinkRow> _existing;
         private readonly BaseFilePreferences _preferences;
 
-        /// <summary>Открытая модель: из её имени берётся корпус, из её папки — где искать базовый файл.</summary>
+        /// <summary>The open model: the building comes from its name, the base file search from its folder.</summary>
         private readonly HostModel _host;
 
-        /// <summary>Настройки «Link Manager» — ради общего списка серверов Revit Server.</summary>
+        /// <summary>The "Link Manager" settings — for the shared Revit Server list.</summary>
         private readonly LinkPreferences _linkPreferences;
 
-        /// <summary>Рабочие наборы открытого проекта — с «(активный)» первой строкой.</summary>
+        /// <summary>The open project's worksets — with "(active)" as the first entry.</summary>
         private readonly List<string> _hostWorksets = new List<string> { LinkRow.ActiveWorkset };
 
         private readonly TextBlock _modelName;
@@ -66,18 +64,18 @@ namespace VladTools.UI
 
         private LinkRow _row;
 
-        /// <summary>Координационная модель, с которой команде работать.</summary>
+        /// <summary>The coordination model the command should work with.</summary>
         public LinkRow Selected { get; private set; }
 
-        /// <summary>Что именно с ней делать.</summary>
+        /// <summary>Exactly what to do with it.</summary>
         public BaseFilePreferences Preferences => _preferences;
 
-        /// <param name="existing">Связи, уже стоящие в проекте: выбранную модель ищем среди них.</param>
+        /// <param name="existing">The links already in the project: the chosen model is looked for among them.</param>
         /// <param name="hostWorksets">
-        /// Рабочие наборы открытого проекта. Пустой список — проект не совмещённый,
-        /// и оба относящихся к наборам шага выключаются.
+        /// The open project's worksets. An empty list means the project is not workshared,
+        /// and both workset-related steps are disabled.
         /// </param>
-        /// <param name="host">Открытая модель — по ней подбирается базовый файл.</param>
+        /// <param name="host">The open model — the base file is guessed from it.</param>
         public BaseFileWindow(IReadOnlyList<LinkRow> existing, IReadOnlyList<string> hostWorksets, HostModel host)
         {
             _existing = existing ?? new List<LinkRow>();
@@ -110,18 +108,18 @@ namespace VladTools.UI
             };
 
             _placementBox = new ComboBox { Width = 260, VerticalAlignment = VerticalAlignment.Center };
-            _placementBox.Items.Add("Совмещение внутренних начал");
-            _placementBox.Items.Add("По общим координатам");
-            _placementBox.Items.Add("Центр в центр");
-            _placementBox.Items.Add("По расположению площадки проекта");
+            _placementBox.Items.Add("Origin to origin");
+            _placementBox.Items.Add("By shared coordinates");
+            _placementBox.Items.Add("Centre to centre");
+            _placementBox.Items.Add("By project site location");
             _placementBox.SelectedIndex = PlacementIndex(_preferences.Placement);
             _placementBox.ToolTip =
-                "Для координационного файла обычно «Совмещение внутренних начал»: общие координаты " +
-                "из него ещё только предстоит получить, и вставлять по ним пока нечего.";
+                "\"Origin to origin\" is the usual choice for a coordination file: the shared coordinates " +
+                "have not yet been acquired from it, so there is nothing to place by yet.";
 
-            // Список редактируемый по той же причине, что и у набора для перехода: в новом
-            // разделе «01_Link_BM» ещё не заведён, выбрать его из списка нечем, а команда
-            // такой набор создаст.
+            // The list is editable for the same reason as the workset to switch to: "01_Link_BM"
+            // has not been created yet in a new discipline, there is nothing to pick from a list,
+            // and the command will create such a workset.
             _linkWorksetBox = new ComboBox
             {
                 Width = 240,
@@ -129,18 +127,18 @@ namespace VladTools.UI
                 VerticalAlignment = VerticalAlignment.Center,
                 ItemsSource = _hostWorksets,
                 IsEnabled = HasHostWorksets,
-                ToolTip = "Рабочий набор проекта, в который встанет сама связь. " +
-                          "Набора с таким именем в проекте нет — команда его создаст."
+                ToolTip = "The project workset the link itself will go into. " +
+                          "If no workset with this name exists, the command will create it."
             };
 
-            _acquireBox = Option("Получить общие координаты из базового файла",
-                "Revit: «Координаты → Получить координаты». Общая система координат проекта " +
-                "станет такой же, как у координационного файла.",
+            _acquireBox = Option("Acquire shared coordinates from the base file",
+                "Revit: \"Coordinates → Acquire Coordinates\". The project's shared coordinate system " +
+                "will become the same as the coordination file's.",
                 _preferences.Acquire);
 
-            _renameBox = Option("Переименовать площадку проекта в:",
-                "Revit: «Расположение → Площадка». Имя площадки — то, что потом видно в диалоге " +
-                "«Расположение проекта» и в списке площадок у смежников.",
+            _renameBox = Option("Rename the project site to:",
+                "Revit: \"Manage Place and Locations → Site\". The site name is what shows up in the " +
+                "\"Project Location\" dialog and in the consultants' site lists later.",
                 _preferences.Rename);
 
             _siteBox = new TextBox
@@ -152,13 +150,13 @@ namespace VladTools.UI
                 Text = _preferences.Site
             };
 
-            _pinBox = Option("Закрепить связь булавкой",
-                "Базовый файл вставлен по координатам, и случайный сдвиг мышью потом ищут всей командой.",
+            _pinBox = Option("Pin the link",
+                "The base file is inserted by coordinates, and an accidental drag with the mouse is later hunted down by the whole team.",
                 _preferences.Pin);
 
-            _activateBox = Option("Перейти в рабочий набор:",
-                "Активный набор проекта — тот, в который попадут скопированные уровни и оси. " +
-                "Набора с таким именем в проекте нет — команда его создаст.",
+            _activateBox = Option("Switch to the workset:",
+                "The project's active workset — the one the copied levels and grids will land in. " +
+                "If no workset with this name exists, the command will create it.",
                 _preferences.Activate);
             _activateBox.IsEnabled = HasHostWorksets;
 
@@ -172,28 +170,28 @@ namespace VladTools.UI
                 IsEnabled = HasHostWorksets
             };
 
-            _monitorBox = Option("Открыть режим «Копирование/Мониторинг → Выбрать связь»",
-                "Создавать связи мониторинга API Revit не умеет — их делает только сам Revit. " +
-                "Команда доводит до режима: останется выбрать связь и отметить уровни и оси.",
+            _monitorBox = Option("Open \"Copy/Monitor → Select Link\"",
+                "The Revit API cannot create monitoring links — only Revit itself can. " +
+                "The command gets you to that mode: all that is left is to pick the link and check off the levels and grids.",
                 _preferences.Monitor);
 
             _autoBox = new CheckBox
             {
-                Content = "подбирать сам",
+                Content = "guess it automatically",
                 IsChecked = _preferences.AutoPick,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(4, 0, 0, 4),
                 ToolTip =
-                    "Искать базовый файл своего корпуса при открытии окна: по номеру корпуса\n" +
-                    "в имени открытой модели, в папке «" + _preferences.BaseFolder + "» рядом с ней.\n" +
-                    "Каждый поиск — чтение папок хранилища, поэтому это галочка, а не всегда."
+                    "Look for your building's base file when the window opens: by the building number\n" +
+                    "in the open model's name, in the \"" + _preferences.BaseFolder + "\" folder next to it.\n" +
+                    "Every search reads store folders, so this is a check box, not always-on."
             };
 
             _status = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
 
             _runButton = new Button
             {
-                Content = "Выполнить",
+                Content = "Run",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -204,7 +202,7 @@ namespace VladTools.UI
 
             var closeButton = new Button
             {
-                Content = "Закрыть",
+                Content = "Close",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -216,37 +214,38 @@ namespace VladTools.UI
             if (!HasHostWorksets)
                 _activateBox.IsChecked = false;
 
-            // Text у редактируемого ComboBox задаётся после разметки: до применения шаблона
-            // он теряется, если в списке нет строки с таким же значением.
+            // Text on the editable ComboBox is set after layout: before the template is applied
+            // it gets lost if the list has no entry matching that value.
             _worksetBox.Text = _preferences.Workset;
             _linkWorksetBox.Text = Named(_preferences.LinkWorkset);
 
             Show(_preferences.Model == null ? null : Match(_preferences.Model));
 
-            // Подбор сам, при открытии: спрашивать «искать ли», когда и корпус, и папка уже
-            // известны из открытой модели, значит просить лишний щелчок ровно за тем, ради
-            // чего окно и открыли. Не при построении разметки, а по Loaded — чтение папок
-            // хранилища занимает секунду, и окно должно к этому моменту стоять на экране.
+            // The guess runs on its own when the window opens: asking "search now?" when both the
+            // building and the folder are already known from the open model would mean an extra
+            // click for exactly what the window was opened to do. Not while building the layout,
+            // but on Loaded — reading store folders takes a second, and the window should already
+            // be on screen by then.
             Loaded += (sender, args) => AutoPick();
         }
 
         private bool HasHostWorksets => _hostWorksets.Count > 1;
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button closeButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // выбор модели
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // сама модель
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // шаги
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // model source
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // the model itself
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // steps
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Выберите координационный файл и отметьте, что с ним сделать. " +
-                       "Всё отмеченное выполняется одной операцией и откатывается одним Ctrl+Z.",
+                Text = "Choose the coordination file and check what to do with it. " +
+                       "Everything checked runs as one operation and rolls back with a single Ctrl+Z.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -254,13 +253,13 @@ namespace VladTools.UI
             root.Children.Add(hint);
 
             var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-            sources.Children.Add(SourceButton("Подобрать",
-                "Найти базовый файл своего корпуса самому: по номеру корпуса в имени открытой модели, " +
-                "в папке базовых файлов рядом с ней.", OnAutoPick));
-            sources.Children.Add(SourceButton("Файл…", "Обычный файл .rvt: диск или сетевая папка.", OnPickFile));
-            sources.Children.Add(SourceButton("Revit Server…", "Просмотр папок и моделей на Revit Server.", OnBrowseServer));
-            sources.Children.Add(SourceButton("BIM360…", "Просмотр учётных записей, проектов и папок BIM360/ACC.", OnBrowseCloud));
-            sources.Children.Add(SourceButton("BIM360 по GUID…", "Ввод облачной модели парой GUID — если просмотр недоступен.", OnPickCloudByGuid));
+            sources.Children.Add(SourceButton("Guess",
+                "Find your building's base file automatically: by the building number in the open model's " +
+                "name, in the base file folder next to it.", OnAutoPick));
+            sources.Children.Add(SourceButton("File…", "An ordinary .rvt file: a disk or a network folder.", OnPickFile));
+            sources.Children.Add(SourceButton("Revit Server…", "Browse folders and models on Revit Server.", OnBrowseServer));
+            sources.Children.Add(SourceButton("BIM360…", "Browse BIM360/ACC accounts, projects and folders.", OnBrowseCloud));
+            sources.Children.Add(SourceButton("BIM360 by GUID…", "Enter a cloud model as a pair of GUIDs — when browsing is unavailable.", OnPickCloudByGuid));
             sources.Children.Add(_autoBox);
 
             Grid.SetRow(sources, 1);
@@ -283,7 +282,7 @@ namespace VladTools.UI
 
             steps.Children.Add(new TextBlock
             {
-                Text = "Что сделать:",
+                Text = "What to do:",
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 0, 0, 6)
             });
@@ -291,7 +290,7 @@ namespace VladTools.UI
             steps.Children.Add(Row(
                 new TextBlock
                 {
-                    Text = "Связать с проектом, размещение:",
+                    Text = "Link to the project, placement:",
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(22, 0, 8, 0)
                 },
@@ -300,7 +299,7 @@ namespace VladTools.UI
             steps.Children.Add(Row(
                 new TextBlock
                 {
-                    Text = "класть связь в рабочий набор:",
+                    Text = "put the link into the workset:",
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(22, 0, 8, 0),
                     Foreground = HasHostWorksets ? SystemColors.ControlTextBrush : SystemColors.GrayTextBrush
@@ -317,7 +316,7 @@ namespace VladTools.UI
             {
                 steps.Children.Add(new TextBlock
                 {
-                    Text = "Проект не совмещённый — рабочих наборов в нём нет, и оба шага с наборами выключены.",
+                    Text = "The project is not workshared — it has no worksets, and both workset steps are disabled.",
                     Foreground = SystemColors.GrayTextBrush,
                     TextWrapping = TextWrapping.Wrap,
                     Margin = new Thickness(22, 6, 0, 0)
@@ -382,7 +381,7 @@ namespace VladTools.UI
             return button;
         }
 
-        // ───────────────────────────── откуда берётся модель ─────────────────────────────
+        // ───────────────────────────── where the model comes from ─────────────────────────────
 
         private void OnAutoPick(object sender, RoutedEventArgs e)
         {
@@ -410,8 +409,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Модель здесь одна, а источники отдают список: из дерева можно отметить несколько.
-        /// Берём первую и говорим об этом — молча отбросить остальные значило бы соврать.
+        /// There is only one model here, but the sources return a list: several can be checked in
+        /// the tree. We take the first one and say so — silently dropping the rest would be a lie.
         /// </summary>
         private void Take(IReadOnlyList<LinkEntry> entries)
         {
@@ -423,13 +422,14 @@ namespace VladTools.UI
             if (entries.Count > 1)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Базовый файл один: взята первая из отмеченных моделей.";
+                _status.Text = "There is only one base file: the first checked model was taken.";
             }
         }
 
         /// <summary>
-        /// Связь на эту модель уже может стоять в проекте — тогда работаем с ней, а не заводим
-        /// вторую: Revit на повторную <c>Create</c> всё равно ответит «такая связь уже есть».
+        /// A link to this model may already be in the project — then we work with it rather than
+        /// setting up a second one: a repeated <c>Create</c> would just answer "such a link
+        /// already exists" anyway.
         /// </summary>
         private LinkRow Match(LinkEntry entry)
         {
@@ -444,8 +444,8 @@ namespace VladTools.UI
 
             if (row == null)
             {
-                _modelName.Text = "Модель не выбрана";
-                _modelPath.Text = "Выберите координационный файл кнопками выше.";
+                _modelName.Text = "No model chosen";
+                _modelPath.Text = "Choose the coordination file with the buttons above.";
                 _runButton.IsEnabled = false;
                 return;
             }
@@ -454,28 +454,28 @@ namespace VladTools.UI
             _modelPath.Text = row.Kind + " · " + row.Location;
             _runButton.IsEnabled = true;
 
-            // У связи, уже стоящей в проекте, показываем её нынешний набор — пользователь должен
-            // видеть, что меняет. У новой набор берётся из настроек и подставлен ещё до выбора
-            // модели: «01_Link_BM» один и тот же во всех разделах.
+            // For a link already in the project we show its current workset — the user has to see
+            // what is being changed. For a new one the workset comes from the settings and is
+            // filled in even before the model is chosen: "01_Link_BM" is the same across every discipline.
             if (row.IsExisting)
                 _linkWorksetBox.Text = Named(row.Entry.Workset);
 
             _status.Foreground = SystemColors.GrayTextBrush;
             _status.Text = row.IsExisting
-                ? "Связь на эту модель в проекте уже есть — она и будет использована."
+                ? "A link to this model is already in the project — it will be used."
                 : string.Empty;
         }
 
         /// <summary>
-        /// Имя набора для показа в поле: пустое значит «активный», и пустая строка
-        /// в выпадающем списке выглядела бы недосмотром.
+        /// The workset name to show in the field: empty means "active", and an empty entry in the
+        /// drop-down would look like an oversight.
         /// </summary>
         private static string Named(string workset)
         {
             return string.IsNullOrEmpty(workset) ? LinkRow.ActiveWorkset : workset;
         }
 
-        /// <summary>Ключи моделей, которые в дереве показывать серыми: выбранная — уже взята.</summary>
+        /// <summary>Keys of the models to show greyed out in the tree: the chosen one is already taken.</summary>
         private HashSet<string> Keys()
         {
             var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -485,7 +485,7 @@ namespace VladTools.UI
             return keys;
         }
 
-        /// <summary>Регион, с которым открывается окно ввода GUID: тот же, что у прошлой модели.</summary>
+        /// <summary>The region the GUID-entry window opens with: the same as the previous model's.</summary>
         private string Region()
         {
             if (_row != null && _row.Entry.Origin == LinkOrigin.Cloud && _row.Entry.Region.Length > 0)
@@ -498,12 +498,12 @@ namespace VladTools.UI
                 : "US";
         }
 
-        // ───────────────────────────── подбор базового файла ─────────────────────────────
+        // ───────────────────────────── guessing the base file ─────────────────────────────
 
         /// <summary>
-        /// Подбор при открытии окна. В отличие от кнопки, молчит про отказы: окно только что
-        /// открылось, и модальный диалог поверх него на ровном месте — худшее, чем можно
-        /// встретить пользователя.
+        /// The guess made when the window opens. Unlike the button, it stays quiet about failures:
+        /// the window has just opened, and a modal dialog on top of it out of nowhere is the worst
+        /// way to greet the user.
         /// </summary>
         private void AutoPick()
         {
@@ -512,11 +512,12 @@ namespace VladTools.UI
 
             var building = ModelKit.Building(_host.Name, _linkPreferences.BuildingToken);
 
-            // Запомненная модель уже от этого корпуса — искать нечего: в новом разделе того же
-            // объекта базовый файл тот же самый, а обход папок стоит запросов по сети.
+            // The remembered model is already from this building — nothing to search for: in a
+            // new discipline of the same building the base file is the same one, and walking the
+            // folders costs network requests.
             if (building.Length > 0 && _row != null && DisciplineCatalog.HasToken(_row.Name, building))
             {
-                Note("Базовый файл от прошлого раза — того же корпуса (" + building + ").", false);
+                Note("The base file from last time — the same building (" + building + ").", false);
                 return;
             }
 
@@ -524,16 +525,16 @@ namespace VladTools.UI
         }
 
         /// <param name="loud">
-        /// Показывать ли отказ диалогом и красной строкой. По кнопке — да: пользователь нажал
-        /// и ждёт ответа. При открытии окна — нет: это подсказка, а не поломка.
+        /// Whether to show a failure as a dialog and a red line. From the button — yes: the user
+        /// pressed it and is waiting for an answer. When the window opens — no: it is a hint, not a breakage.
         /// </param>
         private void Pick(bool loud)
         {
             if (_host.Folder == null || _host.Name.Length == 0)
             {
                 Complain(loud,
-                    "Где лежит открытая модель, выяснить не удалось: проект ни разу не сохранён " +
-                    "или открыт отсоединённым. Выберите базовый файл кнопками выше.");
+                    "Could not work out where the open model lives: the project has never been saved " +
+                    "or is open as detached. Choose the base file with the buttons above.");
                 return;
             }
 
@@ -542,8 +543,8 @@ namespace VladTools.UI
 
             try
             {
-                // Чтение идёт прямо в потоке интерфейса, как и в дереве просмотра:
-                // окно модальное, Revit всё равно ждёт.
+                // Reading happens right on the UI thread, as in the browser tree:
+                // the window is modal, Revit waits regardless.
                 Mouse.OverrideCursor = Cursors.Wait;
 
                 scan = BaseFileFinder.Find(
@@ -554,7 +555,7 @@ namespace VladTools.UI
             }
             catch (Exception exception)
             {
-                Complain(loud, "Подобрать базовый файл не удалось: " + LinkCatalog.Short(exception.Message));
+                Complain(loud, "Could not guess the base file: " + LinkCatalog.Short(exception.Message));
                 return;
             }
             finally
@@ -566,61 +567,61 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Что делать с итогом подбора. Исходов пять, и каждый должен звучать по-своему:
-        /// «корпуса в имени нет», «папки не нашлось», «в папке нет модели корпуса»,
-        /// «подходящих несколько» и «вот она». Одно общее «подобрать не удалось» на всё это
-        /// не годится: причины разные, и лечатся они по-разному.
+        /// What to do with the result of the guess. There are five outcomes, and each has to sound
+        /// different: "no building in the name", "no folder found", "the folder has no model of
+        /// this building", "several match" and "here it is". One shared "could not guess" for all
+        /// of this will not do: the reasons differ, and so does the fix.
         /// </summary>
         private void Apply(BaseFileScan scan, bool loud)
         {
             var tail = scan.Failures.Count > 0
-                ? " Прочитать не удалось: " + string.Join("; ", scan.Failures.Take(2)) + "."
+                ? " Could not be read: " + string.Join("; ", scan.Failures.Take(2)) + "."
                 : string.Empty;
 
             if (scan.Building.Length == 0)
             {
                 Complain(loud,
-                    "Номера корпуса на " + _linkPreferences.BuildingToken + "-м месте в имени «" +
-                    _host.Name + "» нет — подбирать не от чего. Место задаётся в links\\_settings.txt (KIT_TOKEN)." + tail);
+                    "There is no building number at position " + _linkPreferences.BuildingToken + " in the name \"" +
+                    _host.Name + "\" — nothing to guess from. The position is set in links\\_settings.txt (KIT_TOKEN)." + tail);
                 return;
             }
 
             if (scan.Folder == null)
             {
                 Complain(loud,
-                    "Папка «" + _preferences.BaseFolder + "» рядом с открытой моделью не нашлась. " +
-                    "Имя папки задаётся в basefile\\_settings.txt (BASE_FOLDER)." + tail);
+                    "The folder \"" + _preferences.BaseFolder + "\" was not found next to the open model. " +
+                    "The folder name is set in basefile\\_settings.txt (BASE_FOLDER)." + tail);
                 return;
             }
 
             if (scan.Hits.Count == 0)
             {
-                Complain(loud, "В папке «" + scan.Folder.Name + "» модели корпуса " + scan.Building + " нет." + tail);
+                Complain(loud, "The folder \"" + scan.Folder.Name + "\" has no model of building " + scan.Building + "." + tail);
                 return;
             }
 
             if (scan.Hits.Count > 1)
             {
-                // Несколько подходящих — не повод брать первую: то же правило, что при подборе
-                // рабочего набора и комплекта по корпусу. Зато сказать, из чего выбирать, обязаны:
-                // без имён приписка «подходит несколько» не говорит ничего.
+                // Several matches is not a reason to take the first one: the same rule as when
+                // guessing a workset or a building kit. But saying what to choose from is
+                // mandatory — without the names, "several match" says nothing.
                 Complain(loud,
-                    "Под корпус " + scan.Building + " в папке «" + scan.Folder.Name + "» подходит несколько моделей: " +
-                    string.Join(", ", scan.Hits.Select(hit => hit.Name)) + ". Выберите нужную кнопками выше." + tail);
+                    "Several models in the folder \"" + scan.Folder.Name + "\" match building " + scan.Building + ": " +
+                    string.Join(", ", scan.Hits.Select(hit => hit.Name)) + ". Choose the right one with the buttons above." + tail);
                 return;
             }
 
             Show(Match(scan.Hits[0]));
 
-            Note("Подобран по имени открытой модели: корпус " + scan.Building +
-                 ", папка «" + scan.Folder.Name + "»." +
+            Note("Guessed from the open model's name: building " + scan.Building +
+                 ", folder \"" + scan.Folder.Name + "\"." +
                  (scan.IsLoose
-                     ? " Кода «" + _preferences.BaseCode + "» в имени нет — совпал только корпус, проверьте модель."
+                     ? " The code \"" + _preferences.BaseCode + "\" is missing from the name — only the building matched, check the model."
                      : string.Empty) + tail,
                  scan.IsLoose);
         }
 
-        /// <summary>Отказ подбора: строкой всегда, диалогом — только когда нажимали кнопку.</summary>
+        /// <summary>A guess failure: always as a note, as a dialog only when the button was pressed.</summary>
         private void Complain(bool loud, string text)
         {
             Note(text, loud);
@@ -630,18 +631,18 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Подпись под выбранной моделью. Про уже стоящую в проекте связь дописывается всегда:
-        /// это важнее любой подсказки подбора и теряться за ней не должно.
+        /// The caption under the chosen model. A note about a link already in the project is
+        /// always appended: it matters more than any guess hint and must not get lost behind it.
         /// </summary>
         private void Note(string text, bool isProblem)
         {
             _status.Foreground = isProblem ? Brushes.Firebrick : SystemColors.GrayTextBrush;
             _status.Text = _row != null && _row.IsExisting
-                ? text + " Связь на эту модель в проекте уже есть — она и будет использована."
+                ? text + " A link to this model is already in the project — it will be used."
                 : text;
         }
 
-        // ───────────────────────────── выполнение ─────────────────────────────
+        // ───────────────────────────── running ─────────────────────────────
 
         private void OnRun(object sender, RoutedEventArgs e)
         {
@@ -652,7 +653,7 @@ namespace VladTools.UI
             if (_renameBox.IsChecked == true && site.Length == 0)
             {
                 MessageBox.Show(this,
-                    "Впишите имя площадки или снимите галочку «Переименовать площадку проекта».",
+                    "Type in a site name or clear the \"Rename the project site\" box.",
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 _siteBox.Focus();
                 return;
@@ -662,7 +663,7 @@ namespace VladTools.UI
             if (_activateBox.IsChecked == true && workset.Length == 0)
             {
                 MessageBox.Show(this,
-                    "Впишите имя рабочего набора или снимите галочку «Перейти в рабочий набор».",
+                    "Type in a workset name or clear the \"Switch to the workset\" box.",
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 _worksetBox.Focus();
                 return;
@@ -674,8 +675,9 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Переносит состояние окна в настройки. Зовётся и при «Выполнить», и при закрытии:
-        /// поля этого окна — то же, что формулы и наборы связей, они должны переживать Revit.
+        /// Carries the window's state into the settings. Called both from "Run" and on closing:
+        /// this window's fields are the same kind of thing as the formulas and link sets — they
+        /// have to survive Revit closing.
         /// </summary>
         private void Collect()
         {
@@ -685,7 +687,7 @@ namespace VladTools.UI
 
             if (_row != null)
             {
-                // Набор проекта хранится в самой записи — оттуда его берёт команда.
+                // The project workset is stored on the entry itself — the command takes it from there.
                 _row.Workset = linkWorkset;
                 _preferences.Model = _row.Entry;
             }
@@ -707,7 +709,7 @@ namespace VladTools.UI
             Collect();
             _preferences.Save();
 
-            // Имя сервера Revit Server могло появиться при просмотре — оно общее с «Link Manager».
+            // A Revit Server name may have appeared while browsing — it is shared with "Link Manager".
             _linkPreferences.Save();
 
             base.OnClosed(e);

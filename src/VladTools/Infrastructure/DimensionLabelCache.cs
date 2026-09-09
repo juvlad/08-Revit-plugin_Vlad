@@ -7,7 +7,7 @@ using System.Text;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Что проверка нашла в одном семействе.</summary>
+    /// <summary>What the scan found in a single family.</summary>
     internal sealed class FamilyLabelRecord
     {
         public FamilyLabelRecord(string uniqueId, string version, IReadOnlyList<string> parameterGuids)
@@ -17,30 +17,30 @@ namespace VladTools.Infrastructure
             ParameterGuids = parameterGuids ?? new List<string>();
         }
 
-        /// <summary>UniqueId семейства — он переживает сохранение и работу с общими файлами.</summary>
+        /// <summary>The family UniqueId — it survives saving and working with shared files.</summary>
         public string UniqueId { get; }
 
-        /// <summary>`Element.VersionGuid` семейства на момент проверки.</summary>
+        /// <summary>The family `Element.VersionGuid` at the moment of the scan.</summary>
         public string Version { get; }
 
-        /// <summary>GUID общих параметров, которыми помечены размеры этого семейства.</summary>
+        /// <summary>GUIDs of the shared parameters that label dimensions in this family.</summary>
         public IReadOnlyList<string> ParameterGuids { get; }
     }
 
     /// <summary>
-    /// Сохранённый результат проверки семейств на метки размеров — чтобы не открывать
-    /// сотни семейств заново при каждом открытии окна «Удалить общие параметры».
+    /// The saved result of scanning families for dimension labels — so that hundreds of families do
+    /// not have to be reopened every time the "Delete Shared Parameters" window is opened.
     ///
-    /// Файл на проект: `%AppData%\VladTools\dimensions\&lt;имя&gt;_&lt;хэш пути&gt;.txt`.
-    /// Строка на семейство, поэтому проверка идёт по нарастающей: заново открываются только
-    /// те семейства, которых в файле нет или у которых сменилась версия.
+    /// One file per project: `%AppData%\VladTools\dimensions\&lt;name&gt;_&lt;path hash&gt;.txt`.
+    /// One line per family, so the scan is incremental: only the families that are missing from the
+    /// file or whose version has changed are reopened.
     ///
-    /// **Версия ловит не всё.** `Element.VersionGuid` по документации Revit меняется на
-    /// сохранении и синхронизации, а не на каждой правке: семейство, перезагруженное
-    /// в текущем сеансе без сохранения проекта, кэш считает прежним. Поэтому в окне есть
-    /// «Проверить заново» — оно кэш игнорирует.
+    /// **The version does not catch everything.** Per the Revit documentation `Element.VersionGuid`
+    /// changes on save and synchronisation, not on every edit: a family reloaded during the current
+    /// session without saving the project looks unchanged to the cache. That is why the window has a
+    /// "Scan again" mode — it ignores the cache.
     ///
-    /// Проект без пути (ещё ни разу не сохранён) не кэшируется: ключа нет.
+    /// A project without a path (never saved) is not cached: there is no key.
     /// </summary>
     internal static class DimensionLabelCache
     {
@@ -48,13 +48,13 @@ namespace VladTools.Infrastructure
 
         private static readonly string[] FileHeader =
         {
-            "# Проверка семейств на метки размеров — кнопка «Удалить общие параметры» (панель «Проект»).",
-            "# Строка: UniqueId семейства | версия элемента | GUID общих параметров через запятую.",
-            "# Пустой список GUID значит: семейство проверено, параметров в размерах в нём нет.",
-            "# Это кэш. Файл можно удалить — проверка просто пройдёт заново."
+            "# Family scan for dimension labels — the \"Delete Shared Parameters\" button (the Project panel).",
+            "# Line: family UniqueId | element version | shared parameter GUIDs, comma separated.",
+            "# An empty GUID list means: the family was scanned and has no parameters on dimensions.",
+            "# This is a cache. The file can be deleted — the scan will simply run again."
         };
 
-        /// <summary>Папка со всеми файлами проверок.</summary>
+        /// <summary>The folder holding all the scan files.</summary>
         public static string FolderPath
         {
             get
@@ -64,7 +64,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Файл проверки для конкретного проекта; для несохранённого проекта — null.</summary>
+        /// <summary>The scan file for a particular project; null for a project that was never saved.</summary>
         public static string FilePathFor(string projectPath)
         {
             if (string.IsNullOrWhiteSpace(projectPath))
@@ -78,11 +78,11 @@ namespace VladTools.Infrastructure
             if (name.Length > 40)
                 name = name.Substring(0, 40);
 
-            // Хэш пути — чтобы два разных файла с одинаковым именем не делили одну проверку.
+            // The path hash keeps two different files with the same name from sharing one scan.
             return Path.Combine(FolderPath, name + "_" + Hash(projectPath) + ".txt");
         }
 
-        /// <summary>Когда проверку сохранили; файла нет — null.</summary>
+        /// <summary>When the scan was saved; null if there is no file.</summary>
         public static DateTime? SavedAt(string projectPath)
         {
             try
@@ -97,8 +97,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Читает сохранённую проверку, разложенную по UniqueId семейства.
-        /// Файла нет или он испорчен — пустой словарь: проверка просто пройдёт заново.
+        /// Reads the saved scan, keyed by family UniqueId.
+        /// No file or a corrupt one yields an empty dictionary: the scan simply runs again.
         /// </summary>
         public static Dictionary<string, FamilyLabelRecord> Load(string projectPath)
         {
@@ -126,9 +126,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Перезаписывает файл целиком — только тем, что сейчас загружено в проект,
-        /// иначе файл рос бы вечно за счёт давно выгруженных семейств.
-        /// Записать не удалось — беда небольшая: проверку придётся пройти ещё раз.
+        /// Rewrites the whole file — with only what is loaded into the project right now, otherwise
+        /// the file would grow for ever on families that were unloaded long ago.
+        /// A failed write is no great loss: the scan will just have to run once more.
         /// </summary>
         public static void Save(string projectPath, IEnumerable<FamilyLabelRecord> records)
         {
@@ -138,7 +138,7 @@ namespace VladTools.Infrastructure
                 if (path == null)
                     return;
 
-                var lines = new List<string>(FileHeader) { "# Проект: " + projectPath, string.Empty };
+                var lines = new List<string>(FileHeader) { "# Project: " + projectPath, string.Empty };
 
                 lines.AddRange(records
                     .Where(record => !string.IsNullOrEmpty(record?.UniqueId) && !string.IsNullOrEmpty(record.Version))
@@ -147,12 +147,12 @@ namespace VladTools.Infrastructure
 
                 Directory.CreateDirectory(FolderPath);
 
-                // BOM — чтобы кириллица в шапке открывалась в «Блокноте» как надо.
+                // The BOM keeps non-Latin text in the header readable when opened in Notepad.
                 File.WriteAllLines(path, lines, new UTF8Encoding(true));
             }
             catch (Exception)
             {
-                // Кэш — не результат работы команды: не пишется, значит не пишется.
+                // A cache is not the command's output: if it does not get written, so be it.
             }
         }
 

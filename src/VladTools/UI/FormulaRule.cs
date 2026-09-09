@@ -5,25 +5,25 @@ using System.Windows.Media;
 
 namespace VladTools.UI
 {
-    /// <summary>Результат проверки строки — от него зависит текст и цвет столбца «Статус».</summary>
+    /// <summary>The result of validating a row — the text and colour of the "Status" column depend on it.</summary>
     internal enum FormulaStatus
     {
-        /// <summary>Пустая строка таблицы: ни имени, ни формулы.</summary>
+        /// <summary>An empty table row: neither a name nor a formula.</summary>
         Blank,
 
-        /// <summary>Всё на месте, формулу можно применять.</summary>
+        /// <summary>Everything is in place, the formula can be applied.</summary>
         Ready,
 
-        /// <summary>Применить можно, но у параметра уже есть формула — она будет заменена.</summary>
+        /// <summary>It can be applied, but the parameter already has a formula — it will be replaced.</summary>
         Replace,
 
-        /// <summary>Применить нельзя: нет параметра, нет формулы, формула ссылается на несуществующее имя.</summary>
+        /// <summary>It cannot be applied: no parameter, no formula, or the formula refers to a name that does not exist.</summary>
         Error
     }
 
     /// <summary>
-    /// Строка таблицы в окне «Добавить формулы»: галочка, параметр, формула и результат проверки.
-    /// Правится прямо в таблице, поэтому сообщает об изменениях.
+    /// A table row in the "Add Formulas" window: the check box, the parameter, the formula and the
+    /// validation result. It is edited right in the table, so it reports its changes.
     /// </summary>
     internal sealed class FormulaRule : INotifyPropertyChanged
     {
@@ -33,7 +33,7 @@ namespace VladTools.UI
         private string _statusText = string.Empty;
         private FormulaStatus _status = FormulaStatus.Blank;
 
-        /// <summary>Нужен таблице: последнюю (пустую) строку она создаёт сама.</summary>
+        /// <summary>The table needs it: it creates the last (empty) row itself.</summary>
         public FormulaRule()
         {
         }
@@ -47,21 +47,21 @@ namespace VladTools.UI
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        /// <summary>Галочка «применять эту формулу».</summary>
+        /// <summary>The "apply this formula" check box.</summary>
         public bool IsEnabled
         {
             get { return _isEnabled; }
             set { Set(ref _isEnabled, value, nameof(IsEnabled)); }
         }
 
-        /// <summary>Имя параметра семейства, которому задаётся формула.</summary>
+        /// <summary>The name of the family parameter the formula is assigned to.</summary>
         public string ParameterName
         {
             get { return _parameterName; }
             set { Set(ref _parameterName, value ?? string.Empty, nameof(ParameterName)); }
         }
 
-        /// <summary>Текст формулы — так же, как он пишется в диалоге параметров Revit.</summary>
+        /// <summary>The formula text — exactly as it is written in the Revit parameter dialog.</summary>
         public string Formula
         {
             get { return _formula; }
@@ -96,7 +96,7 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Строка, в которой ничего не заполнено, — её не сохраняем и не применяем.</summary>
+        /// <summary>A row with nothing filled in — it is neither saved nor applied.</summary>
         public bool IsBlank
         {
             get { return string.IsNullOrWhiteSpace(_parameterName) && string.IsNullOrWhiteSpace(_formula); }

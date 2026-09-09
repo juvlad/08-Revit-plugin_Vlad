@@ -7,49 +7,49 @@ using System.Text;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Способ размещения связи. Повторяет список Revit из диалога «Связь с файлом Revit»,
-    /// но своим перечислением: окно про Revit API знать не должно, а команда переводит
-    /// это в <c>ImportPlacement</c> одной строкой.
+    /// How the link is positioned. It mirrors Revit's own list from the "Link Revit" dialog, but as an
+    /// enum of our own: the window must know nothing about the Revit API, and the command translates
+    /// this into an <c>ImportPlacement</c> in a single line.
     /// </summary>
     internal enum LinkPlacement
     {
-        /// <summary>По общим координатам — то, чем пользуются в 99 случаях из 100.</summary>
+        /// <summary>By shared coordinates — what is used in 99 cases out of 100.</summary>
         Shared,
 
-        /// <summary>Совмещение внутренних начал.</summary>
+        /// <summary>Origin to origin.</summary>
         Origin,
 
-        /// <summary>Центр в центр.</summary>
+        /// <summary>Centre to centre.</summary>
         Centered,
 
-        /// <summary>По расположению площадки проекта.</summary>
+        /// <summary>By the project site location.</summary>
         Site
     }
 
-    /// <summary>Что делать с рабочими наборами связи в момент загрузки.</summary>
+    /// <summary>What to do with the link's worksets at load time.</summary>
     internal enum LinkWorksetMode
     {
-        /// <summary>Открыть все, кроме отмеченных.</summary>
+        /// <summary>Open all except the checked ones.</summary>
         OpenAll,
 
-        /// <summary>Закрыть все, кроме отмеченных.</summary>
+        /// <summary>Close all except the checked ones.</summary>
         CloseAll,
 
-        /// <summary>Как при последнем открытии модели; отмеченные всё равно закрываются.</summary>
+        /// <summary>As when the model was last opened; the checked ones are closed anyway.</summary>
         LastViewed
     }
 
     /// <summary>
-    /// Настройки окна «Link Manager», которые переживают закрытие Revit: способ размещения,
-    /// тип связи и — главное — какие рабочие наборы закрывать.
+    /// The "Link Manager" window settings that survive closing Revit: the placement, the link type and —
+    /// most of all — which worksets to close.
     ///
-    /// Именно ради последнего всё и хранится. Набор «00_Shared levels and grids» закрывают
-    /// в каждом проекте и в каждой связи; вбивать его заново каждый раз — ровно та работа,
-    /// от которой кнопка избавляет. Наборы запоминаются по имени, а не по идентификатору:
-    /// в каждой модели идентификаторы свои, а имя у общего набора одно на всех.
+    /// That last one is what all of this is stored for. The "00_Shared levels and grids" workset is
+    /// closed in every project and in every link; typing it in again each time is exactly the work the
+    /// button exists to spare. Worksets are remembered by name rather than by id: every model has ids of
+    /// its own, while a shared workset has one name across all of them.
     ///
-    /// Файл: `%AppData%\VladTools\links\_settings.txt`, строка вида «КЛЮЧ = значение».
-    /// Ключи CLOSE и SERVER могут повторяться — это списки.
+    /// File: `%AppData%\VladTools\links\_settings.txt`, lines of the form "KEY = value".
+    /// The CLOSE and SERVER keys may repeat — they are lists.
     /// </summary>
     internal sealed class LinkPreferences
     {
@@ -57,65 +57,65 @@ namespace VladTools.Infrastructure
 
         private static readonly string[] FileHeader =
         {
-            "# Настройки окна «Link Manager» — панель «Проект».",
+            "# \"Link Manager\" window settings — the Project panel.",
             "# PLACEMENT — Shared | Origin | Centered | Site",
             "# ATTACHMENT — Overlay | Attachment",
             "# WORKSETS — OpenAll | CloseAll | LastViewed",
-            "# CLOSE — имя рабочего набора, отмеченного в списке (строк может быть много)",
-            "# RULE / RULE_CONTAINS — правило по имени набора: строка и «содержит» вместо «начинается с»",
-            "# SERVER — имя сервера Revit Server, которое подставляется в просмотр (строк может быть много)",
-            "# MATCH_WORKSET — 1/0: подбирать набор проекта по коду раздела в имени модели",
-            "# DISCIPLINE — код раздела для этого подбора (строк может быть много); нет ни одной — берётся список по умолчанию",
-            "# KIT — раздел комплекта по корпусу (строк может быть много); нет ни одной — берётся список по умолчанию",
-            "# KIT_TOKEN — какой по счёту кусок имени модели считать номером корпуса (MK3-VSC-B01-AR → 3)",
-            "# KIT_DEEP — 1/0: заходить ли внутрь вложенных папок раздела",
-            "# KIT_BUILDING — номер корпуса из прошлого раза",
-            "# KIT_ROOT — папка, в которой искать: FILE | путь, SERVER | RSN://…, CLOUD | регион | проект | папка | имя",
-            "# Файл перезаписывается при каждом закрытии окна."
+            "# CLOSE — the name of a workset checked in the list (there may be many lines)",
+            "# RULE / RULE_CONTAINS — the workset name rule: the string, and \"contains\" instead of \"starts with\"",
+            "# SERVER — a Revit Server name offered in the browser (there may be many lines)",
+            "# MATCH_WORKSET — 1/0: guess the project workset from the discipline code in the model name",
+            "# DISCIPLINE — a discipline code for that guess (there may be many lines); with none, the default list is used",
+            "# KIT — a discipline of the building kit (there may be many lines); with none, the default list is used",
+            "# KIT_TOKEN — which piece of the model name counts as the building number (MK3-VSC-B01-AR → 3)",
+            "# KIT_DEEP — 1/0: whether to descend into nested discipline folders",
+            "# KIT_BUILDING — the building number from last time",
+            "# KIT_ROOT — the folder to search in: FILE | path, SERVER | RSN://…, CLOUD | region | project | folder | name",
+            "# The file is rewritten every time the window closes."
         };
 
         public LinkPlacement Placement { get; set; } = LinkPlacement.Shared;
 
-        /// <summary>Прикрепление вместо наложения. По умолчанию наложение — как и в самом Revit.</summary>
+        /// <summary>Attachment instead of overlay. Overlay is the default — as in Revit itself.</summary>
         public bool IsAttachment { get; set; }
 
-        /// <summary>Относительный путь к файлу связи. Для Revit Server и облака смысла не имеет.</summary>
+        /// <summary>A relative path to the link file. Meaningless for Revit Server and the cloud.</summary>
         public bool IsRelativePath { get; set; } = true;
 
         public LinkWorksetMode WorksetMode { get; set; } = LinkWorksetMode.OpenAll;
 
-        /// <summary>Имена рабочих наборов, отмеченных в списке окна.</summary>
+        /// <summary>The names of the worksets checked in the window list.</summary>
         public List<string> Worksets { get; } = new List<string>();
 
-        /// <summary>Строка правила по имени набора; пустая — правила нет.</summary>
+        /// <summary>The workset name rule string; empty means there is no rule.</summary>
         public string WorksetPattern { get; set; } = string.Empty;
 
-        /// <summary>Правило ищет вхождение, а не начало строки.</summary>
+        /// <summary>The rule looks for a substring rather than the start of the name.</summary>
         public bool WorksetPatternContains { get; set; }
 
-        /// <summary>Имена серверов Revit Server, которые пользователь уже вводил.</summary>
+        /// <summary>The Revit Server names the user has already typed in.</summary>
         public List<string> Servers { get; } = new List<string>();
 
         /// <summary>
-        /// Подбирать рабочий набор проекта по коду раздела в имени модели: у новой связи без
-        /// заданного набора плагин ищет набор вида «01_Link_OV» по коду «OV» из имени файла.
-        /// Ручной выбор в таблице никогда не затирается — подбор только заполняет пустое.
+        /// Guess the project workset from the discipline code in the model name: for a new link with no
+        /// workset set, the add-in looks for a workset like "01_Link_OV" from the "OV" code in the file name.
+        /// A hand-made choice in the table is never overwritten — the guess only fills in what is empty.
         /// </summary>
         public bool MatchProjectWorkset { get; set; } = true;
 
         /// <summary>
-        /// Коды разделов для этого подбора. Пустой список = <see cref="DisciplineCatalog.Defaults"/>:
-        /// пользователь дописывает свой код в _settings.txt, а весь список туда же и сохраняется,
-        /// чтобы было что править.
+        /// The discipline codes for that guess. An empty list means <see cref="DisciplineCatalog.Defaults"/>:
+        /// the user adds their own code to _settings.txt, and the whole list is saved back there so there
+        /// is something to edit.
         /// </summary>
         public List<string> Disciplines { get; } = new List<string>();
 
         /// <summary>
-        /// Коды разделов с подстановкой умолчаний, когда пользователь список не трогал.
-        /// Коды комплекта сюда входят всегда: раз пользователь назвал раздел в «Комплекте
-        /// по корпусу», странно было бы не узнать тот же код в имени модели при подборе
-        /// рабочего набора. Заодно это чинит старый файл настроек, записанный до того,
-        /// как код появился в списке по умолчанию: список в файле перекрывает умолчания.
+        /// The discipline codes with the defaults filled in when the user never touched the list.
+        /// The kit codes always belong here: if the user named a discipline in the "Building Kit", it
+        /// would be odd not to recognise the same code in a model name when guessing the workset.
+        /// This also repairs an old settings file written before the code appeared in the default list:
+        /// the list in the file overrides the defaults.
         /// </summary>
         public IReadOnlyList<string> EffectiveDisciplines
         {
@@ -132,29 +132,29 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Разделы, которые «Комплект по корпусу» ищет в папках проекта. Список отдельный
-        /// от <see cref="Disciplines"/>: там все коды, какие вообще встречаются в именах файлов,
-        /// а здесь — те, чьи модели нужно грузить связями в каждую модель.
+        /// The disciplines the "Building Kit" looks for in the project folders. The list is separate from
+        /// <see cref="Disciplines"/>: there are all the codes that occur in file names at all, here are
+        /// the ones whose models have to be linked into every model.
         /// </summary>
         public List<string> Kit { get; } = new List<string>();
 
-        /// <summary>Разделы комплекта с подстановкой умолчаний.</summary>
+        /// <summary>The kit disciplines with the defaults filled in.</summary>
         public IReadOnlyList<string> EffectiveKit =>
             Kit.Count > 0 ? (IReadOnlyList<string>)Kit : DisciplineCatalog.KitDefaults;
 
-        /// <summary>Какой по счёту кусок имени модели считать номером корпуса: <c>MK3-VSC-B01-AR</c> → третий.</summary>
+        /// <summary>Which piece of the model name counts as the building number: <c>MK3-VSC-B01-AR</c> → the third.</summary>
         public int BuildingToken { get; set; } = ModelKit.DefaultBuildingToken;
 
-        /// <summary>Заходить ли внутрь вложенных папок раздела при поиске комплекта.</summary>
+        /// <summary>Whether to descend into nested discipline folders when searching for the kit.</summary>
         public bool KitDeep { get; set; } = true;
 
-        /// <summary>Номер корпуса из прошлого раза — подставляется, когда из имени открытой модели его не вышло.</summary>
+        /// <summary>The building number from last time — used when it could not be read from the open model's name.</summary>
         public string KitBuilding { get; set; } = string.Empty;
 
         /// <summary>
-        /// Папка, в которой искать комплект, строкой <see cref="ModelFolder.Format"/>. Обычно
-        /// не нужна: папку кнопка определяет по самой открытой модели. Пригождается там, где
-        /// определить нечего — проект открыт как отсоединённый файл, а модели лежат на сервере.
+        /// The folder to search the kit in, as a <see cref="ModelFolder.Format"/> line. Usually not
+        /// needed: the button works the folder out from the open model itself. It comes in useful where
+        /// there is nothing to work it out from — the project is open as a detached file and the models live on a server.
         /// </summary>
         public string KitRoot { get; set; } = string.Empty;
 
@@ -162,14 +162,14 @@ namespace VladTools.Infrastructure
         public static string FilePath => Path.Combine(LinkSetLibrary.FolderPath, "_settings.txt");
 
         /// <summary>
-        /// Имя рабочего набора в сравнимом виде: без пробелов по краям.
+        /// A workset name in comparable form: without leading or trailing spaces.
         ///
-        /// Обрезка тут не косметика. Набор у смежника легко называется «00_Reference planes »
-        /// с висящим пробелом — в списке Revit это никак не видно. Пока окно обрезало имя при
-        /// добавлении в список, а сравнивали имена как есть, такой набор пропадал дважды:
-        /// отдельной строкой не появлялся (обрезанное имя выглядело дублем уже отмеченного),
-        /// в столбце «Где есть» показывал «нет ни в одной» — и **не закрывался вовсе**,
-        /// потому что <c>Matches</c> его не находил.
+        /// The trim is not cosmetic. A consultant's workset can easily be called "00_Reference planes "
+        /// with a trailing space — nothing in Revit's list shows it. While the window trimmed the name on
+        /// adding it to the list but the names were compared as they were, such a workset went missing twice:
+        /// it never appeared as a row of its own (the trimmed name looked like a duplicate of one already
+        /// checked), it showed "in none of them" in the "Found in" column — and it **was not closed at all**,
+        /// because <c>Matches</c> never found it.
         /// </summary>
         public static string NormalizeWorkset(string name)
         {
@@ -177,9 +177,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Одно и то же имя рабочего набора или нет. Регистр не учитывается — Revit его
-        /// в именах наборов тоже не различает. Правило одно на всех: и окно, и команда
-        /// сравнивают имена наборов связей только через этот метод.
+        /// Whether two workset names are the same. Case is ignored — Revit does not distinguish it in
+        /// workset names either. One rule for everyone: both the window and the command compare link
+        /// workset names through this method and nothing else.
         /// </summary>
         public static bool SameWorkset(string first, string second)
         {
@@ -189,7 +189,7 @@ namespace VladTools.Infrastructure
                 StringComparison.CurrentCultureIgnoreCase);
         }
 
-        /// <summary>Читает настройки. Файла нет или он испорчен — значения по умолчанию.</summary>
+        /// <summary>Reads the settings. No file or a corrupt one yields the defaults.</summary>
         public static LinkPreferences Load()
         {
             var preferences = new LinkPreferences();
@@ -204,13 +204,13 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Испорченный файл настроек — не повод не открывать окно.
+                // A corrupt settings file is no reason not to open the window.
             }
 
             return preferences;
         }
 
-        /// <summary>Перезаписывает файл целиком. Отказ записи проглатывается: это настройки, не данные.</summary>
+        /// <summary>Rewrites the whole file. A write failure is swallowed: these are settings, not data.</summary>
         public void Save()
         {
             try
@@ -233,14 +233,14 @@ namespace VladTools.Infrastructure
                 lines.AddRange(Clean(Worksets).Select(name => Line("CLOSE", name)));
                 lines.AddRange(Clean(Servers).Select(name => Line("SERVER", name)));
 
-                // Пустой список подразумевает умолчания, но в файл кладём то, что реально
-                // действует, — иначе править было бы нечего.
+                // An empty list implies the defaults, but what goes into the file is what actually
+                // applies — otherwise there would be nothing to edit.
                 lines.AddRange(Clean(EffectiveDisciplines).Select(code => Line("DISCIPLINE", code)));
                 lines.AddRange(Clean(EffectiveKit).Select(code => Line("KIT", code)));
 
                 Directory.CreateDirectory(LinkSetLibrary.FolderPath);
 
-                // BOM — чтобы кириллица открывалась в «Блокноте» как надо.
+                // The BOM keeps non-Latin names readable when the file is opened in Notepad.
                 File.WriteAllLines(FilePath, lines, new UTF8Encoding(true));
             }
             catch (Exception)

@@ -10,23 +10,23 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Ввод облачных моделей парой GUID — запасной путь к BIM360, когда просмотр недоступен:
-    /// пользователь не вошёл в Autodesk, до службы не достучаться или Revit другой версии
-    /// и токен из него не достать.
+    /// Entering cloud models as a pair of GUIDs — the fallback path to BIM360 when browsing is
+    /// unavailable: the user is not signed in to Autodesk, the service cannot be reached, or
+    /// it is a different Revit version and the token cannot be obtained from it.
     ///
-    /// Поле одно и многострочное: GUID всё равно приходят списком — из сохранённого набора,
-    /// из письма, из чужого файла настроек, — и вводить их по одному было бы издевательством.
-    /// Разбор нарочно нестрогий: в строке ищутся два GUID, а разделители, регион и имя
-    /// распознаются как получится. Что не разобралось, окно показывает прямо под полем,
-    /// а не молча выбрасывает.
+    /// There is one multi-line field: GUIDs come as a list anyway — from a saved set, from an
+    /// email, from someone else's settings file — and typing them in one at a time would be
+    /// torture. Parsing is deliberately loose: two GUIDs are looked for in a line, and the
+    /// separators, the region and the name are recognised as best they can be. What did not
+    /// parse is shown right under the field, not silently dropped.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class CloudLinkWindow : Window
     {
-        private const string WindowTitle = "Связи BIM360 по GUID";
+        private const string WindowTitle = "BIM360 Links by GUID";
 
-        /// <summary>Регионы облака Autodesk, которые Revit принимает в пути модели.</summary>
+        /// <summary>The Autodesk cloud regions Revit accepts in a model path.</summary>
         private static readonly string[] Regions = { "US", "EMEA", "AUS", "CAN", "DEU", "GBR", "IND", "JPN" };
 
         private static readonly Regex GuidPattern = new Regex(
@@ -38,7 +38,7 @@ namespace VladTools.UI
         private readonly TextBlock _status;
         private readonly Button _addButton;
 
-        /// <summary>Разобранные модели.</summary>
+        /// <summary>The parsed models.</summary>
         public IReadOnlyList<LinkEntry> Selected { get; private set; } = new List<LinkEntry>();
 
         public CloudLinkWindow(string defaultRegion)
@@ -57,8 +57,8 @@ namespace VladTools.UI
 
             _regionBox.SelectedIndex = Math.Max(0, Array.IndexOf(Regions, (defaultRegion ?? "US").ToUpperInvariant()));
             _regionBox.ToolTip =
-                "Регион, в котором живёт проект. Берётся, если в самой строке региона нет.\n" +
-                "Ошибка в регионе — и Revit просто не найдёт модель.";
+                "The region the project lives in. Used when the line itself does not name one.\n" +
+                "Get the region wrong and Revit will simply not find the model.";
             _regionBox.SelectionChanged += (s, e) => UpdateSummary();
 
             _textBox = new TextBox
@@ -77,7 +77,7 @@ namespace VladTools.UI
 
             _addButton = new Button
             {
-                Content = "Добавить",
+                Content = "Add",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -87,7 +87,7 @@ namespace VladTools.UI
 
             var cancelButton = new Button
             {
-                Content = "Отмена",
+                Content = "Cancel",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -101,23 +101,22 @@ namespace VladTools.UI
             UpdateSummary();
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button cancelButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // регион
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // поле
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // region
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // field
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Строка на модель: GUID проекта и GUID модели, между ними — что угодно. " +
-                       "Можно дописать регион и имя:\n" +
-                       "    EMEA | 5f7a3c2e-… | 9b1d4e6f-… | АР_Корпус 1.rvt\n" +
-                       "Регион и имя необязательны: региона нет — возьмётся выбранный ниже, имени нет — " +
-                       "в таблице будет виден GUID.",
+                Text = "One line per model: the project GUID and the model GUID, with anything at all between them. " +
+                       "A region and a name can be added too:\n" +
+                       "    EMEA | 5f7a3c2e-… | 9b1d4e6f-… | AR_Building 1.rvt\n" +
+                       "Both are optional: no region — the one chosen below is used; no name — the table will show the GUID.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -127,7 +126,7 @@ namespace VladTools.UI
             var regionPanel = new StackPanel { Orientation = Orientation.Horizontal };
             regionPanel.Children.Add(new TextBlock
             {
-                Text = "Регион по умолчанию:",
+                Text = "Default region:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
@@ -157,14 +156,14 @@ namespace VladTools.UI
             return root;
         }
 
-        // ───────────────────────────── разбор ─────────────────────────────
+        // ───────────────────────────── parsing ─────────────────────────────
 
         private string Region => (string)_regionBox.SelectedItem ?? "US";
 
         /// <summary>
-        /// Разбирает строку: два первых GUID — проект и модель, известное слово вроде EMEA —
-        /// регион, самый длинный из оставшихся кусков — имя. Порядок GUID именно такой,
-        /// как их пишет Autodesk и как их хранит набор.
+        /// Parses a line: the first two GUIDs are the project and the model, a recognised word
+        /// like EMEA is the region, and the longest of what remains is the name. The GUID order
+        /// is exactly the one Autodesk writes them in and a set stores them in.
         /// </summary>
         private LinkEntry Parse(string line)
         {
@@ -221,22 +220,22 @@ namespace VladTools.UI
             if (entries.Count == 0 && bad == 0)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Вставьте строки с GUID.";
+                _status.Text = "Paste in lines with GUIDs.";
             }
             else if (bad > 0)
             {
                 _status.Foreground = Brushes.Firebrick;
-                _status.Text = "Разобрано моделей: " + entries.Count +
-                               ". Строк без пары GUID: " + bad + " — они будут пропущены.";
+                _status.Text = "Models parsed: " + entries.Count +
+                               ". Lines without a GUID pair: " + bad + " — they will be skipped.";
             }
             else
             {
                 _status.Foreground = SystemColors.ControlTextBrush;
-                _status.Text = "Разобрано моделей: " + entries.Count + ".";
+                _status.Text = "Models parsed: " + entries.Count + ".";
             }
 
             _addButton.IsEnabled = entries.Count > 0;
-            _addButton.Content = entries.Count > 0 ? "Добавить (" + entries.Count + ")" : "Добавить";
+            _addButton.Content = entries.Count > 0 ? "Add (" + entries.Count + ")" : "Add";
         }
 
         private void OnAdd(object sender, RoutedEventArgs e)

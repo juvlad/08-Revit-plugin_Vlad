@@ -1,883 +1,969 @@
-﻿# CLAUDE.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Поддержка этого файла (правило для Claude)
+## Keeping this file up to date (a rule for Claude)
 
-**Claude сам поддерживает CLAUDE.md в актуальном состоянии — без отдельной просьбы пользователя.**
-Файл правится в той же сессии, в которой менялся код, до отчёта о выполненной работе.
+**Claude keeps CLAUDE.md up to date on its own — without a separate request from the user.**
+The file is edited in the same session in which the code changed, before reporting the finished work.
 
-Обновлять обязательно, когда:
+Must be updated whenever:
 
-| Изменение в коде | Что поправить здесь |
+| Change in the code | What to fix here |
 | --- | --- |
-| Добавлена/удалена/переименована кнопка ленты | «Кнопки и команды», при необходимости — «Как устроена команда» |
-| Добавлена или переименована панель ленты | «Что это», «Кнопки и команды» |
-| Появился новый класс в `Infrastructure/` или новая общая абстракция | «Карта кода», «Ключевые решения» |
-| Изменился формат или путь файла в `%AppData%\VladTools\` (`formulas.txt`, `names.txt`, `dimensions\`, `links\`, `basefile\`) | «Хранение настроек пользователя» |
-| Меняются `build.ps1`, `VladTools.csproj`, `VladTools.addin`, версия Revit или TFM | «Сборка перед отчётом», «Сборка и запуск», «Перенос на другую версию Revit» |
-| Появился тестовый проект или линтер | «Сборка и запуск» — добавить команды прогона |
-| Нарушено или сознательно изменено любое из «Соглашений» | «Соглашения» — переписать правило, а не оставлять расхождение |
+| A ribbon button is added, removed or renamed | "Buttons and commands", and "How a command is built" if needed |
+| A ribbon panel is added or renamed | "What this is", "Buttons and commands" |
+| A new class appears in `Infrastructure/` or a new shared abstraction | "Code map", "Key decisions" |
+| The format or path of a file under `%AppData%\VladTools\` changes (`formulas.txt`, `names.txt`, `dimensions\`, `links\`, `basefile\`) | "Storing user settings" |
+| `build.ps1`, `VladTools.csproj`, `VladTools.addin`, the Revit version or the TFM changes | "Build before reporting", "Build and run", "Porting to another Revit version" |
+| A test project or a linter appears | "Build and run" — add the commands to run them |
+| Any of the "Conventions" is broken or deliberately changed | "Conventions" — rewrite the rule, don't leave the discrepancy standing |
 
-Правила правки: заменять устаревшее, а не дописывать рядом; не дублировать README.md — здесь архитектура и
-соглашения, в README.md пользовательское описание кнопок (его тоже держать в синхроне при изменении поведения
-кнопок); не описывать то, что и так видно из структуры папок.
+Editing rules: replace what is outdated, don't append next to it; don't duplicate README.md — this
+file holds architecture and conventions, README.md holds the user-facing description of the buttons
+(keep that in sync too whenever button behaviour changes); don't describe what is already visible
+from the folder structure.
 
-## Сборка перед отчётом (правило для Claude)
+## Build before reporting (a rule for Claude)
 
-**Любая правка кода заканчивается прогоном `.\build.ps1` — без ключей, то есть под все годы сразу и
-с установкой.** Не `dotnet build` под один год и не `-NoDeploy`: то и другое проверяет меньше, чем нужно,
-а отчёт «сделано» после них означает «скомпилировалось у меня», а не «стоит и готово к проверке».
+**Any code change ends with running `.\build.ps1` — with no flags, that is, for every year at once
+and with install.** Not `dotnet build` for a single year, and not `-NoDeploy`: both check less than
+is needed, and reporting "done" after either means "it compiled on my machine", not "it is
+installed and ready to check".
 
-Почему именно так:
+Why exactly this way:
 
-- **Годы расходятся по-настоящему.** У 2025 другой целевой фреймворк (`net8.0`), другой набор ссылок
-  и лишний файл при установке (`VladTools.deps.json`) — см. «Ключевые решения», TFM по году. Правка,
-  собравшаяся под 2022, под 2025 падала уже не раз; обратное тоже верно.
-- **Проверять кнопку всё равно придётся в Revit**, а пользователь этого не сделает, пока DLL не легла
-  в `%AppData%\Autodesk\Revit\<год>\VladTools\`. Оставить сборку без установки — значит переложить
-  на него лишний шаг и притвориться, что работа закончена.
-- **Копирование стоит с `ContinueOnError="true"`.** При запущенном Revit сборка «пройдёт», а
-  установленная DLL останется старой — и проверять пользователь будет прошлую версию. Поэтому:
-  перед сборкой смотреть `Get-Process Revit`; запущен — сказать об этом и попросить закрыть, а не
-  собирать молча. После сборки убедиться, что `VladTools.dll` в папках всех собранных годов
-  обновилась по времени, и только тогда отчитываться.
+- **The years genuinely differ.** 2025 has a different target framework (`net8.0`), a different
+  reference set and an extra file on install (`VladTools.deps.json`) — see "Key decisions", TFM by
+  year. An edit that built fine under 2022 has broken under 2025 before, and the other way round too.
+- **The button still has to be checked in Revit**, and the user will not do that until the DLL is
+  actually sitting in `%AppData%\Autodesk\Revit\<year>\VladTools\`. Leaving the build unstalled
+  means handing the user an extra step and pretending the work is done.
+- **The copy step runs with `ContinueOnError="true"`.** With Revit running the build still
+  "succeeds", but the installed DLL stays the old one — and the user ends up testing the previous
+  version. So: check `Get-Process Revit` before building; if it is running, say so and ask for it
+  to be closed rather than building silently. After building, confirm `VladTools.dll` in every
+  built year's folder has a fresh timestamp, and only then report completion.
 
-В отчёте о работе называть годы, под которые собрано, и отдельно — новые предупреждения. Уже известные
-и сознательно оставленные (`CS0618` на `ElementId.IntegerValue`, `SYSLIB0014` на `WebRequest.Create` —
-см. «Перенос на другую версию Revit») новыми не считаются и в отчёт не идут; всё остальное идёт.
+Name the years that were built for in the completion report, and separately, any new warnings.
+Warnings already known and deliberately left in place (`CS0618` on `ElementId.IntegerValue`,
+`SYSLIB0014` on `WebRequest.Create` — see "Porting to another Revit version") do not count as new
+and are left out of the report; everything else goes in.
 
-## Что это
+## What this is
 
-Надстройка (add-in) для **Autodesk Revit 2022, 2024 и 2025** на C#, x64. Даёт на ленте Revit вкладку
-**Vlad Tools** с двумя панелями: «Семейства» — четыре кнопки, работают **только в редакторе семейств** (`.rfa`);
-«Проект» — шесть кнопок, работают **только в проекте** (`.rvt`). Тестового проекта нет — проверка ручная, в Revit.
+An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
+tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
+editor** (`.rfa`); "Project" — six buttons, working **only in a project** (`.rvt`). There is no test
+project — checking is done by hand, in Revit.
 
-## Сборка и запуск
+## Build and run
 
 ```powershell
-.\build.ps1                          # Release + установка сразу под все установленные годы (2022, 2024, 2025)
-.\build.ps1 -Configuration Debug     # Debug + установка, тоже все годы
-.\build.ps1 -NoDeploy                # только собрать, без установки
-.\build.ps1 -RevitVersion 2025       # Release + установка только под один год
-dotnet build src\VladTools\VladTools.csproj -c Release -p:RevitVersion=2024 -p:DeployToRevit=false   # то же напрямую, один год
+.\build.ps1                          # Release + install for every installed year at once (2022, 2024, 2025)
+.\build.ps1 -Configuration Debug     # Debug + install, every year too
+.\build.ps1 -NoDeploy                # build only, no install
+.\build.ps1 -RevitVersion 2025       # Release + install for one year only
+dotnet build src\VladTools\VladTools.csproj -c Release -p:RevitVersion=2024 -p:DeployToRevit=false   # the same directly, one year
 ```
 
-- Требуется .NET SDK и установленный Revit — версия задаётся `RevitVersion` (по умолчанию `2022`, из
-  [Directory.Build.props](src/VladTools/Directory.Build.props); переопределяется ключом `-p:RevitVersion=2024`
-  из командной строки, он побеждает значение по умолчанию). От неё зависят `RevitDir` (`RevitAPI.dll` /
-  `RevitAPIUI.dll` по `HintPath`, NuGet-пакетов нет), `RevitAddinsDir`, `Product` и **целевой фреймворк** в
-  [VladTools.csproj](src/VladTools/VladTools.csproj) — см. «Ключевые решения», TFM по году.
-- `build.ps1` без параметров прогоняет **все три года за один запуск** (2022, 2024, 2025), пропуская те,
-  что не установлены на машине (`RevitAPI.dll` по `HintPath` для них не найдётся). `-RevitVersion` берёт
-  один год или список; падает на первой же неудачной сборке, а не собирает молча «что получилось».
-- Каждый год — в своей папке вывода, `bin\R2022\<Configuration>\` / `bin\R2024\<Configuration>\` /
-  `bin\R2025\<Configuration>\` (и так же `obj\`). Разводит не сам csproj, а `Directory.Build.props`:
-  `BaseOutputPath` / `BaseIntermediateOutputPath` должны быть известны MSBuild до импорта SDK, иначе NuGet
-  успевает выбрать старый путь для служебных файлов restore раньше, чем свойство подействует (предупреждение
-  MSB3539). Там же расширены `DefaultItemExcludes` на `bin\**;obj\**` целиком, а не только «свою» папку года:
-  без этого сборка одного года, заставшая на диске уже готовую `obj\` от прошлой сборки другого года,
-  подхватывает её сгенерированный `AssemblyInfo.cs` через обычный `**/*.cs`-глоб как второй исходник и падает
-  с `CS0579` («повторяющийся атрибут») — SDK исключает из умолчательных глобов только
-  BaseOutputPath/BaseIntermediateOutputPath *этой* сборки, про соседний год ничего не знает. Воспроизведено
-  и проверено при подготовке поддержки 2024; та же защита работает и для 2025 без правок.
-- Установка = MSBuild-таргет `DeployToRevitAddins` в csproj: копирует `VladTools.dll` (+ `.pdb`, а на 2025
-  ещё и `.deps.json` — см. TFM по году) в `%AppData%\Autodesk\Revit\Addins\<год>\VladTools\`, а
-  `VladTools.addin` из корня репозитория — рядом.
-- **Revit держит `VladTools.dll`.** При открытом Revit копирование не пройдёт (`build.ps1` предупреждает; копии
-  стоят с `ContinueOnError="true"`, поэтому сборка «пройдёт», но установленная DLL останется старой). Закрыть
-  Revit, собрать, запустить снова — надстройка грузится только при старте.
-- Проверка изменения = `.\build.ps1` (все годы, с установкой — см. «Сборка перед отчётом»), запустить нужный
-  Revit, открыть `.rfa` или `.rvt` по панели кнопки и нажать её. Сборка под один год — только для быстрой
-  промежуточной проверки компиляции, отчётом о выполненной работе она не считается.
+- Requires the .NET SDK and an installed copy of Revit — the version is set by `RevitVersion`
+  (defaulting to `2022`, from [Directory.Build.props](src/VladTools/Directory.Build.props);
+  overridden by the `-p:RevitVersion=2024` command-line switch, which wins over the default). It
+  drives `RevitDir` (`RevitAPI.dll` / `RevitAPIUI.dll` via `HintPath`, no NuGet packages),
+  `RevitAddinsDir`, `Product` and the **target framework** in
+  [VladTools.csproj](src/VladTools/VladTools.csproj) — see "Key decisions", TFM by year.
+- `build.ps1` with no arguments runs **all three years in one invocation** (2022, 2024, 2025),
+  skipping whichever is not installed on the machine (its `RevitAPI.dll` via `HintPath` will not be
+  found). `-RevitVersion` takes one year or a list; it fails on the first build that does not
+  succeed, rather than silently building "whatever came out".
+- Every year gets its own output folder, `bin\R2022\<Configuration>\` / `bin\R2024\<Configuration>\`
+  / `bin\R2025\<Configuration>\` (and the same for `obj\`). This split is not done by the csproj
+  itself but by `Directory.Build.props`: `BaseOutputPath` / `BaseIntermediateOutputPath` have to be
+  known to MSBuild before the SDK import, otherwise NuGet picks an old path for its own restore
+  files before the property takes effect (warning MSB3539). The same file also extends
+  `DefaultItemExcludes` to cover `bin\**;obj\**` as a whole, not just "its own" year's folder:
+  without that, building one year while an `obj\` from a previous build of a different year is
+  already on disk picks up its generated `AssemblyInfo.cs` through the ordinary `**/*.cs` glob as a
+  second source file and fails with `CS0579` ("duplicate attribute") — the SDK only excludes
+  *this* build's own BaseOutputPath/BaseIntermediateOutputPath from the default globs, it knows
+  nothing about a neighbouring year. Reproduced and confirmed while adding 2024 support; the same
+  guard works for 2025 without any changes.
+- Installing = the `DeployToRevitAddins` MSBuild target in the csproj: it copies `VladTools.dll`
+  (+ `.pdb`, and on 2025 also `.deps.json` — see TFM by year) into
+  `%AppData%\Autodesk\Revit\Addins\<year>\VladTools\`, and `VladTools.addin` from the repository
+  root right next to it.
+- **Revit holds `VladTools.dll` locked.** With Revit open, the copy will not go through
+  (`build.ps1` warns about this; the copy steps run with `ContinueOnError="true"`, so the build
+  "succeeds" but the installed DLL stays the old one). Close Revit, build, start it again — the
+  add-in only loads at startup.
+- Verifying a change = `.\build.ps1` (every year, with install — see "Build before reporting"),
+  launch the relevant Revit, open an `.rfa` or `.rvt` matching the button's panel, and press it.
+  Building for a single year is only for a quick intermediate compile check — it does not count as
+  a completed piece of work.
 
-## Карта кода
+## Code map
 
 ```
-App.cs                            IExternalApplication — единственная точка регистрации кнопок
-Commands/*.cs                     по одному IExternalCommand на кнопку: вся работа с Revit API
-UI/*Window.cs                     окна WPF, собранные кодом; про Revit API не знают
-UI/DimensionChainKind.cs          каталог видов ниток авторазмеров (Габарит/Проёмы/Оси/Перегородки/…) + подписи
-UI/DimensionChainRow.cs           строка таблицы ниток окна «Авторазмеры» (INotifyPropertyChanged)
-UI/DimensionTypeInfo.cs           снимок типа размера для этого окна: Id (long) + имя
-UI/FormulaRule.cs                 строка таблицы формул (INotifyPropertyChanged)
-UI/SharedParameterRow.cs          строка таблицы параметров семейства + ссылка на FamilyParameter
-UI/ProjectParameterRow.cs         строка таблицы общих параметров проекта: Id элемента + его привязка
-UI/FamilyParameterInfo.cs         снимок параметра семейства для окна формул
-UI/NestedFamilyRow.cs             строка таблицы вложенных: элемент, текущее и новое имя, проверка
-UI/FamilyDimensionScan.cs         итог проверки семейств на метки размеров: GUID + счётчики + отказы
-UI/CleanupTarget.cs               перечень того, что умеет убирать «Очистка»; порядок значений = порядок строк в окне
-UI/CleanupOption.cs               пункт окна очистки: галочка, число найденного и весь его текст
-UI/LinkRow.cs                     строка таблицы связей: LinkEntry + галочка + набор проекта + Id существующей связи
-UI/WorksetRow.cs                  строка списка рабочих наборов: имя, галочка, в скольких связях встречается
-UI/LinkWorksetScan.cs             итог чтения наборов у связей: имена + счётчик + отказы
-UI/BrowseNode.cs                  узел дерева просмотра (папка/модель), общий для Revit Server и BIM360
-UI/ModelBrowserWindow.cs          само дерево с галочками; чем заполнять детей — получает лямбдой
-UI/CloudLinkWindow.cs             ввод облачных моделей парой GUID — запасной путь к BIM360
-UI/ModelPicker.cs                 выбор модели из всех четырёх источников; общий для «Link Manager» и «Базового файла»
-UI/ModelKitRow.cs                 строка таблицы «Комплекта по корпусу»: раздел, модель, где нашлась
-UI/ModelKitWindow.cs              окно «Комплект по корпусу»: корпус, разделы, где искать, таблица найденного
-UI/GridBuilder.cs                 общие сборки колонок таблиц: колонка текста и колонка с галочкой
-UI/BaseFileWindow.cs              окно «Базовый файл»: одна модель и список того, что с ней сделать
-UI/CoordinationChangeKind.cs      виды расхождений с координационным файлом (Положение/Имя/Нет/Новый/…) + подписи
-UI/CoordinationChangeRow.cs       строка таблицы окна «Принять изменения» + готовая правка
-UI/CoordinationScan.cs            итог сверки с одной связью: строки + сколько за ней следит
-UI/AcceptCoordinationWindow.cs    окно «Принять изменения»: выбор связи, таблица расхождений
+App.cs                            IExternalApplication — the sole point where buttons are registered
+Commands/*.cs                     one IExternalCommand per button: all the Revit API work
+UI/*Window.cs                     WPF windows, built in code — they know nothing about the Revit API
+UI/DimensionChainKind.cs          the catalogue of auto-dimension chain kinds (Overall/Openings/Grids/Partitions/…) + captions
+UI/DimensionChainRow.cs           a row of the chain table in the "Auto Dimensions" window (INotifyPropertyChanged)
+UI/DimensionTypeInfo.cs           a snapshot of a dimension type for this window: Id (long) + name
+UI/FormulaRule.cs                 a row of the formula table (INotifyPropertyChanged)
+UI/SharedParameterRow.cs          a row of the family parameter table + a reference to the FamilyParameter
+UI/ProjectParameterRow.cs         a row of the project shared parameter table: element Id + its binding
+UI/FamilyParameterInfo.cs         a snapshot of a family parameter for the formula window
+UI/NestedFamilyRow.cs             a row of the nested-item table: element, current and new name, validation
+UI/FamilyDimensionScan.cs         the result of scanning families for dimension labels: GUID + counts + failures
+UI/CleanupTarget.cs               the list of what "Cleanup" is able to remove; the order of values is the order of the rows in the window
+UI/CleanupOption.cs               an item of the cleanup window: check box, count found, and its full text
+UI/LinkRow.cs                     a row of the link table: LinkEntry + check box + link set + the existing link's Id, if any
+UI/WorksetRow.cs                  a row of the workset list: name, check box, how many links it occurs in
+UI/LinkWorksetScan.cs             the result of reading worksets from links: names + a count + failures
+UI/BrowseNode.cs                  a node of the browse tree (folder/model), shared by Revit Server and BIM360
+UI/ModelBrowserWindow.cs          the tree itself with check boxes; what fills its children is given as a lambda
+UI/CloudLinkWindow.cs             entering cloud models as pairs of GUIDs — the fallback path to BIM360
+UI/ModelPicker.cs                 picking a model from all four sources; shared by "Link Manager" and "Base File"
+UI/ModelKitRow.cs                 a row of the "Building Kit" table: discipline, model, where it was found
+UI/ModelKitWindow.cs              the "Building Kit" window: building, disciplines, where to search, the found-models table
+UI/GridBuilder.cs                 shared table column assemblies: a text column and a check box column
+UI/BaseFileWindow.cs              the "Base File" window: one model and a list of what to do with it
+UI/CoordinationChangeKind.cs      the kinds of discrepancy against the coordination file (Position/Name/Missing/New/…) + captions
+UI/CoordinationChangeRow.cs       a row of the "Accept Changes" table + the ready-made edit
+UI/CoordinationScan.cs            the result of comparing against one link: rows + how many elements monitor it
+UI/AcceptCoordinationWindow.cs    the "Accept Changes" window: choosing a link, the discrepancy table
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
-Infrastructure/Icons.cs           загрузка PNG из EmbeddedResource
-Infrastructure/FormulaLibrary.cs  чтение/запись %AppData%\VladTools\formulas.txt
-Infrastructure/FormulaParser.cs   какие имена в формуле не соответствуют параметрам семейства
-Infrastructure/NameBuffer.cs      чтение/запись %AppData%\VladTools\names.txt
-Infrastructure/WarningSuppressor.cs  гасит предупреждения Revit при Commit и копит их текст для отчёта
-Infrastructure/DimensionLabelCache.cs  сохранённая проверка семейств на метки размеров (файл на проект)
-Infrastructure/JsonHttp.cs        свой разбор JSON + GET с заголовками (без сторонних сборок)
-Infrastructure/AutodeskSession.cs токен вошедшего в Revit пользователя Autodesk — рефлексией по SSONET.dll
-Infrastructure/AccClient.cs       дерево BIM360/ACC через Data Management API: хабы → проекты → папки → модели
-Infrastructure/RevitServerClient.cs  папки и модели Revit Server через его REST-службу
-Infrastructure/LinkCatalog.cs     связи и рабочие наборы открытого проекта; общий для обеих команд со связями
-                                  плюс HostModel — где лежит и как назван сам открытый проект
-Infrastructure/ModelStore.cs      папка с моделями поверх трёх хранилищ: что внутри, что уровнем выше
-Infrastructure/ModelKit.cs        подбор комплекта связей по номеру корпуса и папкам разделов
-Infrastructure/LinkSetLibrary.cs  сохранённые наборы связей %AppData%\VladTools\links\<имя>.txt
-Infrastructure/LinkPreferences.cs настройки окна «Link Manager» (%AppData%\VladTools\links\_settings.txt)
-Infrastructure/BaseFilePreferences.cs  настройки окна «Базовый файл» (%AppData%\VladTools\basefile\_settings.txt)
-Infrastructure/BaseFileFinder.cs  подбор базового файла по корпусу в имени открытой модели
-Infrastructure/CoordinationCatalog.cs  сверка осей и уровней проекта с координационным файлом
-Infrastructure/DatumUpdate.cs     готовая правка одной оси или уровня: поворот, перенос, отметка, имя
-Infrastructure/DisciplineCatalog.cs  код раздела (OV, VK…) из имени модели → набор проекта «01_Link_OV», по токенам
-Infrastructure/RoomSide.cs        одна прямая сторона границы помещения: направление, нормаль внутрь, стены
-Infrastructure/RoomSideBuilder.cs GetBoundarySegments помещения → список RoomSide (слияние коллинеарных отрезков)
-Infrastructure/DimensionReferenceCollector.cs  сторона + вид нитки → ReferenceArray для NewDimension, с кэшем граней стен
-Infrastructure/DimensionSampleReader.cs  образцовые размеры → шаблон ниток (эвристика, как FormulaParser)
-Infrastructure/DimensionTextLayout.cs    вынос коротких подписей нитки на полку (тоже эвристика: ширины текста API не даёт)
-Infrastructure/DimensionTemplate.cs      шаблон авторазмеров + %AppData%\VladTools\autodim\<имя>.txt и _settings.txt
-Infrastructure/AutoDimensionMarker.cs    ExtensibleStorage: метка «этот размер поставила кнопка», от повторов
-Resources/*.png                   иконки 16/32, вшиты в DLL
+Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
+Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
+Infrastructure/FormulaParser.cs   which names in a formula do not match a family parameter
+Infrastructure/NameBuffer.cs      reading/writing %AppData%\VladTools\names.txt
+Infrastructure/WarningSuppressor.cs  suppresses Revit warnings on Commit and gathers their text for the report
+Infrastructure/DimensionLabelCache.cs  the saved family scan for dimension labels (one file per project)
+Infrastructure/JsonHttp.cs        our own JSON parsing + a GET with headers (no third-party assemblies)
+Infrastructure/AutodeskSession.cs the Autodesk token of the user signed in to Revit — via reflection over SSONET.dll
+Infrastructure/AccClient.cs       the BIM360/ACC tree via the Data Management API: hubs → projects → folders → models
+Infrastructure/RevitServerClient.cs  Revit Server folders and models through its REST service
+Infrastructure/LinkCatalog.cs     the links and worksets of the open project; shared by both link commands
+                                  plus HostModel — where the open project itself lives and what it is called
+Infrastructure/ModelStore.cs      a model folder across the three stores: what is inside, what is above
+Infrastructure/ModelKit.cs        guessing a link kit by building number and discipline folders
+Infrastructure/LinkSetLibrary.cs  saved link sets, %AppData%\VladTools\links\<name>.txt
+Infrastructure/LinkPreferences.cs the "Link Manager" window settings (%AppData%\VladTools\links\_settings.txt)
+Infrastructure/BaseFilePreferences.cs  the "Base File" window settings (%AppData%\VladTools\basefile\_settings.txt)
+Infrastructure/BaseFileFinder.cs  guessing the base file from the building in the open model's name
+Infrastructure/CoordinationCatalog.cs  comparing the project's grids and levels against the coordination file
+Infrastructure/DatumUpdate.cs     a ready-made edit for a single grid or level: rotation, translation, elevation, name
+Infrastructure/DisciplineCatalog.cs  a discipline code (OV, VK…) from a model name → a project workset "01_Link_OV", by tokens
+Infrastructure/RoomSide.cs        one straight side of a room boundary: direction, inward normal, walls
+Infrastructure/RoomSideBuilder.cs a room's GetBoundarySegments → a list of RoomSide (merging collinear segments)
+Infrastructure/DimensionReferenceCollector.cs  a side + a chain kind → a ReferenceArray for NewDimension, with a wall-face cache
+Infrastructure/DimensionSampleReader.cs  sample dimensions → a chain template (a heuristic, like FormulaParser)
+Infrastructure/DimensionTextLayout.cs    pulling short labels of a chain out onto a leader (also a heuristic: the API gives no text width)
+Infrastructure/DimensionTemplate.cs      auto-dimension templates + %AppData%\VladTools\autodim\<name>.txt and _settings.txt
+Infrastructure/AutoDimensionMarker.cs    ExtensibleStorage: the "this dimension was placed by the button" mark, against duplicates
+Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
-## Кнопки и команды
+## Buttons and commands
 
-| Панель | Кнопка | Команда | Что делает |
+| Panel | Button | Command | What it does |
 | --- | --- | --- | --- |
-| Семейства | «3д миниатюра» | `Create3DThumbnailCommand` | создаёт/перенастраивает `View3D` с именем `3д миниатюра` (аннотации off, соединители скрыты, `Realistic`, `Fine`) и открывает его — Revit берёт активный вид как превью семейства |
-| Семейства | «Удалить параметры» | `DeleteSharedParametersCommand` | окно со всеми **общими** параметрами семейства (метки размеров по умолчанию скрыты); отмеченные удаляются через `FamilyManager.RemoveParameter` |
-| Семейства | «Добавить формулы» | `AddFormulasCommand` | окно «параметр — формула» из сохранённого списка; отмеченные задаются через `FamilyManager.SetFormula` |
-| Семейства | «Переименовать вложенные» | `RenameNestedFamiliesCommand` | окно «найти и заменить» по именам вложенных `Family` и их `FamilySymbol`; отмеченным присваивается `Element.Name` |
-| Проект | «Удалить общие параметры» | `DeleteProjectParametersCommand` | окно со всеми `SharedParameterElement` проекта (отбор «привязанные / не привязанные» + кнопка проверки семейств на метки размеров); отмеченные сносятся через `doc.Delete` вместе с привязкой и значениями |
-| Проект | «Очистка» | `CleanupCommand` | окно с восемью галочками и «Выбрать всё»: неиспользуемые семейства, листы, фильтры, виды, легенды, спецификации, группы модели (роспуск), неиспользуемые типы групп — всё отмеченное выполняется одной транзакцией |
-| Проект | «Link Manager» | `LinkManagerCommand` | окно со списком моделей (файлы, Revit Server, BIM360, сохранённый набор): размещение и наборы внутри связей — одни на пачку, рабочий набор проекта — свой у каждой строки
-(можно подобрать по коду раздела в имени модели). Кнопка «Комплект по корпусу…» собирает список сама: находит модели
-всех разделов того же корпуса по папкам проекта. Новые связи создаются одной транзакцией и закрепляются булавкой, существующие перезагружаются `LoadFrom` вне транзакции |
-| Проект | «Базовый файл» | `BaseFileCommand` | связывает координационный файл (подбирает его сам по номеру корпуса в имени открытой модели — либо файл, Revit Server, BIM360) и сразу настраивает по нему проект: `Document.AcquireCoordinates`, имя площадки, булавка, переход в рабочий набор (создаёт его, если нет); последним шагом открывает режим «Копирование/Мониторинг → Выбрать связь» — само копирование мониторингом API Revit не умеет |
-| Проект | «Авто размеры» | `AutoDimensionCommand` | по каталогу видов ниток (габарит / проёмы / оси проёмов / перегородки / грани стен / всё вместе) расставляет размеры по сторонам выбранных помещений; набор ниток собирается кнопкой «Взять образец…» (разбор уже расставленных вручную размеров) или руками, сохраняется шаблоном. Три галочки на весь набор: захватывать толщину примыкающих стен, выносить мелкие подписи на полку, удалять ранее расставленное |
-| Проект | «Принять изменения» | `AcceptCoordinationCommand` | сверяет оси и уровни, следящие за координационным файлом, с самим файлом и ставит отмеченные по нему одной транзакцией: ось — поворотом вокруг своей середины плюс сдвигом поперёк себя, уровень — новой отметкой, плюс переименование вслед за связью. Пропавшие и новые элементы связи только показывает |
+| Families | "3D Thumbnail" | `Create3DThumbnailCommand` | creates/reconfigures a `View3D` named `3D Thumbnail` (annotations off, connectors hidden, `Realistic`, `Fine`) and opens it — Revit takes the active view as the family preview |
+| Families | "Delete Parameters" | `DeleteSharedParametersCommand` | a window with every **shared** parameter of the family (dimension labels hidden by default); the checked ones are deleted via `FamilyManager.RemoveParameter` |
+| Families | "Add Formulas" | `AddFormulasCommand` | a "parameter — formula" window from a saved list; the checked ones are assigned via `FamilyManager.SetFormula` |
+| Families | "Rename Nested" | `RenameNestedFamiliesCommand` | a "find and replace" window over the names of nested `Family` and their `FamilySymbol`; the checked ones get `Element.Name` |
+| Project | "Delete Shared Parameters" | `DeleteProjectParametersCommand` | a window with every `SharedParameterElement` of the project ("bound / unbound" filter + a button to scan families for dimension labels); the checked ones are removed via `doc.Delete`, taking the binding and the values with them |
+| Project | "Cleanup" | `CleanupCommand` | a window with eight check boxes and "Select all": unused families, sheets, filters, views, legends, schedules, model groups (ungrouped), unused group types — everything checked runs in one transaction |
+| Project | "Link Manager" | `LinkManagerCommand` | a window with a model list (files, Revit Server, BIM360, a saved set): placement and the worksets inside links — one for the whole batch, the project workset — one per row
+(can be guessed from the discipline code in the model name). The "Building Kit…" button assembles the list itself: it finds the models of every discipline of the same building through the project's folders. New links are created in a single transaction and pinned; existing ones are reloaded with `LoadFrom` outside a transaction |
+| Project | "Base File" | `BaseFileCommand` | links the coordination file (guessed on its own from the building number in the open model's name — a file, Revit Server, or BIM360) and immediately sets up the project against it: `Document.AcquireCoordinates`, the site name, a pin, switching to a workset (creating it if it does not exist); as its last step it opens "Copy/Monitor → Select Link" mode — the actual copy-monitoring is something the Revit API cannot do |
+| Project | "Auto Dimensions" | `AutoDimensionCommand` | from a catalogue of chain kinds (overall / openings / opening centres / partitions / wall faces / all combined) places dimensions along the sides of the selected rooms; the set of chains is gathered with the "Take a sample…" button (parsing dimensions already placed by hand) or by hand, and saved as a template. Three check boxes apply to the whole set: capture the thickness of adjoining walls, pull small labels out onto a leader, remove what was placed before |
+| Project | "Accept Changes" | `AcceptCoordinationCommand` | compares the grids and levels monitoring the coordination file against the file itself and applies the checked ones in a single transaction: a grid by rotating about its own midpoint plus a sideways shift, a level by a new elevation, plus renaming to follow the link. Missing and new link elements are only shown |
 
-## Как устроена команда (общий шаблон — соблюдать в новых)
+## How a command is built (a shared pattern — follow it in new ones)
 
-Все команды повторяют один порядок; отклоняться от него без причины не нужно:
+Every command repeats the same order; there is no reason to deviate without one:
 
-1. Атрибуты `[Transaction(TransactionMode.Manual)]` + `[Regeneration(RegenerationOption.Manual)]`.
-2. Нет `ActiveUIDocument` → `Result.Cancelled`. Дальше проверка типа документа: командам панели «Семейства»
-   нужен `doc.IsFamilyDocument`, команде панели «Проект» — наоборот. Не тот документ → `TaskDialog`
-   с подсказкой, чем пользоваться вместо этого, + `Result.Cancelled`.
-3. Собрать **снимок данных** в виде простых DTO (в семействе — из `doc.FamilyManager`, в проекте —
-   `FilteredElementCollector` плюс карта `doc.ParameterBindings`) и передать его в окно.
-4. Показать окно, обязательно проставив владельца:
+1. `[Transaction(TransactionMode.Manual)]` + `[Regeneration(RegenerationOption.Manual)]`.
+2. No `ActiveUIDocument` → `Result.Cancelled`. Then a document-kind check: Families-panel commands
+   need `doc.IsFamilyDocument`, the Project-panel command needs the opposite. Wrong document kind →
+   a `TaskDialog` saying what to use instead, + `Result.Cancelled`.
+3. Gather a **data snapshot** as plain DTOs (in a family — from `doc.FamilyManager`, in a project —
+   a `FilteredElementCollector` plus a map from `doc.ParameterBindings`) and hand it to the window.
+4. Show the window, always setting the owner:
    `new WindowInteropHelper(window).Owner = commandData.Application.MainWindowHandle;`
-   `ShowDialog() != true` → `Result.Cancelled`. Результат окно отдаёт через свойство `Selected`.
-5. **Одна транзакция на всю пачку** (пользователь откатывает всё одним Ctrl+Z). Внутри — цикл по элементам,
-   каждый в своём `try/catch`: успехи в `applied` / `deleted`, ошибки строкой в `failures`. Исключение по одному
-   элементу не прерывает остальные и не роняет команду. Если правка порождает предупреждения Revit
-   (в проекте — почти всегда), на транзакцию ставится `WarningSuppressor`, а собранный им текст идёт в отчёт.
-6. Если не сделано ничего — `transaction.RollBack()`, иначе `Commit()`.
-7. Отчёт `TaskDialog` со списком успехов и не более 15 ошибок («…и ещё N»).
-8. Внешний `try/catch` → `message = exception.Message; return Result.Failed;`.
+   `ShowDialog() != true` → `Result.Cancelled`. The window hands back the result through a
+   `Selected` property.
+5. **One transaction for the whole batch** (the user undoes all of it with one Ctrl+Z). Inside — a
+   loop over the elements, each in its own `try`/`catch`: successes into `applied` / `deleted`,
+   failures as a string into `failures`. An exception on one element does not stop the rest and
+   does not fail the command. If an edit produces Revit warnings (in a project — almost always), a
+   `WarningSuppressor` is put on the transaction, and the text it gathers goes into the report.
+6. Nothing was done → `transaction.RollBack()`, otherwise `Commit()`.
+7. A `TaskDialog` report with a list of successes and no more than 15 failures ("…and N more").
+8. An outer `try`/`catch` → `message = exception.Message; return Result.Failed;`.
 
-Новую кнопку регистрировать в [App.cs](src/VladTools/App.cs) через `Ribbon.AddPushButton` рядом с существующими;
-пошаговая инструкция с примером — в [README.md](README.md), раздел «Как добавить новую кнопку».
+Register a new button in [App.cs](src/VladTools/App.cs) via `Ribbon.AddPushButton`, next to the
+existing ones; a step-by-step guide with an example is in [README.md](README.md), under "How to
+add a new button".
 
-**Исключение — `AutoDimensionCommand`.** Шаги 1–2 и 5–8 те же, но между показом окна и транзакцией стоит
-цикл: кнопка «Взять образец…» в окне не читает выбор сама (Revit не даёт вызвать `Selection.PickObject`
-при открытом модальном окне) — окно закрывается с признаком `WantsSample`, команда делает `PickObjects`,
-разбирает образец (`DimensionSampleReader`) и открывает окно заново тем же экземпляром данных, уже
-заполненным. Цикл кончается, когда пользователь закрывает окно кнопкой «Расставить» или «Закрыть».
-Снимок данных (шаг 3) — тоже не один: `FilteredElementCollector` за типами размеров плюс список сохранённых
-шаблонов, а не пара DTO.
+**Exception — `AutoDimensionCommand`.** Steps 1–2 and 5–8 are the same, but between showing the
+window and the transaction there is a loop: the "Take a sample…" button in the window does not
+read the selection itself (Revit will not let `Selection.PickObject` run while a modal window is
+open) — the window closes with the `WantsSample` flag, the command does `PickObjects`, parses the
+sample (`DimensionSampleReader`) and reopens the window with the same instance of the data, now
+filled in. The loop ends when the user closes the window with "Place" or "Close".
+The data snapshot (step 3) is not a single one either: a `FilteredElementCollector` over dimension
+types plus a list of saved templates, rather than a pair of DTOs.
 
-## Ключевые решения
+## Key decisions
 
-- **Целевой фреймворк зависит от года Revit.** Revit 2022 и 2024 — `.NET Framework 4.8`, Revit 2025 —
-  `.NET 8` (`RevitAPI.runtimeconfig.json` Revit 2025: `tfm net8.0` + `Microsoft.WindowsDesktop.App 8.0`;
-  net48-сборка в нём не загрузится вовсе). Поэтому в `VladTools.csproj` `TargetFramework` выбирается
-  условием по `RevitVersion` (`net8.0-windows` при `>= 2025`, иначе `net48`), а не задан одной строкой —
-  сравнение числовое, MSBuild сам приводит обе стороны к числу. Это по-прежнему **один ключ сборки**,
-  не форк проекта и не `TargetFrameworks` (множественный): второй означал бы две ссылки на разные
-  `RevitAPI.dll` в одной сборке. Отсюда же на net8.0-windows `UseWPF=true` вместо явных ссылок на
-  `PresentationCore`/`PresentationFramework`/`WindowsBase`/`System.Xaml` (они актуальны только для net48 —
-  на net8 такие ссылки по именам не разрешаются) и `MSBuildWarningsAsMessages=MSB3277`: `RevitAPI.dll`
-  тянет полсотни соседних DLL Revit со своими версиями `System.Drawing` и т. п., и без этой строки
-  за стеной MSB3277 не видно настоящих предупреждений. `AppendTargetFrameworkToOutputPath=false` обязателен
-  сильнее прежнего: без него вывод 2025 ушёл бы в `bin\R2025\Release\net8.0-windows\`, и таргет установки
-  промахнулся бы мимо файла. На 2025 рядом с DLL появляется `VladTools.deps.json` (на net48 его нет) —
-  `DeployToRevitAddins` копирует его условно, через `Exists(...)`. `#if` при этом не понадобился: для
-  каждого различия в API между 2022/2024/2025 замена есть во всех трёх годах разом (см. «Перенос на
-  другую версию Revit»), различаются только TFM, ссылка на `RevitAPI.dll` и папка установки.
-- **WPF без XAML.** Проект на `Microsoft.NET.Sdk` (не WPF SDK), разметка не компилируется; окна строятся
-  кодом в конструкторе, а WPF-сборки подключены ссылками (net48) или `UseWPF` (net8.0-windows — см. пункт
-  про TFM по году). Добавить `.xaml` — значит сменить тип SDK; мимоходом этого не делать.
-- **Окна не знают про Revit.** `AddFormulasWindow` получает `FamilyParameterInfo` (имя + `CanAssignFormula` +
-  `HasFormula`) и валидирует строки сам. Исключение — `SharedParameterRow`, который хранит `FamilyParameter`,
-  чтобы команде было что удалять.
-- **Иконки** — `EmbeddedResource` с именем ресурса `VladTools.Resources.<base>_16.png` / `_32.png`.
-  `Icons.Load` возвращает `null`, если ресурса нет: кнопка просто останется без картинки.
-- **Регистр имён параметров.** В формулах Revit имена регистрозависимы, поэтому сравнение идёт по
-  `StringComparison.Ordinal` (`AddFormulasCommand.Find`, словарь в `AddFormulasWindow`). В окне удаления правило
-  по умолчанию регистр не учитывает, а галочка «Учитывать регистр» включает `Ordinal`.
-- **Удаление параметров в несколько проходов.** Revit не даёт удалить параметр, на который ссылается формула
-  другого. `DeleteSharedParametersCommand.Remove` крутит проходы, пока есть прогресс, и уносит в ошибки только
-  то, что не удалилось за проход без единого успеха.
-- **Общие параметры проекта — это `SharedParameterElement`.** В `.rvt` их отдаёт
-  `FilteredElementCollector(doc).OfClass(typeof(SharedParameterElement))`, а категории и «экземпляр/тип»
-  берутся только из карты `doc.ParameterBindings`: у элемента параметра о них не спросить. Карта собирается
-  один раз в словарь по `InternalDefinition.Id`. Параметр без привязки — не поломка: он приехал с загруженным
-  семейством или остался от снятой привязки, поэтому в окне есть отбор «Показывать», а в таблице — колонка
-  «Экземпляр/Тип» со значением «Нет привязки». Удаление — `doc.Delete(Id)`, оно сносит и привязку,
-  и значения; перед каждым удалением проверяется `doc.GetElement(Id)`, потому что Revit мог унести
-  элемент заодно с предыдущим. Параметры проекта, созданные не из ФОП (не общие), команда не трогает —
-  это `ParameterElement` без GUID.
-- **В обоих окнах удаления удаляется только то, что показано** — то же правило, что в «Переименовать
-  вложенные»: строка, ушедшая из таблицы, теряет галочку. Иначе отбор сносил бы невидимое.
-  Отсюда же вид самого правила: оно не просто отмечает подходящие имена, а оставляет в таблице
-  только их — все отборы окна сходятся в одном предикате `InScope`, а `RebuildVisible` пересобирает
-  список и расставляет галочки за один проход. «Инвертировать поиск» переворачивает только результат
-  сравнения, но **не** случай пустой строки: пустое правило показывает всё и при инверсии, иначе одна
-  галочка вычищала бы таблицу целиком. В «Переименовать вложенные» поле «Найти» так себя
-  не ведёт и вести не должно: там это часть замены, а не отбор.
-- **Метки размеров — единственная защита от поломки геометрии.** Параметр, которым помечен размер,
-  Revit удалить даёт: метка просто слетает, и семейство рассыпается. Узнать метку можно только через
-  `Dimension.FamilyLabel` **в документе семейства** (в проекте таких размеров нет), причём геттер у
-  неразмечаемого размера бросает исключение вместо `null` — читать только в `try`.
-  В семействе это один проход коллектора при открытии окна, галочка «Не показывать…» стоит сразу.
-  В проекте так нельзя: пришлось бы открывать каждое загруженное семейство через `EditFamily`, а это
-  минуты, поэтому проверка висит на кнопке «Проверить семейства», а до неё окно честно пишет, что
-  семейства не проверялись. Проверяются только сами загруженные семейства, не вложенные в них.
-- **Проверка проекта кэшируется по семейству, а не целиком** (`DimensionLabelCache`): строка на семейство,
-  ключ — `UniqueId`, признак свежести — `Element.VersionGuid`. Поэтому повторная проверка открывает только
-  новые и изменившиеся семейства, а окно открывается уже с готовым результатом.
-  **Ловушка:** по документации Revit `VersionGuid` меняется на сохранении и синхронизации, а не на каждой
-  правке («in-between saves this version cannot be used to determine if any particular element has changed»),
-  так что перезагруженное в текущем сеансе семейство кэш считает прежним — а это опасная сторона ошибки.
-  Отсюда второе состояние кнопки: когда открывать нечего, она проходит проверку заново, минуя кэш.
-  Убирать это «заново» нельзя, пока признак свежести остаётся `VersionGuid`.
-- **Долгую работу с Revit окно получает лямбдой.** `DeleteProjectParametersWindow` берёт
-  `Func<FamilyDimensionScan>`: подтверждение, курсор ожидания и отчёт — в окне, `EditFamily` и
-  коллекторы — в команде. Правило «окна не знают про Revit» этим и держится.
-  `EditFamily` нельзя звать при открытой транзакции, а полученный документ обязательно закрывать
-  (`Close(false)`), иначе копии семейств висят в памяти до конца сеанса.
-- **«Очистка» — единственная команда, где порядок пунктов в окне и порядок работы разные.** В окне пункты стоят
-  так, как их назвал пользователь, а выполняются в порядке `CleanupCommand.Order`: сначала оформление (листы,
-  виды, легенды, спецификации, фильтры), потом группы, и последними — неиспользуемые семейства. К этому моменту
-  ненужными успевают стать рамки листов, марки и узловые элементы, и они уходят той же пачкой. Список элементов
-  каждый пункт собирает заново, а не берёт из окна: предыдущий пункт уже поменял документ.
-- **Неиспользуемые семейства считаются вручную: «Удалить неиспользуемые» в API Revit 2022 нет**
-  (`Document.GetUnusedElements` появился позже — проверено рефлексией по `RevitAPI.dll`). Занятыми считаются
-  типы, на которые ссылается `GetTypeId` хоть одного размещённого элемента (проход идёт по всем: марка, рамка
-  листа и узловой элемент держат типоразмер не хуже `FamilyInstance`), плюс `ElementId`-параметры типов (панель
-  навесной стены, «Тип семейства» вложенного) и компоненты легенд. **Ловушка:** у типоразмера есть встроенные
-  параметры, указывающие на него самого и на его семейство, — без явного исключения самоссылок в
-  `AddReferences` занятыми оказались бы поголовно все, и очистка молча не находила бы ничего. Перед самим
-  удалением каждый кандидат ещё раз проверяется через `GetDependentElements(new ElementIsElementTypeFilter(true))`:
-  если Revit говорит, что вместе с типоразмером уйдут размещённые элементы, типоразмер остаётся, а число
-  оставленных идёт в отчёт — иначе осечка этой защиты выглядела бы как «команда ничего не делает».
-- **Группы модели распускаются, а не удаляются.** `doc.Delete` по типу группы унёс бы и её содержимое, то есть
-  геометрию проекта; `Group.UngroupMembers` оставляет элементы на местах. Закреплённую группу Revit распустить
-  не даёт, поэтому `Pinned` снимается перед вызовом. Проходов несколько, как при удалении параметров: вложенную
-  группу Revit не отдаёт, пока она внутри другой. Опустевшие после роспуска типы групп сами из браузера
-  не исчезают — их убирает отдельный пункт «неиспользуемые группы».
-- **Чего «Очистка» не трогает никогда:** активный вид (Revit не даёт удалить тот, на котором стоит пользователь),
-  шаблоны видов, служебные виды (`ViewType.Internal`, браузеры, отчёты расчётов) и служебные спецификации —
-  спецификацию изменений внутри рамки листа и внутреннюю спецификацию ключевых примечаний
-  (`ViewSchedule.IsTitleblockRevisionSchedule` / `IsInternalKeynoteSchedule`): эти живут не в браузере,
-  а внутри рамки, и их удаление рамку ломает.
-- **`FormulaParser` — эвристика, а не парсер.** API разобрать формулу не даёт, поэтому из текста вычёркиваются
-  строковые литералы, известные имена параметров (сначала длинные — иначе «SP_Масса брутто» распадётся),
-  функции и константы из `Reserved`, вызовы вида `имя(` и единицы при числе («1 кг»). Оставшиеся идентификаторы
-  считаются отсутствующими параметрами. Расширять — правкой `Reserved` и правил вычёркивания.
-- **Переименование вложенных.** Список окна — это и есть область работы: строки, которых не видно
-  (переключатель «Показывать»), возвращаются к своим именам, иначе правило меняло бы невидимое.
-  Правка ячейки «Новое имя» руками ставит `IsManual`, и правило такую строку больше не затирает —
-  как введённое значение поверх формулы в Excel. Занятость имени считается по **всем** строкам,
-  а не только по отмеченным: имя, которое носит непереименовываемый объект, тоже занято;
-  типоразмеры сравниваются внутри своего семейства, регистр при этом не различается — Revit его
-  в именах тоже не различает. Переименование идёт в несколько проходов, как удаление параметров:
-  пока имя занято соседом, которого тоже переименовывают, Revit его не отдаёт.
-- **Соединители на 3D-виде скрываются дважды**: категориями (`OST_ConnectorElem` + оси X/Y/Z, обязательно через
-  `new ElementId(BuiltInCategory)` — `Category.GetCategory` в семействе отдаёт `null`) и поэлементно
-  `HideElements` по `ConnectorElement`. Каждая настройка вида применяется своим `Try(...)`: неудача одной
-  (например, вид под шаблоном) не отменяет остальные, а попадает в список предупреждений.
-- **Пакетная загрузка связей держится на трёх вещах, которых нет в Revit API.**
-  1) *Папки Revit Server* API не отдаёт вовсе — их читает `RevitServerAdminRESTService<год>` по HTTP
-     (`RevitServerClient`). У службы свой разделитель пути — вертикальная черта (`|`, корень — она одна),
-     а связи нужен путь вида `RSN://сервер/папка/модель.rvt`; перевод — `RevitServerClient.RsnPath`.
-     Три заголовка (`User-Name`, `User-Machine-Name`, `Operation-GUID`) обязательны: без них отказ.
-     `RevitServerClient.ServiceVersion` не зашита константой: один и тот же собранный DLL теперь
-     запускается и в 2022, и в 2024, а имя службы у них разное (`RevitServerAdminRESTService2024`).
-     Значение выставляет `App.OnStartup` из `ControlledApplication.VersionNumber` при каждом старте
-     надстройки; `"2022"` в самом классе — только запасное, на случай если `OnStartup` не отработал.
-  2) *Папки BIM360/ACC* API не отдаёт тоже, зато у самого Revit есть трёхногий токен вошедшего
-     пользователя: `Autodesk.Revit.AdWebServicesBase.GetInstance().GetOAuth2AccessToken()` из `SSONET.dll`
-     рядом с Revit.exe. С ним `AccClient` читает Data Management API, и ни своего приложения в APS,
-     ни окна входа не нужно. **Это недокументированный API**, поэтому весь доступ к нему — рефлексией
-     по уже загруженной сборке, а любой отказ означает не поломку, а «токена нет»: окно предлагает
-     ввести GUID руками (`CloudLinkWindow`). Сборку брать из `AppDomain`, а не `LoadFrom`:
-     она смешанная, вторая копия не нужна.
-  3) *Облачная модель адресуется парой GUID*, а не путём: `ModelPathUtils.ConvertCloudGUIDsToCloudPath`.
-     GUID берутся из раздела `included` ответа `folders/{id}/contents` — там уже лежат последние версии,
-     и отдельный запрос `items/{id}/tip` на каждую модель не нужен (на папке в сотню файлов это
-     разница между секундой и минутой). Связать можно только совмещённую (C4R) модель: у остальных
-     этой пары просто нет, и в список они не попадают.
-- **JSON разбирается своим кодом** (`Infrastructure/JsonHttp.cs`), а не `JavaScriptSerializer`:
-  тот тянет System.Web.Extensions, а надстройка живёт в чужом процессе, где лишняя сборка — лишний
-  способ не загрузиться. Разборщик только на чтение и молчаливый: нет ключа или тип не тот — пусто,
-  а не исключение.
-- **Рабочие наборы связей отмечаются по имени, а не по идентификатору.** `WorksetId` у каждой модели
-  свой, общее у «00_Shared levels and grids» во всех связях — только имя. Поэтому окно оперирует именами,
-  а `LinkManagerCommand.Configuration` переводит их в идентификаторы отдельно для каждой связи через
-  `WorksharingUtils.GetUserWorksetInfo(ModelPath)` — она читает наборы, не открывая модель.
-  Рядом с именами живёт правило (`00_`): в одной модели набор зовётся «00_Shared Levels and Grids»,
-  в другой «00_Общие уровни и оси», и правило применяется **при загрузке, к каждой связи отдельно** —
-  иначе список имён ловил бы только то, что уже видел. Наборы прочитать не удалось — связь всё равно
-  грузится, просто с базовым режимом, а причина уходит в отчёт.
-- **Рабочих набора у связи два, и это разные вещи.** «Наборы в связи» — то, что открыть или закрыть
-  внутри связанной модели (`WorksetConfiguration`), одни на всю пачку. «Набор проекта» — то, куда
-  положить сам элемент связи в открытой модели (`BuiltInParameter.ELEM_PARTITION_PARAM`), и он у каждой
-  строки свой: АР в «01_Связи_АР», КР в «01_Связи_КР». Набор проекта задаётся **созданным элементам**,
-  а не через `WorksetTable.SetActiveWorksetId`: так связь ложится туда, куда просили, независимо от того,
-  на каком наборе стоит пользователь, и активный набор документа не меняется у него под руками.
-  Кладутся оба элемента — и `RevitLinkInstance`, и `RevitLinkType`: так же делает сам Revit, когда
-  связь вставляют при активном наборе. Имя набора уходит в сохранённый набор связей последним полем,
-  но наборы у каждого проекта свои, поэтому при добавлении строки имя сверяется со списком проекта
-  (`LinkManagerWindow.Normalize`): нет такого — сброс на «(активный)» и приписка в «Состоянии».
-- **Сначала перезагрузка существующих связей, потом создание новых — и порядок здесь принципиален.**
-  `RevitLinkType.LoadFrom` требует, чтобы все транзакции были закрыты, и вдобавок **стирает историю
-  отмены документа**. Поставь её после создания — и Ctrl+Z уже не вернул бы только что заведённые связи.
-  Поэтому `Reload` идёт первым и вне транзакции, а `RevitLinkType.Create` + `RevitLinkInstance.Create`
-  следом, одной транзакцией, как везде. Размещение у существующей связи не меняется вовсе: Revit не даёт.
-  Менять порядок нельзя, пока `LoadFrom` чистит историю отмены.
-- **Наборы связи заказываются только как «закрыть все, открыть перечисленные».** Обратная
-  формулировка — `OpenAllWorksets` + `Close(отмеченные)` — по XML-doc равноправна, но на связях
-  Revit её молча не выполняет: `Create`/`LoadFrom` отчитываются об успехе, а наборы остаются
-  открытыми. Именно из-за неё кнопка «не справлялась с закрытием» до сентября 2026. Пример
-  Autodesk именно для связей (Developers Guide → Linked Files → Revit Links) пользуется только
-  `CloseAllWorksets` + `Open(...)`, и все рабочие рецепты в сообществе — тоже. Поэтому
-  `LinkManagerCommand.Configuration` считает **дополнение**: «закрыть отмеченные» превращается
-  в «открыть все наборы связи, кроме отмеченных», а «закрыть все, кроме отмеченных» — прямо
-  в `Open(отмеченные)`. Список наборов связи для этого всё равно уже прочитан.
-  Исключение одно: «как при последнем открытии» дополнением не выражается — что открывалось
-  в прошлый раз, знает только Revit, — там остаётся `Close()` с той же ненадёжностью, и на этот
-  случай работает проверка (пункт ниже). Обратно на `Close()` не переписывать.
-- **`BaseOption` при сбое чтения обязан давать `OpenAllWorksets`, а не `CloseAllWorksets`.**
-  Когда список наборов связи прочитать не удалось, дополнение посчитать нечем. Подставить сюда
-  «закрыть все», как в основном пути, значит на любом обрыве сети молча загрузить связь пустой —
-  худшая из возможных осечек. Поэтому базовый режим отделён от рабочего отдельным методом.
-- **Идентификаторы наборов перечитываются перед загрузкой, а не берутся из кэша окна.**
-  `WorksetPreview.Id` по документации Autodesk меняется при синхронизации с центральной моделью
-  (стабилен только `UniqueId`, но `WorksetConfiguration` принимает лишь `WorksetId`), а между
-  кнопкой «Прочитать наборы» и «Загрузить» проходит сколько угодно времени. Устаревший `WorksetId`
-  и `Open`, и `Close` игнорируют **молча**. Поэтому `Execute` чистит `_worksets` сразу после
-  закрытия окна: кэш живёт один запуск загрузки (создание, проверка, повторная загрузка),
-  а не всю сессию окна.
-- **Сверка наборов после загрузки различает три исхода, а не два.** `WorksetConfiguration` лишь
-  передаёт пожелание, и узнать, выполнил ли его Revit, можно только перечитав уже загруженный
-  `RevitLinkInstance.GetLinkDocument()` через `FilteredWorksetCollector` (`LinkManagerCommand.Check`).
-  Исходов три: «всё как просили», «вот эти наборы не такие» и — отдельно — **«проверить не
-  удалось»** (`WorksetVerdict.Unknown`: связь не отдала документ, коллектор бросил исключение).
-  Сливать последний с первым нельзя: именно так отказ закрытия и оставался незамеченным — в отчёте
-  стояло «Загружена» и ни слова про наборы. `Unknown` идёт в отчёт своим разделом «Наборы заказаны,
-  но проверить их не удалось», а повторный `LoadFrom` при нём **не** делается: он стирает историю
-  отмены документа, и платить этим за догадку нельзя. Что кому должно достаться после загрузки,
-  задаёт `Expected` — зеркало `Configuration`; правишь одно, правь и второе.
-  Повтор делается только при `Mismatched`; для новых связей это возможно только **после**
-  `Commit()` транзакции создания (`LoadFrom` вне транзакции — см. пункт выше), поэтому `Apply`
-  сперва собирает кандидатов в `toVerify`, а лечит их отдельным проходом после `using (transaction)`.
-  Итог в отчёте: сработало сразу (тихо), сработало со второго раза (список «помогла повторная
-  загрузка» — и это тоже стирает историю отмены), не сработало (строка в «Не получилось» с именами
-  наборов), не проверено (свой раздел).
-- **«Набор не закрылся» — это два разных случая, и они должны звучать по-разному.** Либо Revit
-  отказался (сверка это ловит, см. пункт выше), либо **набора с таким именем в связи нет** —
-  имя отмечено по памяти из `_settings.txt`, а у смежника набор назван иначе, и `Matches` его
-  не находит. Второй случай был полностью беззвучным с двух сторон: `Configuration` молча
-  пропускала имя, `Expected` для ненайденного имени ничего не обещала (значит, и сверка молчала),
-  а в окне столбец «Где есть» показывал «из прошлого раза» и когда набор не нашёлся, и когда его
-  никто не искал. Теперь `LinkManagerCommand._seenNames` копит имена, реально встретившиеся
-  в связях за запуск, а `Missing` отдаёт в отчёт отмеченные имена, которых не нашлось ни в одной
-  связи; `WorksetRow.IsCounted` даёт третье состояние столбца — «нет ни в одной». Ноль в
-  `LinkCount` сам по себе этого не значит: без прочитанных связей он значит «не смотрели»,
-  поэтому `RecountWorksets` ставит `IsCounted` только когда наборы прочитаны хоть у одной
-  отмеченной связи. Пустой `_seenNames` (не прочиталась ни одна связь) отключает раздел целиком:
-  там причина другая, и она уже в отчёте.
-- **Имена наборов связей сравниваются только через `LinkPreferences.SameWorkset`** — без учёта
-  регистра (Revit его в именах наборов тоже не различает) и **с обрезкой пробелов по краям**.
-  Обрезка не косметика: набор у смежника легко зовётся «00_Reference planes » с висящим
-  пробелом, в списке Revit это никак не видно, а расхождение было убийственным. Окно обрезало
-  имя в `AddWorkset`, а сравнивали (`RecountWorksets`, `Matches`) как есть — и такой набор
-  пропадал трижды: отдельной строкой не появлялся (обрезанное имя выглядело дублем уже
-  отмеченного), в «Где есть» показывал «нет ни в одной», и **не закрывался вовсе**.
-  Правило одно на всех: новых сравнений имён наборов через `string.Equals` не заводить.
-  Если имя расходится не пробелом (гомоглиф, двойной пробел внутри), `SameWorkset` честно
-  скажет «другое имя», и в списке появится вторая строка — это и есть диагностика.
-- **Чего с наборами связей сделать нельзя вовсе.** Менять наборы **уже загруженной** связи API не
-  умеет: `WorksetConfiguration` принимают только `RevitLinkType.Create` и `LoadFrom` — проверено
-  рефлексией по `RevitAPI.dll`, аналога кнопки Revit «Manage Links → Manage Worksets» нет. Отсюда
-  и то, что перенастройка наборов у существующей связи стоит перезагрузки со стиранием истории
-  отмены. Наборы **вложенных** связей не управляются никак (у Autodesk на это отдельная статья
-  «Closed worksets from nested links are visible in host file») — если у смежника внутри своя
-  подоснова, её уровни и оси останутся видны, что бы команда ни делала.
-- **Набор проекта для связи можно подобрать по имени модели** (`DisciplineCatalog`, галочка
-  «Подбирать по имени модели» рядом с выбором набора). Имя модели дробится на токены по всем
-  не-буквенно-цифровым знакам — так `_R22`, точки и дефисы отпадают сами, спец-обработки суффикса
-  версии не нужно, — и последний токен, совпавший с кодом раздела **из списка** (`OV`, `VK`, `AR`…),
-  считается разделом. Список, а не «последний токен вообще»: в конце имени бывает номер корпуса или
-  дата. Тем же токенайзером разбирается и имя набора проекта — набор подходит, если код стоит в нём
-  отдельным словом (`01_Link_OV`, `01_Связи_OV`, но не `Provod`). Ровно одно совпадение → набор ставится.
-  **Несколько подходящих — ещё не повод сдаваться** (`DisciplineCatalog.Preferred`). Сначала
-  кандидаты сравниваются с именем самой модели: наборы бывают разведены не только по разделам,
-  но и по корпусам (`01_Link_AR_B01`, `01_Link_AR_B03`), и тогда нужный узнаётся сам — побеждает
-  тот, у кого больше общих слов с именем модели. Не разделило — в ход идёт «облик» имени: само
-  имя с вырезанным кодом (`01_Link_ES` → `01_Link_·`), и побеждает кандидат, чей облик носят
-  наборы наибольшего числа **других** разделов, — так `01_Link_AR` обгоняет `05_AR_Фасады`
-  рядом с `01_Link_ES` и `01_Link_OV`. Ничья или ноль очков — по-прежнему «выбирает человек»,
-  но в «Состоянии» теперь перечислены сами кандидаты: без имён приписка «наборов несколько»
-  не говорит, из чего выбирать.
-  **Ноль совпадений молчанием больше не остаётся** — но только там, где наборы по разделам в
-  проекте вообще заведены (`HasDisciplineWorksets`): тогда отсутствие нужного — это ответ
-  («набора с кодом «PS» в проекте нет»), а не «подбор не сработал». Где так не делят, приписки
-  нет: она стояла бы у каждой строки. По той же причине пишется и «раздела в имени модели
-  не видно» — пустая ячейка без объяснения читалась как поломка кнопки.
-  Подбор **только заполняет пустое**: связь с уже заданным набором (руками или из сохранённого набора)
-  и существующая связь не трогаются; ручная правка в таблице снимает пометку `_autoWorkset`, и
-  выключение подбора такой выбор уже не сбрасывает. Список кодов — в `links\_settings.txt`
-  (строки `DISCIPLINE`), пустой = `DisciplineCatalog.Defaults`; при закрытии окна туда пишется
-  действующий список целиком, чтобы было что править.
-- **Комплект связей подбирается по устройству папок проекта, а не по списку моделей.**
-  В проекте рядом лежат папки разделов — `3.0_AR`, `4.2_KR`, `5.1_ES`, `9.1_PT`, — а в имени каждой
-  модели стоит номер корпуса (`MK3-VSC-B01-AR`). Этого хватает, чтобы предложить готовый набор
-  связей и не выбирать его руками в каждой из десятка моделей корпуса. Разбор — эвристика того же
-  уровня, что `FormulaParser` и `DisciplineCatalog` (`ModelKit`): токены имени, а не разбор
-  соглашения об именовании. Отсюда и устройство окна: найденное показывается таблицей **до**
-  того, как что-то будет связано, а раздел, в котором моделей оказалось несколько, окно отмечать
-  отказывается — то же правило, что при подборе рабочего набора: несколько подходящих значит
-  «выбирает человек», а не «берём первое».
-- **Обход комплекта намеренно узкий: корень и папки разделов в нём, а не всё дерево проекта.**
-  Каждая папка облака — запрос по сети, и полный обход проекта на сотню папок стоил бы минуты
-  вместо секунды. Отсюда `FolderLimit`: упёрлись в предел — не молчим, а говорим, что поиск,
-  похоже, начат не с той папки. Промах по корню лечится сам с двух сторон: если папок разделов
-  в корне не нашлось, поиск сперва поднимается **на уровень выше** (открытая модель вполне может
-  лежать в `01_Base Model` рядом с разделами, а не в них), потом заглядывает **на уровень ниже**
-  (`03_Модели\3.0_AR`). Папка, в которой обход в итоге шёл, возвращается в `ModelKitScan.Root`
-  и показывается в окне — иначе запомнилась бы не та.
-- **Где лежит открытая модель, Revit рассказывает сам — включая облако.** У совмещённой берётся
-  путь **центральной** модели (`GetWorksharingCentralModelPath`), а не локальной копии: папки
-  разделов стоят рядом с центральной. У облачной есть `Document.GetCloudFolderId` — тот самый
-  идентификатор папки, каким её знает Data Management (проверено рефлексией: есть в 2022, 2024
-  и 2025), а идентификатор проекта собирается из GUID облачного пути приставкой `b.`. Поэтому
-  ни хаб, ни проект искать по списку не нужно — комплект собирается сразу от папки модели.
-  Ничего не выяснилось (проект ни разу не сохранён, открыт отсоединённым) — не поломка: окно
-  спросит папку кнопками и корпус полем.
-- **`ModelStore` — третий взгляд на те же хранилища, и он не дубль двух первых.** `ModelPicker`
-  ведёт человека по дереву вниз, `LinkCatalog` переводит запись в `ModelPath` для Revit, а тут
-  нужно обойти папки кодом и уметь подняться **вверх** — чего ни то ни другое не давало.
-  Дорога вверх для облака стоит запроса (`AccClient.Folder`): вниз ведут `contents` и `topFolders`,
-  вверх не ведёт ничего. Выбор папки при этом делается тем же деревом, что и выбор моделей
-  (`ModelBrowserWindow` с предикатом `pickFolder`), — второго дерева заводить не нужно.
-- **Своего диалога выбора папки у WPF нет ни в одном из трёх собираемых годов.** `OpenFolderDialog`
-  появился только в .NET 8, а 2022 и 2024 живут на .NET Framework 4.8; тащить WinForms в надстройку,
-  которая грузится в чужой процесс, ради одного диалога — плохой размен. Поэтому папка на диске
-  выбирается указанием любой модели внутри неё (`ModelPicker.PickFileFolder`), и в подсказке так
-  и написано.
-- **Новый `RevitLinkInstance` сразу закрепляется (`Pinned = true`).** Связь смежника вставлена
-  по координатам, и случайный сдвиг мышью потом ищут всей командой; снять булавку в Revit — одна
-  кнопка, вернуть уехавшую связь на место — нет. Ставится только вновь созданным экземплярам
-  (в `Create`, сразу после `RevitLinkInstance.Create`), существующие связи `Reload`/`Move` не трогают.
-  Отказ не срывает загрузку — уходит строкой в отчёт, как всё остальное здесь.
-- **`ImportPlacement` задаётся не связи, а её экземпляру.** В `RevitLinkOptions` размещения нет — там
-  только относительный путь и конфигурация наборов; способ размещения уходит третьим аргументом
-  `RevitLinkInstance.Create`. Относительный путь ставится только файлам: у Revit Server и облака
-  путь всегда абсолютный.
-- **Дерево просмотра одно на два хранилища** (`ModelBrowserWindow` + `BrowseNode`): и сервер, и облако —
-  вложенные списки, которые дорого читать целиком, поэтому содержимое подгружается при раскрытии узла,
-  а чем именно — окно получает лямбдой. Чтение идёт прямо в потоке интерфейса под курсором ожидания:
-  диалог модальный, Revit всё равно ждёт. Отказ службы не закрывает окно, а становится красной строкой
-  внутри той папки, которую не удалось прочитать.
-- **Копирования мониторингом в Revit API нет — и не появится обходным путём.** Кнопка «Базовый файл»
-  делает четыре шага из пяти, а пятый только начинает. В `RevitAPI.dll` есть лишь **чтение** уже
-  существующих связей мониторинга (`Element.IsMonitoringLinkElement`, `GetMonitoredLinkElementIds`,
-  `GetMonitoredLocalElementIds`) — проверено рефлексией в 2022, 2024 и 2025; ни создания, ни аналога
-  кнопки ленты нет. Единственное честное продолжение — `PostableCommand.CopyMonitorSelectLink`
-  (есть в `RevitAPIUI.dll` всех трёх лет): `BaseFileCommand.OpenMonitor` ставит команду в очередь
-  Revit, и она срабатывает после закрытия отчёта, а выбор связи и элементов остаётся за пользователем.
-  Заменять это на копирование без мониторинга (`ElementTransformUtils.CopyElements`) **нельзя**:
-  уровни и оси появятся, связи с базовым файлом у них не будет, а на плане разницы не видно —
-  худший вид осечки. Перед `PostCommand` состояние проверяется через `UIApplication.CanPostCommand`:
-  режим доступен не на всяком виде, и молча не сработавшая кнопка выглядела бы как поломка.
-- **Порядок шагов «Базового файла» задан зависимостями, а не удобством.** Связь → `doc.Regenerate()`
-  → `AcquireCoordinates` → имя площадки → булавка, всё одной транзакцией, как везде. Регенерация
-  обязательна: до неё только что созданный `RevitLinkInstance` для Revit ещё не геометрия, а
-  «Получить координаты» работает именно с ней. Переход же в рабочий набор идёт **после** `Commit`:
-  активный набор — состояние сеанса, а не содержимое документа, и Ctrl+Z возвращать его не должен.
-  Сам переход стоит последним не случайно: уровни и оси, скопированные следом, попадут в тот набор,
-  который активен в момент копирования, — ради этого шаг и нужен.
-- **Оба рабочих набора «Базового файла» команда создаёт, если их нет** (`BaseFileCommand.Ensure`,
-  один метод на оба). В новом разделе не заведены ни «01_Link_BM», куда кладётся сама связь,
-  ни «00_Shared levels and grids», в который переходят; молчаливый пропуск означал бы, что кнопка
-  не сделала главного — связь легла бы в активный набор, а перейти было бы некуда. Оба поля окна
-  поэтому редактируемые: выбрать из списка проекта то, чего в нём ещё нет, невозможно. Имя перед
-  созданием сверяется через `WorksetTable.IsWorksetNameUnique` — занятое набором другого вида
-  уходит в отчёт. `01_Link_BM` — та же конвенция, что `01_Link_OV` у смежников (BM — базовая
-  модель); хранится **отдельно от модели**, в своём ключе `LINK_WORKSET`: набор один и тот же
-  во всех разделах, а базовый файл в новом объекте другой. У связи, уже стоящей в проекте,
-  в поле показывается её нынешний набор, и смена набора в окне действительно переносит связь
-  (`BaseFileCommand.Move`) — показанное, но не сделанное выглядело бы как сделанное.
-  Размещение по умолчанию у базового файла — «Совмещение внутренних начал», а не «По общим
-  координатам», как в «Link Manager»: общие координаты из него в этот момент ещё только предстоит
-  получить, и вставлять по ним нечего.
-- **Сам базовый файл подбирается по имени открытой модели** (`BaseFileFinder`), и это то же
-  соглашение, на котором стоит «Комплект по корпусу»: номер корпуса стоит в имени модели
-  (`MK3-VSC-B01-VOIDS` → `B01`), а базовые файлы всего проекта лежат в одной папке
-  `01_Base Model` рядом с папками разделов. Значит, нужный файл зовётся `MK3-VSC-B01-BM`,
-  и место корпуса в имени берётся **тем же ключом**, что у комплекта (`links\_settings.txt`,
-  `KIT_TOKEN`): считать номер корпуса дважды разными настройками пользователь не должен.
-  Обход при этом ещё уже, чем у комплекта, — ровно две папки: та, где лежит модель (она сама
-  может оказаться папкой базовых файлов), и та, что уровнем выше. Подбор идёт при открытии
-  окна, то есть пока пользователь ждёт, и лишний запрос по сети тут дороже лишней находки;
-  по той же причине он и выключается галочкой, и **пропускается вовсе**, когда запомненная
-  с прошлого раза модель уже от этого корпуса — в новом разделе того же объекта базовый файл
-  тот же самый.
-  Имя папки сравнивается словами без ведущих номеров (`01_Base Model` ≡ `Base Model`): номер
-  в начале от проекта к проекту меняют. Кода `BM` в имени может и не быть — тогда берётся
-  модель, совпавшая только по корпусу, но с припиской «проверьте»: она всё-таки лежит в папке
-  базовых файлов, и это честнее, чем «ничего не нашлось». **Подходящих несколько — не берётся
-  ни одна**, то же правило, что при подборе рабочего набора и комплекта; в подписи при этом
-  перечислены имена — без них «подходит несколько» не говорит, из чего выбирать. Отказ подбора
-  при открытии окна показывается серой строкой, а не диалогом: окно только что открылось, и
-  модальный диалог поверх него на ровном месте — худшее, чем можно встретить пользователя;
-  по кнопке «Подобрать» тот же отказ звучит в полный голос.
-- **Выбор модели и разбор связей — общие у обеих команд со связями.** `UI/ModelPicker.cs` — четыре
-  источника (файл, Revit Server, BIM360, пара GUID) с их деревьями и запоминанием имени сервера;
-  `Infrastructure/LinkCatalog.cs` — связи, уже стоящие в проекте, его рабочие наборы, перевод
-  `LinkEntry` в `ModelPath` и кода отказа Revit в русскую строку. «Link Manager» и «Базовый файл»
-  делают с этим разное, но берут одно и то же — второй копии этого кода не заводить.
-- **«Просмотра координации» в Revit API нет вовсе, и кнопка «Принять изменения» идёт с другой
-  стороны.** Ни прочитать его список, ни нажать в нём «Принять» нельзя: из всего мониторинга наружу
-  выведены только `Element.IsMonitoringLinkElement`, `IsMonitoringLocalElement`,
-  `GetMonitoredLinkElementIds` и `GetMonitoredLocalElementIds` — проверено рефлексией по `RevitAPI.dll`
-  2022, 2024 и 2025, никаких «CoordinationReview», «Postpone», «AcceptDifference» там нет (в
-  `RevitAPIUI.dll` есть только `PostableCommand.CoordinationSelectLink`, открывающий сам диалог).
-  Поэтому `CoordinationCatalog` считает расхождения сам, а команда двигает элементы — то есть делает
-  ровно то, что сделало бы действие «Переместить» внутри диалога. Список Revit при этом пустеет сам:
-  он показывает разницу между копией и оригиналом, а её больше нет. **Проверять это надо в Revit
-  глазами** — вот зачем в окне галочка «Открыть „Просмотр координации“ после применения», по
-  умолчанию включённая; она не продолжение работы, а её проверка.
-- **Заранее принятая «разница» здесь выглядит расхождением.** Действие «Принять разницу» в диалоге
-  Revit запоминает допустимое смещение копии от оригинала, и прочитать это смещение API не даёт.
-  Кнопка сравнивает положения напрямую, поэтому сознательно отодвинутая ось попадёт в список
-  и, если её отметить, вернётся на оригинал. Отсюда и устройство окна: расхождения сперва
-  показываются числами (сдвиг, поворот, отметка) и только потом применяются — «принять всё молча»
-  тут означало бы затереть чужое решение.
-- **Пару «элемент проекта — элемент связи» API не отдаёт.** `GetMonitoredLinkElementIds`, вопреки
-  имени, возвращает не то, за чем элемент следит, а экземпляры связи, в которых это находится
-  (подтверждено и документацией, и практикой). Поэтому пара восстанавливается по имени: у осей
-  и уровней имена в документе уникальны, а мониторинг их синхронизирует. Что не сошлось по имени —
-  досопоставляется по положению (`MatchByPosition`), так находится переименование. Пара по положению
-  берётся, **только если кандидат в окне ровно один**: иначе удалённая ось спарилась бы со случайной
-  новой по соседству, и кнопка молча подвинула бы не то — осечка, которой на плане не видно.
-  Переименованный и одновременно далеко уехавший элемент честно попадает в «нет в файле» + «новый
-  в файле», а не сопоставляется наугад.
-- **У оси совмещается бесконечная прямая, а не отрезок.** Длину оси в проекте подрезают под свои
-  виды, к координации она отношения не имеет, и подгонять концы значило бы портить чужую работу.
-  Отсюда схема правки (`TryGridDiff`): поворот вокруг **середины самой оси** — после него направления
-  совпадают, а центр поворота остаётся на месте, — и затем сдвиг поперёк себя. Сдвиг считается
-  сразу для послеповоротного положения, поэтому порядок «повернуть, потом сдвинуть» обязателен.
-  У дуговой оси поворот вокруг своего центра не меняет ничего, кроме концов, поэтому там только
-  перенос центра; изменившийся радиус применить нельзя, и такая строка идёт в таблицу пометкой.
-  `Grid.Curve` — свойство только для чтения (сеттера нет ни в одном из трёх лет), другого способа,
-  кроме `ElementTransformUtils`, и нет.
-- **Булавка снимается на время правки и возвращается сразу после.** Оси и уровни базового файла
-  почти всегда закреплены — иначе их двигают мышью, — а закреплённый элемент Revit двигать не даёт,
-  и без этого кнопка отказывала бы ровно на тех моделях, ради которых написана. Невернувшаяся
-  булавка не срывает остальное, но уходит в отчёт: элемент стоит правильно и незакреплённым,
-  и знать об этом нужно.
-- **Пропавшие и новые элементы связи кнопка не трогает.** Удалить уровень — значит унести всё, что
-  на нём стоит, и такое решение принимает человек, а не пакетная кнопка; завести мониторинг на новый
-  элемент связи Revit API не умеет вовсе (та же дыра, что у «Базового файла» с копированием
-  мониторингом). И то и другое показано в окне строкой без галочки и посчитано в строке состояния —
-  молчать об этом нельзя, иначе «принято всё» означало бы «всё в порядке».
-- **В окне «Принять изменения» всё применимое отмечено сразу — и это не отступление от правила
-  «пустой отбор не значит выбрать всё».** То правило защищает от случайного удаления; здесь ничего
-  не удаляется, всё откатывается одним Ctrl+Z, а кнопку просят принять изменения разом — в этом её
-  смысл. Правило «применяется только показанное» при этом соблюдается как везде: строка, ушедшая
-  из таблицы по отбору «Показывать», теряет галочку.
-- **Авторазмеры не копируют образец по ссылкам — ссылки образца принадлежат конкретным стенам** и в
-  другом помещении бессмысленны. Вместо этого заведён фиксированный каталог видов ниток
-  (`DimensionChainKind`: Габарит / Проёмы / Оси проёмов / Перегородки / Грани стен / Всё вместе),
-  а разбор образца (`DimensionSampleReader`) для каждого образцового размера лишь подбирает вид,
-  смещение и тип — это эвристика того же статуса, что `FormulaParser` (см. ниже), а не точный расчёт.
-  Эталон, по которому сверяется поведение ниток, — `Замечания\Пример кладочного с размерами.pdf`.
-  Результат — обычные строки `DimensionChainRow` в таблице окна, их можно поправить руками; кнопка
-  работает и совсем без образца, если собрать нитки в окне вручную.
-- **Углы нитки берутся не с торца своей стены, а с продольной грани соседней.** У стены в реальном
-  углу Revit почти всегда строит митрованный (скошенный под соединение) торец — у такой грани нормаль
-  уже не параллельна оси стороны, `FaceHitsForWall` её не находит, и без этого правила в угол
-  подставлялась бы случайная следующая подходящая грань где-то в глубине стены (ровно то, что было
-  видно на первой проверке — размеры одного контура цеплялись то за внутреннюю грань, то за точку
-  в толщине стены). Продольная грань соседней (перпендикулярной) стены не митруется никогда — она
-  плоская на всю свою длину, поэтому `DimensionReferenceCollector.BuildCorners` берёт угол оттуда:
-  у соседней по петле стороны (`LoopNeighbor`) ищется её ближайшая к общему углу грань.
-- **Поиск угла ограничен по расстоянию (`CornerWindowMm`, 600 мм), и это не перестраховка.**
-  Раньше запасным вариантом была «крайняя грань стороны, какая есть» — без всякой проверки, где
-  она стоит. У стены со скошенным торцом крайней подходящей гранью оказывался **откос первого
-  проёма**, и нитка начиналась от двери в полуметре от угла: замечание проектировщика «не по всей
-  стене ставится размер, хотя задан вид нитки „Всё вместе“» — это оно. Теперь угол принимается,
-  только если он и правда стоит у конца стороны; окно не ноль, потому что при
-  `SpatialElementBoundaryLocation.Center` граница идёт по осевой и грань примыкающей стены отстоит
-  от конца стороны на половину толщины. Не нашлось ничего в окне — нитка всё равно строится от
-  крайней грани (ссылки в истинном углу может просто не существовать: сторона начинается посреди
-  стены за разделителем помещений), но помечается `DimensionReferenceResult.Warning` и уходит
-  в отчёт **отдельным разделом** «Нитки, которые нужно проверить». Сливать этот случай с успехом
-  нельзя — именно молчание и делало укороченную нитку похожей на правильную.
-- **Крайние засечки нитки захватывают толщину примыкающей стены** (галочка окна, по умолчанию
-  включена; в шаблоне — поле `ТОЛЩИНА`). С каждого конца берётся не одна грань соседней стены,
-  а обе: ближняя (сам угол) и дальняя, за углом. Первым и последним звеном нитки становится
-  толщина этой стены — `120 | 3775 | 120`, ровно так устроена каждая нитка на кладочном плане
-  (сверено с образцом «Кладочный план. Фрагмент 2»). Без этого толщина появлялась то с одной
-  стороны, то ни с одной — в зависимости от того, попал ли торец своей стены под допуск нормали
-  (второе замечание проектировщика: «где-то ставит толщину стены, где-то нет»). Дальняя грань
-  берётся **только если лежит за углом**, вне пролёта стороны: во внутреннем (вогнутом) углу обе
-  грани соседа стоят внутри пролёта, и там это не звено нитки, а обычная перегородка —
-  её найдёт `NeighborPartitionHits`. Отсюда же `LineMarginMm = 1000`: крайние ссылки теперь лежат
-  за пределами стороны, и линия размера должна их перекрывать.
-- **`LoopNeighbor` шагает по петле только при поиске угла (`walk: true`), но не при поиске
-  перегородок.** Между двумя стенами угла нередко стоит короткий кусок границы без стены
-  (разделитель помещений, дверь в проёме без стены) или коллинеарное продолжение — на первом же
-  таком куске поиск угла обрывался. Перегородкам шагать нельзя: угол дополнительно проверяется по
-  расстоянию (`CornerWindowMm`), а засечка перегородки — нет, и дальняя перпендикулярная стена,
-  спроецированная на нашу ось где-то посреди пролёта, стала бы засечкой на пустом месте.
-- **Все точки внутри нитки, кроме угловых, отсекаются по диапазону между углами
-  (`CornerSet.Interior`), а не только дедупом по 1 мм.** Стена, не идеально подрезанная в углу
-  (нет чистого митра — торец остаётся плоским и параллельным оси), даёт свою угловую грань ещё раз
-  через `OwnWallHits`, вдобавок к настоящему углу от соседней стены (см. предыдущие пункты); эта
-  вторая точка обычно смещена от истинного угла больше чем на 1 мм — обычный дедуп её не схлопывает,
-  и рядом с углом появляется лишняя короткая засечка размером примерно в толщину стены. `Interior`
-  отбрасывает у любого «лишнего» набора точек (собственные грани стены для «Проёмы», стыки для
-  «Грани стен», оси для «Оси проёмов», грани перегородок для «Перегородки»/«Всё вместе») всё, что не
-  строго между **ближними** угловыми точками нитки — диапазон считается по ним, а не по дальним:
-  между дальней и ближней гранью примыкающей стены ничего законного не живёт.
-- **«Всё вместе» не ставит осей проёмов, хотя по имени их можно ждать.** Ось делит каждый проём
-  пополам и добавляет засечку посреди каждой двери; на кладочном плане такой засечки нет ни разу,
-  а нитку она делает вдвое гуще и нечитаемой. Кому нужны оси — берёт отдельную нитку «Оси проёмов»
-  рядом. `DimensionSampleReader` про это знает: образец, где оси есть вместе с чем-то ещё, точного
-  соответствия в каталоге не имеет и помечается в «Состоянии» как разобранный приблизительно.
-- **Одна грань стены даёт сразу и торец, и откос проёма — общий приём для всех видов ниток.**
-  `Wall.get_Geometry(new Options { ComputeReferences = true })` → `Solid.Faces`, и среди них берутся
-  `PlanarFace`, чья нормаль параллельна оси стороны (`DimensionReferenceCollector.FaceHitsForWall`).
-  У прямой стены такими гранями оказываются ровно её торцы и — что не очевидно заранее — обе грани
-  каждого дверного/оконного проёма: вырезка проёма всегда добавляет пару граней, перпендикулярных
-  длине стены, то есть параллельных её оси. Поэтому «Габарит» — это крайние две точки того же
-  набора, а «Проёмы» — набор целиком; отдельного прохода по проёмам не нужно. «Перегородки» получают
-  тот же набор, но с соседней (перпендикулярной) стороны той же петли границы и спроецированным
-  на **нашу** ось — стены, примыкающие изнутри, всегда рвут `RoomSideBuilder` на отдельную сторону
-  (см. ниже), так их и находят. «Оси проёмов» — отдельный путь: `FamilyInstance.GetReferences(
-  FamilyInstanceReferenceType.CenterLeftRight)`; семейство эту плоскость не публикует — нитка
-  недоступна, а не подставляет случайную точку.
-- **Стороны помещения строятся слиянием отрезков `GetBoundarySegments`, а не Room.Location.**
-  Соседние отрезки одной петли сливаются в `RoomSide`, если сонаправлены и лежат на одной прямой —
-  так кусок стены, разрезанный проёмом на несколько отрезков границы, остаётся одной стороной.
-  Нормаль «внутрь» не берётся из порядка обхода петли как данность (Revit не гарантирует его
-  всегда одним и тем же) — сырое `BasisZ × direction` проверяется точкой в 50 мм от стороны через
-  `Room.IsPointInRoom` и разворачивается при отрицательном ответе (`RoomSideBuilder.ComputeInwardNormal`).
-  Направление «внутрь/наружу» в самой нитке не хранится — это одна настройка окна на весь запуск,
-  а не поле строки: разнобой направлений внутри одного набора ниток эвристике не нужен.
-- **`Selection.PickObject` нельзя вызвать при открытом модальном окне** — «Взять образец…» в
-  `AutoDimensionWindow` поэтому не читает выбор сама, а закрывает окно с признаком `WantsSample`;
-  команда делает `PickObjects` вне окна и открывает его заново тем же состоянием, уже с разобранным
-  образцом (см. «Как устроена команда», раздел про исключение для `AutoDimensionCommand`).
-- **Геометрия стены кэшируется по `ElementId` на весь запуск команды** (`DimensionReferenceCollector`):
-  одна стена часто входит в несколько сторон и в несколько ниток разом, а чтение solid-геометрии не
-  бесплатно. Без кэша на модели в сотни помещений команда встанет.
-- **Расстановка размеров идёт в две фазы — сначала все чтения, потом все записи.** Создание `Dimension` —
-  тоже правка документа, и она помечает геометрию устаревшей: `Face`/`Reference`, прочитанные до этого
-  момента (в том числе из кэша `DimensionReferenceCollector`), после этого использовать больше нельзя.
-  Проверено на практике: цикл «прочитать ссылки нитки → тут же создать Dimension → прочитать ссылки
-  следующей нитки той же стороны» падает на второй нитке с ошибкой геометрического ядра Revit
-  («The input curve is not bound») — вторая нитка попадает на уже недействительную грань первой.
-  Поэтому `AutoDimensionCommand.Place` сначала обходит все помещения/стороны/нитки, собирая готовые
-  `Line` + `ReferenceArray` в список `pending` (это ещё не запись — только чтение), и лишь потом
-  открывает транзакцию и создаёт `Dimension` по уже готовым данным, без единого нового чтения геометрии.
-- **Подписи разводятся третьей фазой, после `Document.Regenerate()`.** До регенерации у только что
-  созданного размера ещё не заполнены сегменты (`Dimension.Segments`), и разводить нечего. Regenerate
-  в этом месте безопасен ровно потому, что грани стен больше не нужны: вся геометрия прочитана
-  в первой фазе. Сам вынос — `DimensionTextLayout`: подпись, которой не хватает места между
-  засечками, сдвигается с линии на `DimensionSegment.TextPosition` (у размера с двумя ссылками
-  сегментов нет вовсе — там `Dimension.TextPosition`), Revit сам дорисовывает выноску по настройке
-  типа; `HasLeader = true` ставится сверх этого и в `try/catch` — не всякий тип его принимает.
-  **Ширину текста Revit API не отдаёт**, поэтому она оценивается по `TEXT_SIZE` × `TEXT_WIDTH_SCALE`
-  типа размера, числу знаков и масштабу вида (размер шрифта хранится в бумажных единицах — на
-  модели он растянут масштабом). Это эвристика того же статуса, что `FormulaParser`, и она намеренно
-  ошибается в сторону «вынести»: лишняя выноска не страшна, наложение — страшно. Подписи, вынесенные
-  подряд, разводятся по трём полкам, чтобы не налезть уже друг на друга.
-- **У `DataGridComboBoxColumn` три взаимно исключающие привязки — задавать можно ровно одну.**
-  `SelectedItemBinding`, `SelectedValueBinding`, `TextBinding`: при двух заданных вторая молча
-  не работает, выбор из списка не доходит до строки, и в ячейке остаётся то значение, с которым
-  строка родилась. Так и выглядело первое замечание проектировщика («нужный тип не выбирается,
-  возвращается свой»). В `AutoDimensionWindow` обе колонки-списка поэтому переведены на
-  `DataGridTemplateColumn` с живым `ComboBox` в ячейке (`BuildComboTemplate`): привязка одна,
-  значение уходит в строку сразу по выбору (`UpdateSourceTrigger.PropertyChanged`), а не по выходу
-  из режима правки. `IsSynchronizedWithCurrentItem = false` там обязателен: список один на все
-  строки, представление коллекции у них общее, и без этого выбор в одной строке тянул бы за собой
-  остальные. Новых `DataGridComboBoxColumn` не заводить.
-- **Строка окна приводится к тому, что есть в проекте, при появлении (`AutoDimensionWindow.Adopt`).**
-  Тип размера из чужого шаблона или из образца другого проекта здесь может отсутствовать, а выбрать
-  из списка то, чего в нём нет, нельзя — недостижимое значение в строке молча превратилось бы в
-  «поле пустое, а почему — непонятно». Подставляется тип по умолчанию, и об этом пишется
-  в «Состоянии»; тот же приём, что с рабочими наборами проекта в «Link Manager». Тип по умолчанию —
-  тот, который поставит сам Revit (`ElementTypeGroup.LinearDimensionType`), а не первый по алфавиту:
-  именно «первый в списке» и выглядел как самовольно подставленный чужой тип.
-- **Повторный запуск не даёт двойных размеров.** Каждый созданный `Dimension` помечается схемой
-  `ExtensibleStorage` (`AutoDimensionMarker`): `UniqueId` помещения (не `ElementId` — переживает
-  перестроение) плюс номер нитки. Перед новой расстановкой прежние размеры с той же меткой по тем
-  же помещениям сносятся (галочка в окне позволяет это отключить). Размеры, поставленные пользователем
-  руками, метки не имеют и не трогаются никогда — по конструкции, не по проверке имени/слоя.
+- **The target framework depends on the Revit year.** Revit 2022 and 2024 are `.NET Framework
+  4.8`, Revit 2025 is `.NET 8` (Revit 2025's `RevitAPI.runtimeconfig.json` says `tfm net8.0` +
+  `Microsoft.WindowsDesktop.App 8.0`; a net48 build will not load in it at all). So in
+  `VladTools.csproj` the `TargetFramework` is chosen by a condition on `RevitVersion`
+  (`net8.0-windows` when `>= 2025`, otherwise `net48`), rather than a single fixed string — the
+  comparison is numeric, MSBuild converts both sides to a number itself. This is still **one build
+  key**, not a project fork and not a (multiple) `TargetFrameworks`: the latter would mean two
+  references to different `RevitAPI.dll` copies in one build. This is also why `UseWPF=true` is
+  used on net8.0-windows instead of explicit references to `PresentationCore`/`PresentationFramework`/
+  `WindowsBase`/`System.Xaml` (those only matter for net48 — on net8 such references do not resolve
+  by name) and `MSBuildWarningsAsMessages=MSB3277`: `RevitAPI.dll` drags in about fifty neighbouring
+  Revit DLLs with their own versions of `System.Drawing` and the like, and without this line the
+  real warnings are lost behind the MSB3277 wall. `AppendTargetFrameworkToOutputPath=false` matters
+  even more here: without it 2025's output would land in `bin\R2025\Release\net8.0-windows\`, and
+  the install target would miss the file. On 2025, `VladTools.deps.json` appears next to the DLL
+  (net48 has none) — `DeployToRevitAddins` copies it conditionally, via `Exists(...)`. `#if` turned
+  out not to be needed: for every API difference between 2022/2024/2025 a replacement exists that
+  works across all three years (see "Porting to another Revit version"), only the TFM, the
+  `RevitAPI.dll` reference and the install folder differ.
+- **WPF without XAML.** The project uses `Microsoft.NET.Sdk` (not the WPF SDK), no markup is
+  compiled; windows are built in code in the constructor, and the WPF assemblies are pulled in by
+  reference (net48) or `UseWPF` (net8.0-windows — see the TFM-by-year entry). Adding a `.xaml` file
+  would mean changing the SDK type; do not do that in passing.
+- **Windows know nothing about Revit.** `AddFormulasWindow` gets a `FamilyParameterInfo` (name +
+  `CanAssignFormula` + `HasFormula`) and validates rows itself. The exception is
+  `SharedParameterRow`, which holds the `FamilyParameter` so the command has something to delete.
+- **Icons** are `EmbeddedResource`s named `VladTools.Resources.<base>_16.png` / `_32.png`.
+  `Icons.Load` returns `null` if the resource is missing: the button is simply left without a picture.
+- **Parameter-name case.** Revit formulas are case-sensitive, so the comparison is done with
+  `StringComparison.Ordinal` (`AddFormulasCommand.Find`, the dictionary in `AddFormulasWindow`). In
+  the delete window the rule ignores case by default, and the "Match case" box turns on `Ordinal`.
+- **Deleting parameters in several passes.** Revit will not let a parameter be deleted while
+  another parameter's formula references it. `DeleteSharedParametersCommand.Remove` runs passes
+  while there is progress, and only counts as a failure what did not delete in a pass with zero
+  successes.
+- **Project shared parameters are `SharedParameterElement`s.** In a `.rvt` they come from
+  `FilteredElementCollector(doc).OfClass(typeof(SharedParameterElement))`, and the categories plus
+  instance/type only come from the `doc.ParameterBindings` map: the parameter element itself cannot
+  say. The map is built once into a dictionary keyed by `InternalDefinition.Id`. An unbound
+  parameter is not a bug: it arrived with a loaded family or is left over from a removed binding —
+  hence the "Show" filter in the window, and the "Instance/Type" column reading "Not bound". Deletion
+  is `doc.Delete(Id)`, which takes the binding and the values with it; before every deletion
+  `doc.GetElement(Id)` is checked, because Revit may have taken the element along with a previous
+  one. Project parameters not created from a shared parameter file (not shared ones) are never touched
+  by the command — those are `ParameterElement`s with no GUID.
+- **In both delete windows, only what is shown gets deleted** — the same rule as in "Rename
+  Nested": a row that leaves the table loses its check mark. Otherwise a filter would be removing
+  something invisible. Hence the shape of the rule itself: it does not just mark matching names, it
+  leaves only them in the table — every filter in the window converges on one `InScope` predicate,
+  and `RebuildVisible` rebuilds the list and sets the check marks in a single pass. "Invert the
+  search" only flips the comparison result, but **not** the empty-string case: an empty rule shows
+  everything even inverted, otherwise one check box would clear the whole table. In "Rename
+  Nested" the "Find" field does not behave that way and should not: there it is part of the
+  replacement, not a filter.
+- **Dimension labels are the only guard against broken geometry.** Revit will let a parameter
+  labelling a dimension be deleted: the label simply falls off, and the family falls apart. A label
+  can only be read via `Dimension.FamilyLabel` **inside the family document** (there are no such
+  dimensions in a project), and the getter throws instead of returning `null` on a dimension that
+  cannot be labelled — it must only be read inside a `try`. In a family this is a single collector
+  pass when the window opens, and the "Do not show…" box is already checked. In a project this
+  cannot be done that way: each loaded family would have to be opened via `EditFamily`, which takes
+  minutes, so the check hangs on the "Scan Families" button, and until it is pressed the window
+  honestly says the families have not been scanned. Only the loaded families themselves are
+  scanned, not what is nested inside them.
+- **The project scan is cached per family, not as a whole** (`DimensionLabelCache`): one row per
+  family, keyed by `UniqueId`, its freshness marked by `Element.VersionGuid`. So a rescan only opens
+  families that are new or changed, and the window opens with a ready result.
+  **Trap:** per Revit's own documentation, `VersionGuid` changes on save and synchronisation, not
+  on every edit ("in-between saves this version cannot be used to determine if any particular
+  element has changed"), so a family reloaded during the current session looks unchanged to the
+  cache — and that is the dangerous side of the mistake. Hence the button's second state: when
+  there is nothing left to open, it scans everything again, bypassing the cache. That "again"
+  cannot be removed while the freshness marker stays `VersionGuid`.
+- **A window gets long-running Revit work as a lambda.** `DeleteProjectParametersWindow` takes a
+  `Func<FamilyDimensionScan>`: confirmation, the wait cursor and the report live in the window,
+  `EditFamily` and the collectors live in the command. The "windows know nothing about Revit" rule
+  is kept up exactly this way. `EditFamily` cannot be called while a transaction is open, and the
+  document it returns must always be closed (`Close(false)`), otherwise family copies stay hanging
+  in memory for the rest of the session.
+- **"Cleanup" is the only command where the order of items in the window and the order of
+  execution differ.** In the window, items stand in whatever order the user named them; execution
+  follows `CleanupCommand.Order`: presentation first (sheets, views, legends, schedules, filters),
+  then groups, and unused families last. By then titleblocks, tags and detail components have
+  become unneeded too, and they leave in the same batch. Each item gathers its own element list
+  again rather than reusing what the window showed: the previous item has already changed the document.
+- **Unused families are counted by hand: Revit 2022's API has no "Purge Unused"**
+  (`Document.GetUnusedElements` only arrived later — confirmed by reflection over `RevitAPI.dll`).
+  A type counts as used if `GetTypeId` of any placed element refers to it (the pass covers every
+  kind: a tag, a titleblock and a detail component all hold a type just as firmly as a
+  `FamilyInstance`), plus `ElementId` parameters on types (a curtain panel, a nested "Family Type")
+  and legend components. **Trap:** a type has built-in parameters pointing at itself and at its own
+  family — without explicitly excluding self-references in `AddReferences`, every single type would
+  come out "in use", and cleanup would silently find nothing. Right before deletion each candidate
+  is checked once more via `GetDependentElements(new ElementIsElementTypeFilter(true))`: if Revit
+  says placed elements would go along with the type, the type is kept, and the count of what was
+  kept goes into the report — otherwise a miss of this guard would look like "the button does nothing".
+- **Model groups are ungrouped, not deleted.** `doc.Delete` on a group type would take its contents
+  — the project's geometry — with it; `Group.UngroupMembers` leaves the elements in place. Revit
+  will not ungroup a pinned group, so `Pinned` is cleared before calling it. There are several
+  passes, as with deleting parameters: Revit will not hand over a nested group while it sits inside
+  another. Group types left empty by ungrouping do not disappear from the browser on their own —
+  the separate "unused groups" item removes them.
+- **What "Cleanup" never touches:** the active view (Revit will not let the one the user is
+  standing on be deleted), view templates, internal views (`ViewType.Internal`, browsers,
+  calculation reports) and internal schedules — the revision schedule inside a titleblock and the
+  internal keynote schedule (`ViewSchedule.IsTitleblockRevisionSchedule` /
+  `IsInternalKeynoteSchedule`): these live not in the browser but inside the titleblock, and
+  deleting them breaks it.
+- **`FormulaParser` is a heuristic, not a parser.** The API gives no way to parse a formula, so the
+  text has struck out of it: string literals, known parameter names (longest first — otherwise
+  "SP_Mass gross" would split apart), functions and constants from `Reserved`, calls of the form
+  `name(`, and units next to a number ("1 kg"). Whatever identifiers remain are counted as missing
+  parameters. To extend it, edit `Reserved` and the striking-out rules.
+- **Renaming nested items.** The window's list *is* the scope of the work: rows that are not shown
+  (the "Show" toggle) are returned to their own names, otherwise the rule would be changing what is
+  invisible. Editing the "New name" cell by hand sets `IsManual`, and the rule no longer overwrites
+  that row — like a typed value overriding a formula in Excel. A taken name is checked against
+  **every** row, not only the checked ones: a name held by an item that is not being renamed is
+  taken too; types are compared within their own family, and case is ignored, since Revit does not
+  distinguish it in names either. Renaming runs in several passes, like deleting parameters: while
+  a name is held by a neighbour that is also being renamed, Revit will not release it.
+- **Connectors on the 3D view are hidden twice**: by category (`OST_ConnectorElem` + the X/Y/Z
+  axes, always via `new ElementId(BuiltInCategory)` — `Category.GetCategory` returns `null` inside
+  a family) and per element with `HideElements` on the `ConnectorElement`s. Each view setting is
+  applied through its own `Try(...)`: a failure on one (a view under a template, say) does not
+  cancel the rest, it lands in the warning list instead.
+- **Batch-loading links rests on three things missing from the Revit API.**
+  1) *Revit Server folders* are not exposed by the API at all — they are read by
+     `RevitServerAdminRESTService<year>` over HTTP (`RevitServerClient`). The service has its own
+     path separator — a vertical bar (`|`, one root), while a link needs a path like
+     `RSN://server/folder/model.rvt`; `RevitServerClient.RsnPath` translates between them. Three
+     headers (`User-Name`, `User-Machine-Name`, `Operation-GUID`) are mandatory: without them, a
+     refusal. `RevitServerClient.ServiceVersion` is not a hard-coded constant: the same built DLL now
+     runs in both 2022 and 2024, and the two use different service names
+     (`RevitServerAdminRESTService2024`). `App.OnStartup` sets the value from
+     `ControlledApplication.VersionNumber` every time the add-in starts; the `"2022"` in the class
+     itself is only a fallback, in case `OnStartup` did not run.
+  2) *BIM360/ACC folders* are not exposed by the API either, but Revit itself holds a three-legged
+     token for the signed-in user: `Autodesk.Revit.AdWebServicesBase.GetInstance().GetOAuth2AccessToken()`
+     from `SSONET.dll` next to Revit.exe. With it, `AccClient` reads the Data Management API, and
+     neither an APS application of our own nor a sign-in window is needed. **This is an
+     undocumented API**, so every access to it goes through reflection over the assembly already
+     loaded, and any failure means not a breakage but "there is no token": the window offers
+     entering the GUIDs by hand (`CloudLinkWindow`). Take the assembly from the `AppDomain`, not
+     `LoadFrom`: it is a mixed-mode assembly, a second copy is not wanted.
+  3) *A cloud model is addressed by a pair of GUIDs*, not a path:
+     `ModelPathUtils.ConvertCloudGUIDsToCloudPath`. The GUIDs come from the `included` section of
+     the `folders/{id}/contents` response — the latest versions are already there, so a separate
+     `items/{id}/tip` request per model is not needed (on a folder of a hundred files that is the
+     difference between a second and a minute). Only a workshared (C4R) model can be linked: the
+     rest simply have no such pair, and never make it into the list.
+- **JSON is parsed with our own code** (`Infrastructure/JsonHttp.cs`), not `JavaScriptSerializer`:
+  that one drags in System.Web.Extensions, and the add-in lives inside somebody else's process,
+  where an extra assembly is one more way of failing to load. The parser is read-only and silent:
+  a missing key or the wrong type yields empty rather than throwing.
+- **Link worksets are matched by name, not by id.** Every model has its own `WorksetId`; the only
+  thing "00_Shared levels and grids" has in common across links is its name. So the window works
+  with names, and `LinkManagerCommand.Configuration` translates them into ids separately for every
+  link via `WorksharingUtils.GetUserWorksetInfo(ModelPath)` — it reads the worksets without opening
+  the model. Next to the names there is a rule (`00_`): one model calls the workset "00_Shared
+  Levels and Grids", another names it differently, and the rule is applied **on load, to each link
+  separately** — otherwise the name list would only ever catch what it had already seen. If the
+  worksets could not be read, the link still loads, just in a plain mode, with the reason going
+  into the report.
+- **A link has two worksets, and they are different things.** "The worksets inside the link" is
+  what to open or close inside the linked model (`WorksetConfiguration`), one setting for the whole
+  batch. "The project workset" is where to put the link element itself in the open project
+  (`BuiltInParameter.ELEM_PARTITION_PARAM`), and it is different for every row: architecture into
+  "01_Link_AR", structure into "01_Link_KR". The project workset is set on the **created elements**,
+  rather than through `WorksetTable.SetActiveWorksetId`: that way the link lands where it was asked
+  to, regardless of the workset the user is standing on, and the document's active workset is
+  untouched. Both elements are moved — the `RevitLinkInstance` and the `RevitLinkType` — the same
+  as Revit itself does when a link is inserted with an active workset. The workset name goes into a
+  saved link set as its last field, but worksets are a project's own, so on adding a row the name
+  is checked against the project's list (`LinkManagerWindow.Normalize`): no such workset — reset to
+  "(active)" plus a note in "State".
+- **Reloading existing links comes first, creating new ones comes second — and this order is
+  essential.** `RevitLinkType.LoadFrom` requires every transaction to be closed, and on top of that
+  **it wipes the document's undo history**. Put it after the creation, and Ctrl+Z would no longer
+  bring back the links just set up. So `Reload` runs first, outside a transaction, and
+  `RevitLinkType.Create` + `RevitLinkInstance.Create` follow, in a single transaction, as
+  everywhere else. An existing link's placement is left untouched: Revit will not allow it to
+  change. Do not reorder this while `LoadFrom` still wipes undo history.
+- **Link worksets are only ever requested as "close all, open the listed ones".** The reverse
+  phrasing — `OpenAllWorksets` + `Close(checked)` — is equally valid per the XML doc, but on links
+  Revit silently does not carry it out: `Create`/`LoadFrom` report success, the worksets stay open.
+  That is exactly why the button "failed at closing" until September 2026. Autodesk's own example
+  specifically for links (Developers Guide → Linked Files → Revit Links) uses only
+  `CloseAllWorksets` + `Open(...)`, and every working recipe found in the community does too. So
+  `LinkManagerCommand.Configuration` computes a **complement**: "close the checked ones" turns into
+  "open every link workset except the checked ones", and "close all except the checked ones" turns
+  directly into `Open(checked)`. The workset list needed for this is read anyway.
+  One case cannot be expressed as a complement: "as last opened" — only Revit knows what was open
+  last time — there `Close()` remains, with the same unreliability, and that case is caught by the
+  check described below. Do not revert to `Close()`.
+- **`BaseOption` must return `OpenAllWorksets` on a read failure, never `CloseAllWorksets`.** When
+  the link's workset list could not be read, there is nothing to compute a complement from.
+  Substituting "close all" here, as in the main path, would mean silently loading the link empty on
+  any network hiccup — the worst possible failure. So the fallback mode is a method of its own,
+  kept separate from the main path.
+- **Workset ids are re-read right before loading, never taken from the window's cache.** By
+  Autodesk's own documentation, `WorksetPreview.Id` changes on synchronising with the central model
+  (only `UniqueId` is stable, but `WorksetConfiguration` only accepts a `WorksetId`), and any amount
+  of time can pass between "Read Worksets" and "Load". A stale `WorksetId` is silently ignored by
+  both `Open` and `Close`. So `Execute` clears `_worksets` right after the window closes: the cache
+  lives for one load run (creation, verification, a possible reload), not the whole life of the window.
+- **Checking the worksets after loading tells apart three outcomes, not two.**
+  `WorksetConfiguration` only conveys a wish, and finding out whether Revit carried it out means
+  re-reading the already-loaded `RevitLinkInstance.GetLinkDocument()` through a
+  `FilteredWorksetCollector` (`LinkManagerCommand.Check`). There are three outcomes: "everything as
+  asked", "these worksets are wrong", and — separately — **"could not be checked"**
+  (`WorksetVerdict.Unknown`: the link did not hand over its document, the collector threw). Merging
+  the last one with the first is exactly how a closing failure stayed unnoticed — the report read
+  "Loaded" with not a word about worksets. `Unknown` goes into a report section of its own,
+  "Worksets were requested but could not be checked", and a repeated `LoadFrom` is **not** attempted
+  for it: that wipes the undo history, and that is not a price worth paying for a guess. What each
+  side should end up with after loading is set by `Expected` — a mirror of `Configuration`; edit
+  one, edit the other. The retry only happens on `Mismatched`; for new links this is only possible
+  **after** `Commit()` of the creation transaction (`LoadFrom` runs outside a transaction — see
+  above), so `Apply` first gathers candidates into `toVerify` and heals them in a separate pass
+  after the `using (transaction)` block. The final report reads: worked on the first try (silently),
+  worked on the second try (the "a reload fixed it" list — that also wipes undo history), did not
+  work (a line in "Could not be done" with the workset names), or not checked (a section of its own).
+- **"The workset did not close" is really two different cases, and they must sound different.**
+  Either Revit refused (the check above catches this), or **there is no workset with that name in
+  the link at all** — the name is checked from memory in `_settings.txt`, while the consultant
+  named theirs differently, and `Matches` never finds it. The second case used to be completely
+  silent from both sides: `Configuration` silently skipped the name, `Expected` promised nothing for
+  a name never found (so the check said nothing either), and the window's "Found in" column showed
+  "from last time" whether the workset was not found or nobody had looked for it. Now
+  `LinkManagerCommand._seenNames` gathers the names actually encountered in links during the run,
+  and `Missing` returns to the report the checked names that were found in none of them;
+  `WorksetRow.IsCounted` gives the column a third state — "in none of them". A zero `LinkCount` on
+  its own does not mean that: with no links read it means "not looked at", so `RecountWorksets` only
+  sets `IsCounted` once worksets have been read for at least one checked link. An empty
+  `_seenNames` (not a single link was read) turns the whole section off: the reason there is a
+  different one, and it is already in the report.
+- **Link workset names are only ever compared through `LinkPreferences.SameWorkset`** — ignoring
+  case (Revit does not distinguish it in workset names either) and **trimming leading/trailing
+  spaces**. The trim is not cosmetic: a consultant's workset can easily be called "00_Reference
+  planes " with a trailing space, invisible anywhere in Revit's own list, and the mismatch used to
+  be devastating. The window trimmed the name in `AddWorkset`, but comparisons (`RecountWorksets`,
+  `Matches`) used it as-is — and such a workset disappeared three times over: it never showed up as
+  a row of its own (the trimmed name looked like a duplicate of one already checked), it showed "in
+  none of them" in "Found in", and it **never closed at all**. One rule for everyone: never add a
+  new workset-name comparison through plain `string.Equals`. If a name differs by more than
+  whitespace (a homoglyph, a doubled internal space), `SameWorkset` honestly says "a different
+  name", and a second row appears in the list — that is the diagnostic.
+- **What cannot be done to link worksets at all.** The API cannot change the worksets of an
+  **already-loaded** link: `WorksetConfiguration` is only accepted by `RevitLinkType.Create` and
+  `LoadFrom` — confirmed by reflection over `RevitAPI.dll`, there is no equivalent of Revit's own
+  "Manage Links → Manage Worksets" button. That is exactly why reconfiguring an existing link's
+  worksets costs a reload that wipes the undo history. Nested links' worksets cannot be managed at
+  all (Autodesk has an article specifically about this — "Closed worksets from nested links are
+  visible in host file") — if a consultant has their own underlay linked inside their model, its
+  levels and grids stay visible no matter what the button does.
+- **A link's project workset can be guessed from the model name**
+  (`DisciplineCatalog`, the "Guess from the model name" box next to the workset choice). The model
+  name is split into tokens at every non-alphanumeric character (so `_R22`, dots and hyphens fall
+  away on their own, no special handling of a version suffix needed), and the last token matching a
+  code **from the list** (`OV`, `VK`, `AR`…) is taken as the discipline. From the list, not "the
+  last token, period": a building number or a date often sits at the very end of a name. The same
+  tokeniser also splits a project workset's name — a workset matches if the code sits in it as a
+  separate word (`01_Link_OV`, and the like, but not `Provod`). Exactly one match → the workset is set.
+  **Several matches are not yet a reason to give up** (`DisciplineCatalog.Preferred`). Candidates
+  are first compared against the model's own name: worksets are sometimes split not only by
+  discipline but by building too (`01_Link_AR_B01`, `01_Link_AR_B03`), and then the right one
+  identifies itself — the one with the most words in common with the model name wins. If that does
+  not settle it, the "shape" of a name is used instead: the name itself with the code cut out
+  (`01_Link_ES` → `01_Link_·`), and the candidate whose shape is worn by the worksets of the most
+  **other** disciplines wins — that is how `01_Link_AR` beats `05_AR_Elevations` next to
+  `01_Link_ES` and `01_Link_OV`. A tie or zero score still means "the user chooses", but "State"
+  now lists the candidates themselves: without the names, "several match" says nothing about what
+  to choose from.
+  **A zero match is no longer silent** — but only where the project actually has per-discipline
+  worksets set up (`HasDisciplineWorksets`): then a missing one is an answer ("no workset with code
+  \"PS\" in the project"), not "the guess failed". Where disciplines are not split that way, no note
+  is added — it would show up on every single row. For the same reason, "no discipline visible in
+  the model name" is also written out — an empty cell with no explanation read as the button being broken.
+  The guess **only fills in what is empty**: a link with a workset already set (by hand or from a
+  saved set) and an existing link are left untouched; a hand edit in the table clears the
+  `_autoWorkset` flag, and turning the guess off no longer resets such a choice. The code list lives
+  in `links\_settings.txt` (the `DISCIPLINE` lines), empty = `DisciplineCatalog.Defaults`; on
+  closing the window, the list actually in effect is written back in full, so there is something to edit.
+- **A link kit is guessed from how the project's folders are laid out, not from a model list.**
+  Discipline folders sit side by side in a project — `3.0_AR`, `4.2_KR`, `5.1_ES`, `9.1_PT` — and
+  every model name carries a building number (`MK3-VSC-B01-AR`). That is enough to offer a
+  ready-made link set instead of choosing it by hand in a dozen models of a building. The parsing
+  is a heuristic of the same level as `FormulaParser` and `DisciplineCatalog` (`ModelKit`): name
+  tokens, not a naming-convention parser. Hence the shape of the window: what was found is shown in
+  a table **before** anything is linked, and a discipline where several models turned up is one the
+  window refuses to check — the same rule as when guessing a workset: several matches mean "the
+  user chooses", not "take the first one".
+- **The kit walk is deliberately narrow: the root and the discipline folders in it, not the whole
+  project tree.** Every cloud folder is a network request, and a full walk of a project with a
+  hundred folders would cost a minute instead of a second. Hence `FolderLimit`: hitting it does not
+  stay silent, it says the search was probably started from the wrong folder. A wrong root heals
+  itself from both directions: if no discipline folders are found in the root, the search first
+  climbs **one level up** (the open model may well sit in `01_Base Model` next to the disciplines,
+  rather than inside them), then looks **one level down** (`03_Models\3.0_AR`). The folder the walk
+  actually ran in is returned in `ModelKitScan.Root` and shown in the window — otherwise the wrong
+  one would be remembered.
+- **Revit itself says where the open model lives — the cloud included.** For a workshared model
+  the **central** model's path is taken (`GetWorksharingCentralModelPath`), not the local copy's:
+  the discipline folders sit next to the central model. A cloud model has
+  `Document.GetCloudFolderId` — exactly the id Data Management knows the folder by (confirmed by
+  reflection: present in 2022, 2024 and 2025), and the project id is assembled from the cloud
+  path's GUID with a `b.` prefix. So neither the hub nor the project has to be searched for — the
+  kit is assembled straight from the model's folder. Nothing came of it (the project has never been
+  saved, or is open detached) is not a bug — the window will ask for the folder through buttons and
+  the building through a field.
+- **`ModelStore` is a third view of the same stores, and it is not a duplicate of the first two.**
+  `ModelPicker` walks a person down a tree, `LinkCatalog` turns an entry into a `ModelPath` for
+  Revit, and here we need to walk folders in code and be able to go **up** — something neither of
+  the other two gave. Going up for the cloud costs a request (`AccClient.Folder`): `contents` and
+  `topFolders` lead down, nothing leads up. The folder is picked with the same tree used for
+  picking models (`ModelBrowserWindow` with a `pickFolder` predicate) — no second tree is needed.
+- **None of the three years being built has its own folder-picker dialog in WPF.**
+  `OpenFolderDialog` only arrived in .NET 8, while 2022 and 2024 live on .NET Framework 4.8;
+  dragging in WinForms — inside an add-in loaded into someone else's process — just for one dialog
+  is a bad trade. So a folder on disk is chosen by pointing at any model inside it
+  (`ModelPicker.PickFileFolder`), and the tooltip says exactly that.
+- **A new `RevitLinkInstance` is pinned right away (`Pinned = true`).** A consultant's link is
+  inserted by coordinates, and an accidental mouse drag is later hunted down by the whole team;
+  removing a pin in Revit is one button, putting a link that drifted back in place is not. Only
+  newly created instances get this (in `Create`, right after `RevitLinkInstance.Create`); existing
+  links are left untouched by `Reload`/`Move`. A failure here does not derail the load — it goes
+  into the report as a line, like everything else here.
+- **`ImportPlacement` is set on the instance, not the link.** `RevitLinkOptions` has no placement —
+  only the relative path and the workset configuration; the placement method is the third argument
+  to `RevitLinkInstance.Create`. A relative path is only for files: for Revit Server and the cloud
+  it is always absolute.
+- **One tree serves both stores** (`ModelBrowserWindow` + `BrowseNode`): both the server and the
+  cloud are nested lists expensive to read whole, so their contents load as nodes are expanded, and
+  what exactly fills a node is given to the window as a lambda. Reading happens right on the UI
+  thread under a wait cursor: the dialog is modal, Revit waits regardless. A service failure does
+  not close the window, it becomes a red line inside the folder that could not be read.
+- **Copy-monitoring does not exist in the Revit API — and will not appear through a workaround.**
+  The "Base File" button does four of five steps, the fifth it only starts. `RevitAPI.dll` only has
+  **reading** already-existing monitoring links (`Element.IsMonitoringLinkElement`,
+  `GetMonitoredLinkElementIds`, `GetMonitoredLocalElementIds`) — confirmed by reflection in 2022,
+  2024 and 2025; neither creating one nor a ribbon equivalent exists. The only honest way forward is
+  `PostableCommand.CopyMonitorSelectLink` (present in `RevitAPIUI.dll` in all three years):
+  `BaseFileCommand.OpenMonitor` queues the command with Revit, and it fires after the report
+  closes, leaving the choice of the link and the elements to the user. This must **not** be
+  replaced with a copy without monitoring (`ElementTransformUtils.CopyElements`): the levels and
+  grids would appear, with no link to the base file, and nothing on a plan would show the
+  difference — the worst kind of silent failure. Before `PostCommand`, the state is checked via
+  `UIApplication.CanPostCommand`: the mode is not available on every view, and a silently failed
+  button would look like a bug.
+- **The order of "Base File" steps is set by dependencies, not convenience.** Link →
+  `doc.Regenerate()` → `AcquireCoordinates` → the site name → the pin, all in one transaction, as
+  everywhere else. The regeneration is mandatory: before it a freshly created `RevitLinkInstance` is
+  not yet geometry as far as Revit is concerned, and "Acquire Coordinates" works with exactly that.
+  Switching to the workset happens **after** `Commit`: the active workset is session state, not
+  part of the document, and Ctrl+Z should not restore it. That step is last on purpose: levels and
+  grids copied next land in whichever workset is active at the moment of the copy — that is the
+  whole reason for the step.
+- **Both "Base File" worksets are created by the command if they do not exist**
+  (`BaseFileCommand.Ensure`, one method for both). A new discipline may have neither
+  "01_Link_BM", where the link itself goes, nor "00_Shared levels and grids", the one to switch
+  into; a silent skip would mean the button failed at its main job — the link would land in the
+  active workset with nowhere to switch to. Both window fields are therefore editable: choosing
+  from the project's list something that is not in it is impossible. The name is checked against
+  `WorksetTable.IsWorksetNameUnique` before creating it — one already taken by another kind of
+  workset goes into the report. `01_Link_BM` follows the same convention as consultants'
+  "01_Link_OV" (BM stands for base model); it is stored **separately from the model**, under its
+  own `LINK_WORKSET` key: the workset is the same across every discipline, while the base file
+  differs in a new building. For a link already in the project, the field shows its current
+  workset, and changing it in the window really does move the link (`BaseFileCommand.Move`) —
+  shown but not done would look like done.
+  The default placement for the base file is "Origin to origin" rather than "By shared
+  coordinates" as in "Link Manager": the shared coordinates are yet to be acquired from it at this
+  point, and there is nothing to place by.
+- **The base file itself is guessed from the open model's name** (`BaseFileFinder`), following the
+  same convention as the "Building Kit": a building number sits in the model name
+  (`MK3-VSC-B01-VOIDS` → `B01`), and the whole project's base files live in one folder,
+  `01_Base Model`, next to the discipline folders. So the file needed is called
+  `MK3-VSC-B01-BM`, and the building's position in the name uses **the same key** as the kit
+  (`links\_settings.txt`, `KIT_TOKEN`): the building number should not be configured twice under
+  different settings. The walk here is narrower still than the kit's — exactly two folders: the one
+  the model lives in (which may itself be the base file folder) and the one a level up. The guess
+  runs when the window opens, that is, while the user is waiting, and a network request there costs
+  more than a missed find; for the same reason it can be turned off with a check box, and is
+  **skipped entirely** when the model remembered from last time is already from this building — in
+  a new discipline of the same building, the base file is the same one.
+  A folder name is compared word by word, without leading numbers (`01_Base Model` ≡ `Base Model`):
+  the leading number changes from project to project. The `BM` code may be missing from the name —
+  then a model matching only by building is taken, with a "check it" note: it still lives in the
+  base file folder, and that is more honest than "nothing found". **Several matches means none is
+  taken** — the same rule as when guessing a workset or a kit; the caption lists the names though —
+  without them "several match" says nothing about what to choose from. A failed guess when the
+  window opens is shown as a grey line, not a dialog: the window has just opened, and a modal dialog
+  on top of it out of nowhere would be the worst way to greet the user; from the "Guess" button the
+  same failure speaks up in full.
+- **Picking a model and parsing links are shared between both link commands.**
+  `UI/ModelPicker.cs` — the four sources (file, Revit Server, BIM360, a pair of GUIDs) with their
+  trees and remembering the server name; `Infrastructure/LinkCatalog.cs` — the links already in the
+  project, its worksets, turning a `LinkEntry` into a `ModelPath`, and a Revit failure code into an
+  English sentence. "Link Manager" and "Base File" do different things with this, but they take the
+  same code — do not set up a second copy of it.
+- **"Coordination Review" does not exist in the Revit API at all**, and the "Accept Changes" button
+  comes at it from the other side. Neither reading its list nor pressing "Accept" in it is
+  possible: of the whole monitoring feature only `Element.IsMonitoringLinkElement`,
+  `IsMonitoringLocalElement`, `GetMonitoredLinkElementIds` and `GetMonitoredLocalElementIds` are
+  exposed — confirmed by reflection over `RevitAPI.dll` 2022, 2024 and 2025, no "CoordinationReview",
+  "Postpone", "AcceptDifference" anywhere in there (`RevitAPIUI.dll` only has
+  `PostableCommand.CoordinationSelectLink`, which opens the dialog itself). So
+  `CoordinationCatalog` computes the differences itself, and the command moves the elements — that
+  is, it does exactly what the "Move" action inside the dialog would do. Revit's own list empties
+  itself: it shows the difference between the copy and the original, and there is none left.
+  **This has to be checked in Revit by eye** — that is what the "Open Coordination Review after
+  applying" box is for, on by default; it is not a continuation of the work but a check on it.
+- **A difference accepted in advance looks like a discrepancy here.** The "Accept Difference"
+  action in Revit's own dialog remembers an allowed offset between the copy and the original, and
+  the API gives no way to read it. The button compares positions directly, so a grid deliberately
+  moved aside will show up in the list and, if checked, will be moved back onto the original.
+  Hence the shape of the window: differences are shown as numbers first (shift, rotation,
+  elevation) and only then applied — "accept everything silently" here would mean overwriting
+  somebody's deliberate decision.
+- **The API does not hand over the "project element — link element" pair.**
+  `GetMonitoredLinkElementIds`, despite its name, does not return what an element monitors, but the
+  link instances it is found in (confirmed both by the documentation and in practice). So the pair
+  is recovered by name: grid and level names are unique in a document, and monitoring keeps them in
+  sync. What does not match by name is matched further, by position (`MatchByPosition`), which is
+  how a rename is found. A position match is only taken **when exactly one candidate is in the
+  window**: otherwise a deleted grid would pair up with a random new neighbour, and the button would
+  silently move the wrong thing — a mistake invisible on a plan. An element both renamed and moved
+  far away honestly ends up in "not in the file" plus "new in the file", never matched at random.
+- **For a grid, the infinite line is aligned, not the segment.** A grid's length in a project is
+  trimmed for its own views, has nothing to do with coordination, and matching the ends would mean
+  spoiling someone else's work. Hence the edit scheme (`TryGridDiff`): a rotation about the
+  **midpoint of the grid itself** — after which the directions match, and the centre of rotation
+  stays put — followed by a sideways shift. The shift is computed for the post-rotation position, so
+  the order "rotate, then shift" is mandatory. For an arc grid, rotating about its own centre
+  changes nothing but its ends, so only the centre is translated; a changed radius cannot be
+  applied, and such a row goes into the table flagged.
+  `Grid.Curve` is a read-only property (no setter in any of the three years), and there is no way
+  other than `ElementTransformUtils`.
+- **The pin is removed for the duration of the edit and put back right after.** A base file's
+  grids and levels are almost always pinned — otherwise they get dragged with the mouse — and Revit
+  will not move a pinned element, so without this the button would fail exactly on the models it
+  was written for. A pin that does not come back does not derail the rest, but it goes into the
+  report: the element is correctly positioned and unpinned, and that has to be known.
+- **The button never touches missing or new link elements.** Deleting a level means taking
+  everything standing on it with it, and that decision belongs to a person, not a batch button;
+  setting up monitoring on a new link element is something the Revit API cannot do at all (the same
+  gap as the "Base File" button's copy-monitoring). Both are shown in the window as an unchecked
+  row and counted in the status line — staying silent about this would make "accepted everything"
+  mean "everything is fine".
+- **In the "Accept Changes" window everything applicable is checked from the start — and that is
+  not an exception to the "an empty filter does not mean select everything" rule.** That rule
+  guards against accidental deletion; here nothing is deleted, everything rolls back with one
+  Ctrl+Z, and the button is asked to accept the coordination-file changes all at once — that is the
+  whole point of it. The "only what is shown gets applied" rule still holds as everywhere else: a
+  row that leaves the table through the "Show" filter loses its check mark.
+- **Auto dimensions do not copy a sample by its references — a sample's references belong to
+  specific walls** and are meaningless in another room. Instead there is a fixed catalogue of chain
+  kinds (`DimensionChainKind`: Overall / Openings / Opening centres / Partitions / Wall faces / All
+  combined), and parsing a sample (`DimensionSampleReader`) only picks a kind, an offset and a type
+  for every sample dimension — a heuristic of the same status as `FormulaParser` (below), not an
+  exact calculation. The reference behaviour the chains are checked against comes from
+  `Замечания\Пример кладочного с размерами.pdf` (a sample masonry plan with dimensions). The result
+  is ordinary `DimensionChainRow` rows in the window's table, editable by hand; the button also
+  works with no sample at all, if the chains are assembled by hand in the window.
+- **The corners of a chain come not from its own wall's end, but from the longitudinal face of the
+  neighbouring wall.** At a real corner Revit almost always builds a mitred (bevelled) end so the
+  walls meet cleanly — such a face's normal is no longer parallel to the side's axis,
+  `FaceHitsForWall` does not find it, and without this rule a random matching face somewhere deep
+  in the wall would be picked for the corner instead (exactly what showed up on the first check —
+  dimensions on one loop caught either the inner face or a point buried in the wall's thickness at
+  random). The longitudinal face of the neighbouring (perpendicular) wall is never mitred — it is
+  flat along its whole length, so `DimensionReferenceCollector.BuildCorners` takes the corner from
+  there: for a loop side's neighbour (`LoopNeighbor`), its nearest face to the shared corner is used.
+- **The corner search is bounded by distance (`CornerWindowMm`, 600 mm), and this is not
+  overcaution.** The fallback used to be "the outermost matching face on the side, whatever it is"
+  — with no check on where it actually stood. On a wall with a bevelled end, the outermost matching
+  face turned out to be the jamb of the **first opening**, and the chain started at a door half a
+  metre from the corner: the designer's complaint "the dimension does not run along the whole wall,
+  even though 'All combined' was selected" is exactly this. Now a corner is accepted only if it
+  really does sit at the end of the side; the window is not zero, because with
+  `SpatialElementBoundaryLocation.Center` the boundary runs along the centreline and the
+  neighbouring wall's face sits half its thickness away from the end of the side. Nothing found
+  within the window — the chain still builds, from the outermost face available, but is flagged
+  `DimensionReferenceResult.Warning` and goes into the report under its own section, "Chains that
+  need checking" (a true corner reference may simply not exist: the side may start in the middle of
+  a wall, past a room separator). This case must not be merged with a success — silence is exactly
+  what made a shortened chain look correct.
+- **The end ticks of a chain pick up the thickness of the adjoining wall** (a window box, on by
+  default; `THICKNESS` in a template). Each end takes not one face of the neighbouring wall but
+  both — the near one (the corner itself) and the far one, beyond the corner. The first and last
+  link of the chain then becomes that wall's thickness — `120 | 3775 | 120`, exactly how every
+  chain on a masonry plan is built (checked against the "Masonry plan. Fragment 2" sample). Without
+  this the thickness showed up on one side and not the other, depending on whether the own wall's
+  end happened to fall within the normal tolerance (the designer's second complaint: "sometimes it
+  shows the wall thickness, sometimes it doesn't"). The far face is taken **only if it lies beyond
+  the corner**, outside the span of the side: at an internal (concave) corner both of the
+  neighbour's faces sit inside the span, and there it is not a chain link but an ordinary
+  partition — `NeighborPartitionHits` finds that instead. Hence `LineMarginMm = 1000`: the end
+  references now sit outside the side's own span, and the dimension line has to reach over them.
+- **`LoopNeighbor` walks the loop only when looking for a corner (`walk: true`), never when
+  looking for partitions.** Between two walls at a corner there is often a short piece of boundary
+  with no wall (a room separator, a door in an opening with no wall) or a collinear continuation —
+  the corner search used to stop right there. Partitions must not walk: a corner is additionally
+  checked by distance (`CornerWindowMm`), a partition's tick is not, and a far perpendicular wall
+  projected onto our axis somewhere mid-span would become a tick out of nowhere.
+- **Every point inside a chain, except the corner ones, is filtered by the range between the
+  corners (`CornerSet.Interior`), not by 1 mm deduplication alone.** A wall not perfectly trimmed at
+  the corner (no clean mitre — the end stays flat and parallel to the axis) gives its own corner
+  face a second time through `OwnWallHits`, on top of the real corner from the neighbouring wall
+  (see the previous points); this second point is usually offset from the true corner by more than
+  1 mm — ordinary deduplication does not collapse it, and a short spurious tick roughly the wall's
+  own thickness appears next to the corner. `Interior` drops, from any "extra" set of points (a
+  wall's own faces for "Openings", joints for "Wall faces", centre lines for "Opening centres",
+  partition faces for "Partitions"/"All combined"), anything that is not strictly between the
+  **near** corner points of the chain — the range is computed from those, not the far ones: nothing
+  legitimate lives between a wall's far and near adjoining face.
+- **"All combined" does not place opening centres, even though the name might suggest it.** A
+  centre line splits every opening in half and adds a tick in the middle of every door; a masonry
+  plan never has such a tick, and it would make the chain twice as dense and unreadable. Whoever
+  needs centres takes the separate "Opening centres" chain alongside it. `DimensionSampleReader`
+  knows this: a sample that mixes centres with something else has no exact match in the catalogue
+  and is flagged in "State" as parsed approximately.
+- **One wall face gives both an end and an opening jamb — a shared trick across every chain
+  kind.** `Wall.get_Geometry(new Options { ComputeReferences = true })` → `Solid.Faces`, and among
+  them the `PlanarFace`s whose normal is parallel to the side's axis are taken
+  (`DimensionReferenceCollector.FaceHitsForWall`). For a straight wall, such faces turn out to be
+  exactly its ends and — not obvious in advance — both faces of every door/window opening: cutting
+  an opening always adds a pair of faces perpendicular to the wall's length, that is, parallel to
+  its axis. So "Overall" is the two end points of that same set, and "Openings" is the whole set;
+  no separate pass over openings is needed. "Partitions" gets the same set, but from the
+  neighbouring (perpendicular) side of the same boundary loop, projected onto **our** axis — walls
+  meeting a room from the inside always split `RoomSideBuilder` into a side of their own (see
+  below), which is how they are found. "Opening centres" is a separate path:
+  `FamilyInstance.GetReferences(FamilyInstanceReferenceType.CenterLeftRight)`; if the family does
+  not publish that plane, the chain is unavailable rather than substituting a random point.
+- **Room sides are built by merging segments from `GetBoundarySegments`, not from
+  `Room.Location`.** Neighbouring segments of one loop merge into a `RoomSide` if they point the
+  same way and lie on the same line — that is how a piece of wall cut by an opening into several
+  boundary segments stays one side. The "inward" normal is not taken from the loop's own walking
+  order as given (Revit does not guarantee it is always the same direction) — the raw
+  `BasisZ × direction` is checked with a point 50 mm off the side through `Room.IsPointInRoom` and
+  flipped on a negative answer (`RoomSideBuilder.ComputeInwardNormal`). The inward/outward direction
+  is not stored on the chain itself — it is one window setting for the whole run, not a row field: a
+  mix of directions within one chain set is not something the heuristic needs.
+- **`Selection.PickObject` cannot be called while a modal window is open** — "Take a sample…" in
+  `AutoDimensionWindow` therefore does not read the selection itself, it closes the window with the
+  `WantsSample` flag; the command does `PickObjects` outside the window and reopens it with the
+  same state, now with the parsed sample (see "How a command is built", the
+  `AutoDimensionCommand` exception).
+- **Wall geometry is cached by `ElementId` for the whole run of the command**
+  (`DimensionReferenceCollector`): one wall often belongs to several sides and several chains at
+  once, and reading solid geometry is not free. Without the cache the command would grind to a
+  halt on a model with hundreds of rooms.
+- **Placing dimensions runs in two phases — all reads first, all writes after.** Creating a
+  `Dimension` is also a document edit, and it marks geometry as stale: any `Face`/`Reference` read
+  before that point (including from the `DimensionReferenceCollector` cache — which caches
+  regardless of transactions) can no longer be used by Revit afterwards. Confirmed in practice: a
+  loop of "read a chain's references → create the Dimension right away → read the next chain's
+  references on the same side" fails on the second chain with a geometry-kernel error ("The input
+  curve is not bound") — the second chain lands on a face already made stale by the first one. So
+  `AutoDimensionCommand.Place` first walks every room/side/chain, gathering ready `Line` +
+  `ReferenceArray` pairs into a `pending` list (still just reading), and only then opens a
+  transaction and creates the `Dimension`s from the data already gathered, without a single new
+  geometry read.
+- **Labels are spread out in a third phase, after `Document.Regenerate()`.** Before regenerating, a
+  freshly created dimension has no segments filled in yet (`Dimension.Segments`), and there is
+  nothing to spread out. Regenerate is safe here precisely because the wall faces are no longer
+  needed — all the geometry was read in the first phase. The spreading itself is
+  `DimensionTextLayout`: a label with no room between its ticks is moved off the line onto
+  `DimensionSegment.TextPosition` (a dimension with only two references has no segments at all —
+  there it is `Dimension.TextPosition`), and Revit draws the leader itself, per the type's
+  settings; `HasLeader = true` is set on top of that, inside a `try`/`catch` — not every type
+  accepts it. **The Revit API gives no text width**, so it is estimated from the dimension type's
+  `TEXT_SIZE` × `TEXT_WIDTH_SCALE`, the character count and the view scale (the font size is stored
+  in paper units — on the model it is stretched by the view scale). This is a heuristic of the same
+  status as `FormulaParser`, and it deliberately errs towards "pull it out": an unnecessary leader
+  is harmless, an overlap is not. Labels pulled out one after another are spread across three
+  tiers, so they do not overlap each other either.
+- **A `DataGridComboBoxColumn` has three mutually exclusive bindings — set exactly one.**
+  `SelectedItemBinding`, `SelectedValueBinding`, `TextBinding`: with two set, the second silently
+  does nothing, a choice from the list never reaches the row, and the cell keeps whatever value the
+  row was born with. That is exactly what the designer's first complaint looked like ("the right
+  type will not select, something else of its own comes back"). In `AutoDimensionWindow` both
+  drop-down columns are therefore built on a `DataGridTemplateColumn` with a live `ComboBox` in the
+  cell (`BuildComboTemplate`): one binding, the value lands in the row the moment it is picked
+  (`UpdateSourceTrigger.PropertyChanged`), not when editing mode ends.
+  `IsSynchronizedWithCurrentItem = false` is mandatory there: the list is shared by every row, so is
+  its collection view, and without this a choice in one row would drag the others along. Do not add
+  a new `DataGridComboBoxColumn`.
+- **A window row is brought in line with the project the moment it appears
+  (`AutoDimensionWindow.Adopt`).** A dimension type from someone else's template or from another
+  project's sample may be missing here, and there is no way to pick from a list something not in
+  it — an unreachable value silently left in the row would look like "the field is empty for no
+  reason". The default type is substituted, and this is noted in "State"; the same trick as with
+  project worksets in "Link Manager". The default type is the one Revit itself would pick
+  (`ElementTypeGroup.LinearDimensionType`), not the alphabetically first one — "the first in the
+  list" is exactly what looked like a randomly substituted foreign type.
+- **A second run never doubles the dimensions.** Every created `Dimension` is marked through an
+  `ExtensibleStorage` schema (`AutoDimensionMarker`): a room's `UniqueId` (not `ElementId` — it
+  survives a rebuild) plus a chain index; the "room + chain" pair is how the old dimension is found
+  and removed before the new one is placed. A window box lets this be turned off. Dimensions the
+  user placed by hand carry no mark and are never touched — by construction, not by checking a name
+  or a layer.
 
-## Хранение настроек пользователя
+## Storing user settings
 
-Папка `%AppData%\VladTools\` — всё состояние вне документа Revit. Всё живёт между документами и запусками
-Revit, всё в UTF-8 с BOM — чтобы кириллица открывалась в «Блокноте».
+The `%AppData%\VladTools\` folder holds all state outside the Revit document. All of it survives
+across documents and Revit sessions, all UTF-8 with a BOM — so Cyrillic and other non-Latin text
+opens correctly in Notepad.
 
-`formulas.txt` и `names.txt` — настройки пользователя: читаются при каждом открытии своего окна
-и перезаписываются при **любом** его закрытии (в том числе по «Закрыть» и Esc).
-`dimensions\` — не настройка, а кэш: пишется по факту проверки, а не по закрытию окна.
-`links\` — и то и другое: `_settings.txt` перезаписывается при любом закрытии окна «Link Manager»,
-а сами наборы — только по кнопке «Сохранить набор». `basefile\` — только настройки.
+`formulas.txt` and `names.txt` are user settings: read every time their window opens and rewritten
+whenever it closes (including "Close" and Esc). `dimensions\` is not a setting but a cache: written
+when a scan actually runs, not when the window closes. `links\` is both: `_settings.txt` is
+rewritten whenever the "Link Manager" window closes, while the sets themselves are only saved with
+the "Save set" button. `basefile\` holds settings only.
 
-`formulas.txt` — список формул окна «Добавить формулы». Формат: `Имя параметра = формула`, одна строка на формулу;
-строку делит только **первый** знак `=` (в формуле их может быть больше — `if (1=1,…)`); `#` в начале строки =
-снятая галочка. Битый или пустой файл молча заменяется списком `FormulaLibrary.Defaults`.
+`formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
+line per formula; only the **first** `=` sign splits the line (a formula may contain more —
+`if (1=1,…)`); a `#` at the start of a line means the box is unchecked. A corrupt or empty file is
+silently replaced with the `FormulaLibrary.Defaults` list.
 
-`names.txt` — буфер имён окна «Переименовать вложенные». Формат: одна строка — одно сохранённое значение,
-строка с решётки — комментарий. Списка по умолчанию тут нет: нет файла или он битый — буфер просто пустой.
+`names.txt` — the "Rename Nested" window's name buffer. Format: one line — one saved value, a line
+starting with a hash is a comment. There is no default list here: no file, or a corrupt one, simply
+means an empty buffer.
 
-`dimensions\<имя проекта>_<хэш пути>.txt` — сохранённая проверка семейств на метки размеров, файл на проект
-(хэш пути — чтобы одноимённые файлы из разных папок не делили одну проверку). Формат:
-`UniqueId семейства | Element.VersionGuid | GUID параметров через запятую`, строка на семейство; пустой список
-GUID = семейство проверено, меток в нём нет. Битый файл или отказ записи молча означают «проверки нет».
-Проект без пути (ни разу не сохранён) не кэшируется вовсе — ключа нет.
+`dimensions\<project name>_<path hash>.txt` — the saved family scan for dimension labels, one file
+per project (the path hash keeps files with the same name from different folders from sharing one
+scan). Format: `Family UniqueId | Element.VersionGuid | shared parameter GUIDs, comma separated`,
+one line per family; an empty GUID list means the family was scanned and has no labels. A corrupt
+file, or a failed write, silently means "no scan exists". A project with no path (never saved) is
+never cached — there is no key.
 
-`links\<имя набора>.txt` — сохранённый список моделей для «Link Manager». Строка на модель, поля через
-вертикальную черту: `FILE | путь`, `SERVER | RSN://…`, `CLOUD | регион | GUID проекта | GUID модели | имя`.
-Последним полем может стоять рабочий набор проекта, в который класть связь; нет его — активный набор.
-Файлы, записанные до появления этого поля, читаются как были. Черта выбрана потому, что в путях Windows
-её быть не может. Для BIM360 набор — не удобство, а рабочий
-инструмент: собранный однажды список GUID грузится и тогда, когда до облака не достучаться.
+`links\<set name>.txt` — a saved model list for "Link Manager". One line per model, fields
+separated by a vertical bar: `FILE | path`, `SERVER | RSN://…`, `CLOUD | region | project GUID |
+model GUID | name`. The last field may hold the project workset to put the link into; without it,
+the active workset. Files written before this field existed are read as they are. The bar was
+chosen because it cannot occur in a Windows path. For BIM360 a set is not a convenience but a
+working tool: a GUID list gathered once loads even when the cloud cannot be reached.
 
-`links\_settings.txt` — настройки того же окна: `КЛЮЧ = значение`, ключи `CLOSE` (имя отмеченного
-рабочего набора), `SERVER` (имя сервера) и `DISCIPLINE` (код раздела для подбора набора проекта по
-имени модели) могут повторяться. `MATCH_WORKSET` (`1`/`0`) — включён ли этот подбор. Нет ни одной
-строки `DISCIPLINE` — берётся `DisciplineCatalog.Defaults`; при закрытии окна действующий список кодов
-пишется в файл целиком. Там же живут настройки «Комплекта по корпусу»: `KIT` (код раздела комплекта, строк может быть много;
-нет ни одной — берётся `DisciplineCatalog.KitDefaults`), `KIT_TOKEN` (какой по счёту кусок имени
-модели считать номером корпуса; `MK3-VSC-B01-AR` → 3), `KIT_DEEP` (заходить ли внутрь вложенных
-папок раздела), `KIT_BUILDING` (номер корпуса из прошлого раза) и `KIT_ROOT` (папка поиска строкой
-`ModelFolder.Format`: `FILE | путь`, `SERVER | RSN://…`, `CLOUD | регион | проект | папка | имя`).
-`KIT_ROOT` — запасной путь, а не основной: обычно папку кнопка определяет по самой открытой модели,
-и запомненная нужна там, где определять нечего.
-Имя набора «_settings» занято этим файлом:
-`LinkSetLibrary.Names()` пропускает всё, что начинается с подчёркивания.
+`links\_settings.txt` — that window's settings: `KEY = value`, the keys `CLOSE` (a checked
+workset's name), `SERVER` (a server name) and `DISCIPLINE` (a discipline code for guessing the
+project workset from the model name) may repeat. `MATCH_WORKSET` (`1`/`0`) — whether that guess is
+on. No `DISCIPLINE` line at all — `DisciplineCatalog.Defaults` is used; on closing the window, the
+list actually in effect is written back in full. The "Building Kit" settings live here too: `KIT`
+(a kit discipline code, may repeat; none at all — `DisciplineCatalog.KitDefaults` is used),
+`KIT_TOKEN` (which piece of the model name counts as the building number; `MK3-VSC-B01-AR` → 3),
+`KIT_DEEP` (descend into nested discipline folders or not), `KIT_BUILDING` (the building number
+from last time) and `KIT_ROOT` (the search folder as a `ModelFolder.Format` string: `FILE | path`,
+`SERVER | RSN://…`, `CLOUD | region | project | folder | name`). `KIT_ROOT` is a fallback, not the
+main path — the folder is usually worked out from the open model itself, and the remembered one is
+needed only where there is nothing to work it out from. The "_settings" set name is taken by this
+file: `LinkSetLibrary.Names()` skips everything starting with an underscore.
 
-`autodim\` — папка кнопки «Авторазмеры», **отдельная от `dimensions\`**: та занята кэшем проверки
-семейств на метки размеров (другая кнопка, другой смысл файлов), смешивать нельзя. И то и другое,
-как у `links\`: `_settings.txt` перезаписывается при любом закрытии окна, сами шаблоны — только
-по кнопке «Сохранить шаблон».
+`autodim\` is the "Auto Dimensions" button's folder, **separate from `dimensions\`** — that one
+holds the cache of the family scan for dimension labels (a different button, a different meaning),
+and the two must not be mixed. Both work like `links\`: `_settings.txt` is rewritten whenever the
+window closes, the templates themselves only through the "Save template" button.
 
-`autodim\<имя шаблона>.txt` — сохранённый набор ниток. Строка на сущность, поля через вертикальную
-черту: `ГРАНИЦА | CoreBoundary|Finish|Center|CoreCenter`, `СТОРОНА | Внутрь|Наружу`,
-`ТОЛЩИНА | Да|Нет` (захватывать ли крайними засечками толщину примыкающих стен),
-`ПОДПИСИ | Полка|Наместе` (выносить ли мелкие подписи на полку),
-`НИТКА | номер | смещение_мм | вид (Overall|OpeningEdges|OpeningCenters|Partitions|WallFaces|Combined) | имя типа размера`.
-Номер нитки — только для чтения файла глазами, порядок ниток — это порядок строк `НИТКА`. Тип размера
-хранится именем, не `Id`: шаблон должен переноситься между проектами, где `Id` у типов свои.
-Шаблоны, записанные до появления `ТОЛЩИНА`/`ПОДПИСИ`, читаются как есть — обеих строк просто нет,
-и берётся значение по умолчанию (у обеих — «включено»).
+`autodim\<template name>.txt` — a saved set of chains. One line per entity, fields separated by a
+vertical bar: `BOUNDARY | Finish|Center|CoreBoundary|CoreCenter`, `SIDE | Inward|Outward`,
+`THICKNESS | Yes|No` (whether the end ticks pick up the thickness of adjoining walls),
+`LABELS | Leader|Inline` (whether small labels get pulled out onto a leader),
+`CHAIN | number | offset_mm | kind (Overall|OpeningEdges|OpeningCenters|Partitions|WallFaces|Combined) | dimension type name`.
+The chain number is only there to make the file readable by eye — the order of the `CHAIN` lines
+is what sets the chain order. The dimension type is stored by name, not `Id`: a template must
+travel between projects, where types have their own `Id`s. Templates saved by an earlier version of
+this format used Russian keys and values (`ГРАНИЦА`, `Внутрь`, and the like); those are still
+accepted on read so that templates already saved keep working, but only the English keys and values
+above are ever written from now on.
 
-`autodim\_settings.txt` — настройки окна «Авторазмеры»: `КЛЮЧ = значение` — `TEMPLATE` (имя последнего
-шаблона), `BOUNDARY`, `OUTWARD`, `REMOVE_PREVIOUS`, `ADJACENT_THICKNESS`, `MOVE_SMALL_TEXT`.
-Имя «_settings» занято этим файлом по тому же правилу, что у `links\`.
+`autodim\_settings.txt` — the "Auto Dimensions" window's settings: `KEY = value` — `TEMPLATE` (the
+last template's name), `BOUNDARY`, `OUTWARD`, `REMOVE_PREVIOUS`, `ADJACENT_THICKNESS`,
+`MOVE_SMALL_TEXT`. The "_settings" name is taken by this file, by the same rule as `links\`.
 
-`basefile\_settings.txt` — настройки окна «Базовый файл»: `КЛЮЧ = значение`. `MODEL` — последняя
-координационная модель строкой того же вида, что в наборах связей (`FILE | путь`, `SERVER | RSN://…`,
-`CLOUD | регион | GUID | GUID | имя`, последним полем — рабочий набор проекта): формат читает и пишет
-`LinkSetLibrary.Format`/`Parse`, второго разбора для этого заводить не нужно. Дальше `PLACEMENT`,
-`SITE` (имя площадки), `LINK_WORKSET` (набор, куда класть связь; по умолчанию `01_Link_BM`,
-пусто — активный), `WORKSET` (набор, в который переходить) и по галочке на шаг — `ACQUIRE`,
-`RENAME`, `PIN`, `ACTIVATE`, `MONITOR`. Там же настройки подбора базового файла: `AUTO_PICK`
-(`1`/`0` — искать ли его при открытии окна), `BASE_FOLDER` (папка базовых файлов, по умолчанию
-`01_Base Model`; сравнивается словами без ведущих номеров) и `BASE_CODE` (код базовой модели
-в имени файла, по умолчанию `BM`). Двух последних в окне нет намеренно: их правят раз в жизни,
-а окно и без того плотное. Места корпуса в имени модели здесь нет вовсе — оно общее с
-«Комплектом по корпусу» и живёт в `links\_settings.txt` (`KIT_TOKEN`). Перезаписывается при любом
-закрытии окна. Наборов, как у `links\`, здесь нет и не нужно: базовый файл один. Имена серверов
-Revit Server окно берёт и пополняет в `links\_settings.txt` — набирать их дважды пользователь
-не должен.
+`basefile\_settings.txt` — the "Base File" window's settings: `KEY = value`. `MODEL` — the last
+coordination model, in the same line format as in a link set (`FILE | path`, `SERVER | RSN://…`,
+`CLOUD | region | GUID | GUID | name`, the last field being the project workset): the format is
+read and written by `LinkSetLibrary.Format`/`Parse`, no second parser is needed for it. Then
+`PLACEMENT`, `SITE` (the site name), `LINK_WORKSET` (the workset the link goes into; default
+`01_Link_BM`, empty means active), `WORKSET` (the workset to switch to) and one flag per step —
+`ACQUIRE`, `RENAME`, `PIN`, `ACTIVATE`, `MONITOR`. The base-file-guessing settings live here too:
+`AUTO_PICK` (`1`/`0` — whether to search for it when the window opens), `BASE_FOLDER` (the base
+file folder, default `01_Base Model`; compared word by word) and `BASE_CODE` (the base model code
+in the file name, default `BM`). The last two are deliberately absent from the window: they are set
+once in a lifetime, and the window is already crowded. The building's position in the name is not
+here at all — it is shared with the "Building Kit" and lives in `links\_settings.txt`
+(`KIT_TOKEN`). Rewritten whenever the window closes. There are no sets here like in `links\`: there
+is only one base file. The window reads and adds to Revit Server names in `links\_settings.txt` —
+the user should not have to type them in twice.
 
-## Соглашения
+## Conventions
 
-- Весь текст, видимый пользователю, XML-doc и комментарии — **на русском**. Идентификаторы — английские.
-- Комментарий объясняет **почему**, а не что делает строка; их немного и они по делу — держать эту планку.
-- Ошибки не глотать молча и не выбрасывать наружу: собирать в список и показывать пользователю в итоговом
-  `TaskDialog` / `MessageBox`.
-- Команда правит только открытый документ: в семействе — само семейство, но не вложенные; в проекте —
-  сам проект, но не загруженные в него семейства и не содержимое связей. «Link Manager» правила
-  не нарушает: он заводит и перезагружает связи в открытом проекте, а сами связанные модели не трогает.
-- **Там, где кнопка удаляет**, пустое правило отбора не должно означать «выбрать всё» — защита от
-  случайного удаления. Где не удаляет, правило не действует: «Принять изменения» отмечает всё
-  применимое сразу, потому что об этом её и просят (см. «Ключевые решения»). Второе правило —
-  «применяется только показанное»: строка, ушедшая из таблицы по отбору, теряет галочку — держится
-  во всех окнах без исключений.
+- All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
+- A comment explains **why**, not what a line does; there are few of them and they matter — keep that bar.
+- Errors are never swallowed silently and never thrown to the surface: they are gathered into a
+  list and shown to the user in a final `TaskDialog` / `MessageBox`.
+- A command only touches the open document: in a family — the family itself, but not what is
+  nested inside it; in a project — the project itself, but not the families loaded into it and not
+  what links contain. "Link Manager" does not break this rule: it sets up and reloads links in the
+  open project, without touching the linked models themselves.
+- **Wherever a button deletes**, an empty filter must not mean "select everything" — a guard
+  against accidental deletion. Where nothing is deleted, the rule does not apply: "Accept Changes"
+  checks everything applicable right away, because that is exactly what it is asked to do (see
+  "Key decisions"). The second rule — "only what is shown gets applied" — holds in every window
+  without exception: a row that leaves the table through a filter loses its check mark.
 
-## Перенос на другую версию Revit
+## Porting to another Revit version
 
-Сейчас надстройка собирается под **Revit 2022, 2024 и 2025** из одного исходника, без единого `#if`: для
-каждого API, убранного или устаревшего в более новой версии, замена есть во всех годах. Год — ключ сборки
-`-p:RevitVersion=<год>` (по умолчанию `2022`, задан в [Directory.Build.props](src/VladTools/Directory.Build.props));
-от него зависят `RevitDir`, `RevitAddinsDir`, `Product`, **целевой фреймворк** в
-[VladTools.csproj](src/VladTools/VladTools.csproj) (см. «Ключевые решения», TFM по году) и раздельные
-`bin\R<год>\` / `obj\R<год>\` (подробности и связанная ловушка сборки MSB3539/CS0579 — в «Сборка и запуск»).
-`RevitServerClient.ServiceVersion` ручной правки не требует — его выставляет `App.OnStartup` (см. «Ключевые
-решения»). `build.ps1` без параметров собирает все три года сразу, пропуская неустановленные.
+The add-in currently builds for **Revit 2022, 2024 and 2025** from one source tree, with not a
+single `#if`: for every API removed or deprecated in a newer version, a replacement exists across
+every year. The year is a build key, `-p:RevitVersion=<year>` (defaulting to `2022`, set in
+[Directory.Build.props](src/VladTools/Directory.Build.props)); it drives `RevitDir`,
+`RevitAddinsDir`, `Product`, the **target framework** in
+[VladTools.csproj](src/VladTools/VladTools.csproj) (see "Key decisions", TFM by year) and the
+separate `bin\R<year>\` / `obj\R<year>\` folders (details and the related MSB3539/CS0579 build trap
+are in "Build and run"). `RevitServerClient.ServiceVersion` needs no manual edit — `App.OnStartup`
+sets it (see "Key decisions"). `build.ps1` with no arguments builds all three years at once,
+skipping any that are not installed.
 
-Полный разбор для каждого переезда — в [CHECKLIST-Revit2024.md](CHECKLIST-Revit2024.md) и
-[CHECKLIST-Revit2025.md](CHECKLIST-Revit2025.md). Коротко про то, что осталось предупреждением (не ошибкой)
-и трогать не обязательно:
+The full rundown for each move is in [CHECKLIST-Revit2024.md](CHECKLIST-Revit2024.md) and
+[CHECKLIST-Revit2025.md](CHECKLIST-Revit2025.md). Briefly, what is left as a warning (not an
+error) and does not need to be touched:
 
-- **`ElementId.IntegerValue`** (`CleanupCommand.SafeName`, `RenameNestedFamiliesCommand`) — устарел с 2024,
-  но замены, работающей и в 2022, нет: `ElementId.Value` появился только в 2024. `CS0618` в 2024/2025
-  остаётся сознательно, пока в проекте нужен 2022.
-- **`WebRequest.Create`** (`JsonHttp.cs`) — устарел на .NET 8 (`SYSLIB0014`, виден только при сборке под
-  2025); переход на `HttpClient` — отдельная задача, не про совместимость.
+- **`ElementId.IntegerValue`** (`CleanupCommand.SafeName`, `RenameNestedFamiliesCommand`) — deprecated
+  since 2024, but there is no replacement that also works in 2022: `ElementId.Value` only arrived
+  in 2024. The `CS0618` on 2024/2025 is left in place deliberately, for as long as 2022 is needed too.
+- **`WebRequest.Create`** (`JsonHttp.cs`) — deprecated on .NET 8 (`SYSLIB0014`, visible only when
+  building for 2025); moving to `HttpClient` is a separate task, unrelated to compatibility.
 
-Что уже сделано и трогать больше не нужно: `Definition.ParameterGroup` вместе с
-`LabelUtils.GetLabelFor(BuiltInParameterGroup)` (`GroupName` в обеих командах удаления параметров) — в
-Revit 2025 сам тип `BuiltInParameterGroup` убран целиком, это была единственная ошибка компиляции при
-переезде на 2025; заменено на `Definition.GetGroupTypeId()` + `LabelUtils.GetLabelForGroup(ForgeTypeId)` —
-есть и не устарело во всех трёх годах. `new ElementId(BuiltInCategory)` — **проверено, не устарело** ни
-в одной из версий, трогать не нужно.
+Already done and no longer needing attention: `Definition.ParameterGroup` together with
+`LabelUtils.GetLabelFor(BuiltInParameterGroup)` (`GroupName` in both delete-parameters commands) —
+in Revit 2025 the `BuiltInParameterGroup` type itself is removed entirely; this was the one
+compile error on the move to 2025 — replaced with `Definition.GetGroupTypeId()` +
+`LabelUtils.GetLabelForGroup(ForgeTypeId)`, present and not deprecated in all three years.
+`new ElementId(BuiltInCategory)` — **confirmed not deprecated** in any version, no need to touch it.
 
-Добавить ещё один год — тем же способом: собрать с `-p:RevitVersion=<год>` и смотреть на ошибки компиляции,
-не только на предупреждения (так нашлись все места и для 2024, и для 2025). Прежде всего проверить
-`RevitAPI.runtimeconfig.json` рядом с `RevitAPI.dll` нового года — именно так был обнаружен переход 2025
-на `.NET 8`; если новый год снова сменит рантайм, TFM в csproj (сейчас `net8.0-windows` при `>= 2025`)
-надо будет расширить ещё одним условием, а не переписывать. Заодно на новый год стоит перепроверить
-`AutodeskSession`: он держится на недокументированном `SSONET.dll`, состав его методов между версиями уже
-менялся (в 2024 пропали четыре метода, которые `AutodeskSession` и так не вызывал), но все шесть нужных
-методов пока есть в 2022, 2024 и 2025. С Revit 2023 появился `Document.GetAllUnusedElements` — им можно
-заменить ручной подсчёт неиспользуемых семейств в `CleanupCommand`, но это отдельная задача, не про
-совместимость.
+To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
+errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check
+`RevitAPI.runtimeconfig.json` next to that year's `RevitAPI.dll` — that is exactly how the move to
+2025's `.NET 8` was discovered; if the new year switches runtime again, the TFM condition in the
+csproj (currently `net8.0-windows` when `>= 2025`) will need extending with another branch, not
+rewriting. It is also worth re-checking `AutodeskSession` on the new year: it rests on the
+undocumented `SSONET.dll`, whose method set has already changed between versions (four methods
+`AutodeskSession` never called disappeared in 2024), but all six methods it needs are present in
+2022, 2024 and 2025 so far. Revit 2023 added `Document.GetAllUnusedElements`, which could replace
+the manual unused-family count in `CleanupCommand`, but that is a separate task, unrelated to compatibility.

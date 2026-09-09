@@ -5,8 +5,8 @@ using Autodesk.Revit.UI;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Мелкие помощники для сборки ленты: вкладка/панель создаются один раз,
-    /// кнопка добавляется одним вызовом.
+    /// Small helpers for building the ribbon: the tab and panel are created once,
+    /// a button is added with a single call.
     /// </summary>
     internal static class Ribbon
     {
@@ -20,7 +20,7 @@ namespace VladTools.Infrastructure
             }
             catch (Autodesk.Revit.Exceptions.ArgumentException)
             {
-                // Вкладка уже создана другой надстройкой или предыдущим запуском — это нормально.
+                // The tab was already created by another add-in or by a previous run — that is fine.
             }
 
             var existing = application.GetRibbonPanels(tabName).FirstOrDefault(p => p.Name == panelName);

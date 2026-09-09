@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -15,37 +15,38 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно «Link Manager»: список моделей, которые нужно связать с открытым проектом,
-    /// и одна на всех настройка — как их размещать и какие рабочие наборы закрывать.
+    /// The "Link Manager" window: a list of models to link to the open project, and one setup for
+    /// all of them — how to place them and which worksets to close.
     ///
-    /// Смысл кнопки в слове «одна». В Revit каждая связь вставляется своим диалогом,
-    /// и в каждом заново выбирается «По общим координатам» и заново снимаются галочки
-    /// с «00_Shared levels and grids». На двадцати связях это двадцать одинаковых диалогов.
-    /// Здесь список собирается целиком — из файлов, с Revit Server, из BIM360, из сохранённого
-    /// набора, — способ размещения выбирается один раз, наборы отмечаются один раз по имени,
-    /// и дальше всё грузится пачкой.
+    /// The point of the button is the word "one". In Revit every link is inserted through its own
+    /// dialog, and each time "By shared coordinates" is chosen again and "00_Shared levels and
+    /// grids" is unchecked again. On twenty links that is twenty identical dialogs. Here the list
+    /// is gathered as a whole — from files, from Revit Server, from BIM360, from a saved set — the
+    /// placement is chosen once, the worksets are checked once by name, and everything loads as a batch.
     ///
-    /// Рабочие наборы здесь двух разных сортов, и путать их нельзя.
-    /// **Наборы внутри связи** (нижний список) — то, что у связи открыть или закрыть;
-    /// они отмечаются по имени, а не по идентификатору: у каждой модели свои идентификаторы,
-    /// и общее у «00_Shared levels and grids» во всех связях — только имя. По той же причине
-    /// рядом с именами есть правило: в одной модели набор зовётся «00_Shared Levels and Grids»,
-    /// в другой — «00_Общие уровни и оси», и правило «содержит» ловит обе, а список имён — нет.
-    /// **Набор проекта** (столбец «Набор проекта») — то, куда положить саму связь в открытой
-    /// модели. Он у каждой связи свой: АР в «01_Связи_АР», КР в «01_Связи_КР», — поэтому правится
-    /// прямо в строке, а кнопка «Задать отмеченным» лишь избавляет от щелчков, когда набор общий.
+    /// Worksets here come in two different kinds, and they must not be confused.
+    /// **The worksets inside a link** (the lower list) are what to open or close inside the link;
+    /// they are checked by name, not by id: every model has its own ids, and the only thing
+    /// "00_Shared levels and grids" has in common across every link is the name. For the same
+    /// reason there is a rule next to the names: one model calls the workset "00_Shared Levels and
+    /// Grids", another calls it something else in another language, and a "contains" rule catches
+    /// both while a plain name list would not. **The project workset** (the "Project workset"
+    /// column) is where to put the link itself inside the open model. It is different for every
+    /// link — architecture goes into "01_Link_AR", structure into "01_Link_KR" — so it is edited
+    /// right in the row, and the "Set for checked" button only saves clicks when the workset happens
+    /// to be shared.
     ///
-    /// Список моделей не обязательно собирать руками: кнопка «Комплект по корпусу…»
-    /// предлагает готовый набор связей — модели всех разделов того же корпуса, найденные
-    /// по папкам проекта (см. <see cref="ModelKitWindow"/>). Дальше они попадают в ту же
-    /// таблицу и живут по тем же правилам, что и добавленные любым другим способом.
+    /// The model list does not have to be gathered by hand: the "Building Kit…" button offers a
+    /// ready-made set of links — the models of every discipline of the same building, found
+    /// through the project's folders (see <see cref="ModelKitWindow"/>). From there they land in
+    /// the same table and follow the same rules as models added any other way.
     ///
-    /// Связи, уже стоящие в проекте, из списка не прячутся: их видно со статусом
-    /// «Уже в проекте», и отметить их можно — тогда они перезагрузятся с новой настройкой
-    /// рабочих наборов, а при смене набора проекта ещё и переедут в него вместе со всеми своими
-    /// экземплярами. Размещение у существующей связи не меняется: Revit этого не позволяет.
+    /// Links already in the project are not hidden from the list: they show up with the "Already
+    /// in the project" status, and they can be checked too — then they reload with the new
+    /// workset setup, and if the project workset is changed they move into it together with all of
+    /// their instances. The placement of an existing link is never changed: Revit will not allow that.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class LinkManagerWindow : Window
     {
@@ -58,10 +59,10 @@ namespace VladTools.UI
         private readonly Func<IReadOnlyList<LinkRow>, LinkWorksetScan> _readWorksets;
         private readonly LinkPreferences _preferences;
 
-        /// <summary>Сама открытая модель — из неё «Комплект по корпусу» берёт корпус и папку.</summary>
+        /// <summary>The open model itself — the "Building Kit" takes the building and the folder from it.</summary>
         private readonly HostModel _host;
 
-        /// <summary>Рабочие наборы открытого проекта — с «(активный)» первой строкой.</summary>
+        /// <summary>The open project's worksets — with "(active)" as the first entry.</summary>
         private readonly List<string> _hostWorksets = new List<string> { LinkRow.ActiveWorkset };
 
         private readonly ComboBox _hostWorksetBox;
@@ -86,34 +87,34 @@ namespace VladTools.UI
         private bool _settingMany;
         private bool _worksetsRead;
 
-        /// <summary>Строки, которым набор проекта подставил подбор по имени, — чтобы снять его при выключении.</summary>
+        /// <summary>Rows whose project workset was filled in by the name-based guess — so it can be cleared when the guess is turned off.</summary>
         private readonly HashSet<LinkRow> _autoWorkset = new HashSet<LinkRow>();
 
-        /// <summary>Подбор сейчас сам меняет набор строки — не считать это ручной правкой.</summary>
+        /// <summary>The guess is changing a row's workset right now — do not count that as a hand edit.</summary>
         private bool _suggesting;
 
-        /// <summary>Заведены ли в проекте наборы под разделы; считается по первому запросу.</summary>
+        /// <summary>Whether the project has per-discipline worksets; computed on first request.</summary>
         private bool? _usesDisciplineWorksets;
 
-        /// <summary>Связи, которые пользователь подтвердил к загрузке.</summary>
+        /// <summary>The links the user confirmed for loading.</summary>
         public IReadOnlyList<LinkRow> Selected { get; private set; } = new List<LinkRow>();
 
-        /// <summary>Настройки, с которыми команда будет грузить всю пачку.</summary>
+        /// <summary>The setup the command will load the whole batch with.</summary>
         public LinkPreferences Preferences => _preferences;
 
-        /// <summary>В проекте есть рабочие наборы, то есть он совмещённый.</summary>
+        /// <summary>The project has worksets, that is, it is workshared.</summary>
         private bool HasHostWorksets => _hostWorksets.Count > 1;
 
-        /// <param name="existing">Связи, уже стоящие в проекте.</param>
+        /// <param name="existing">The links already in the project.</param>
         /// <param name="hostWorksets">
-        /// Рабочие наборы открытого проекта — те, в которые можно положить связь.
-        /// Проект не совмещённый — пустой список, и столбец с набором прячется.
+        /// The open project's worksets — the ones a link can be put into.
+        /// A non-workshared project means an empty list, and the workset column is hidden.
         /// </param>
         /// <param name="readWorksets">
-        /// Чтение рабочих наборов выбранных моделей без их открытия.
-        /// Всю работу с Revit делает команда — окно только зовёт и показывает итог.
+        /// Reads the worksets of the chosen models without opening them.
+        /// All the work with Revit is done by the command — the window only calls it and shows the result.
         /// </param>
-        /// <param name="host">Где лежит и как называется сам открытый проект; может быть пустым.</param>
+        /// <param name="host">Where the open project lives and what it is called; may be empty.</param>
         public LinkManagerWindow(
             IReadOnlyList<LinkRow> existing,
             IReadOnlyList<string> hostWorksets,
@@ -142,11 +143,11 @@ namespace VladTools.UI
             }
 
             _scopeBox = new ComboBox { Width = 200, VerticalAlignment = VerticalAlignment.Center };
-            _scopeBox.Items.Add("Все связи");
-            _scopeBox.Items.Add("Только новые");
-            _scopeBox.Items.Add("Только уже в проекте");
+            _scopeBox.Items.Add("Every link");
+            _scopeBox.Items.Add("New only");
+            _scopeBox.Items.Add("Already in the project only");
             _scopeBox.SelectedIndex = 0;
-            _scopeBox.ToolTip = "Работает только то, что показано в таблице: скрытая строка теряет галочку.";
+            _scopeBox.ToolTip = "Only what is shown in the table is acted on: a hidden row loses its check mark.";
             _scopeBox.SelectionChanged += (s, e) => RebuildVisible();
 
             _setBox = new ComboBox
@@ -155,30 +156,30 @@ namespace VladTools.UI
                 IsEditable = true,
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip =
-                    "Сохранённый список моделей. Для BIM360 это главный способ работы:\n" +
-                    "один раз собрали список — дальше он подставляется в каждый проект,\n" +
-                    "даже когда до облака не достучаться.\n" +
-                    "Имя можно выбрать из списка или вписать своё."
+                    "A saved model list. For BIM360 this is the main way to work:\n" +
+                    "gather the list once and it can be offered to every project after,\n" +
+                    "even when the cloud cannot be reached.\n" +
+                    "The name can be chosen from the list or typed in."
             };
             ReloadSetNames();
 
             _placementBox = new ComboBox { Width = 260, VerticalAlignment = VerticalAlignment.Center };
-            _placementBox.Items.Add("По общим координатам");
-            _placementBox.Items.Add("Совмещение внутренних начал");
-            _placementBox.Items.Add("Центр в центр");
-            _placementBox.Items.Add("По расположению площадки проекта");
+            _placementBox.Items.Add("By shared coordinates");
+            _placementBox.Items.Add("Origin to origin");
+            _placementBox.Items.Add("Centre to centre");
+            _placementBox.Items.Add("By project site location");
             _placementBox.SelectedIndex = (int)_preferences.Placement;
             _placementBox.ToolTip =
-                "Один способ на все новые связи — то, ради чего кнопка и сделана.\n" +
-                "У связей, которые уже стоят в проекте, размещение не меняется: Revit этого не даёт.";
+                "One placement for every new link — the whole point of the button.\n" +
+                "Links already in the project keep their placement: Revit will not allow it to be changed.";
 
             _attachmentBox = new ComboBox { Width = 150, VerticalAlignment = VerticalAlignment.Center };
-            _attachmentBox.Items.Add("Наложение");
-            _attachmentBox.Items.Add("Прикрепление");
+            _attachmentBox.Items.Add("Overlay");
+            _attachmentBox.Items.Add("Attachment");
             _attachmentBox.SelectedIndex = _preferences.IsAttachment ? 1 : 0;
             _attachmentBox.ToolTip =
-                "Наложение — связь не поедет дальше, в модель, которая свяжется с этой.\n" +
-                "Прикрепление — поедет.";
+                "Overlay — the link will not carry over into a model that links to this one.\n" +
+                "Attachment — it will.";
 
             _hostWorksetBox = new ComboBox
             {
@@ -188,64 +189,64 @@ namespace VladTools.UI
                 VerticalAlignment = VerticalAlignment.Center,
                 IsEnabled = HasHostWorksets,
                 ToolTip = HasHostWorksets
-                    ? "Рабочий набор открытого проекта, в который положить связи.\n" +
-                      "Кнопка рядом ставит его всем отмеченным строкам; в самой таблице\n" +
-                      "набор у каждой связи меняется отдельно."
-                    : "Проект не совмещённый — рабочих наборов в нём нет."
+                    ? "The open project's workset the links go into.\n" +
+                      "The button next to it sets it on every checked row; in the table itself\n" +
+                      "each link's workset can still be changed on its own."
+                    : "The project is not workshared — it has no worksets."
             };
 
             _matchWorksetBox = new CheckBox
             {
-                Content = "Подбирать по имени модели",
+                Content = "Guess from the model name",
                 IsChecked = _preferences.MatchProjectWorkset,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 0, 0),
                 IsEnabled = HasHostWorksets,
                 ToolTip =
-                    "У новой связи без заданного набора плагин берёт код раздела из имени модели\n" +
-                    "(…_OV_R22 → OV) и ставит набор проекта, в имени которого этот код стоит\n" +
-                    "отдельным словом: «01_Link_OV», «01_Связи_OV». Ручной выбор в таблице\n" +
-                    "не трогается. Список кодов правится в links\\_settings.txt (строки DISCIPLINE)."
+                    "For a new link with no workset set, the add-in takes the discipline code from the\n" +
+                    "model name (…_OV_R22 → OV) and picks the project workset whose name carries\n" +
+                    "that code as a separate word: \"01_Link_OV\", and the like. A hand-made choice in\n" +
+                    "the table is never overwritten. The code list is edited in links\\_settings.txt (the DISCIPLINE lines)."
             };
             _matchWorksetBox.Checked += (s, e) => ApplyWorksetSuggestions();
             _matchWorksetBox.Unchecked += (s, e) => ClearWorksetSuggestions();
 
             _relativeBox = new CheckBox
             {
-                Content = "Относительный путь",
+                Content = "Relative path",
                 IsChecked = _preferences.IsRelativePath,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 0, 0),
                 ToolTip =
-                    "Только для связей-файлов: путь запоминается относительно проекта,\n" +
-                    "и папку с моделями можно переносить целиком.\n" +
-                    "Для Revit Server и BIM360 путь всегда абсолютный."
+                    "For file links only: the path is remembered relative to the project,\n" +
+                    "so the folder holding the models can be moved as a whole.\n" +
+                    "For Revit Server and BIM360 the path is always absolute."
             };
 
             _worksetModeBox = new ComboBox { Width = 230, VerticalAlignment = VerticalAlignment.Center };
-            _worksetModeBox.Items.Add("Открыть все наборы");
-            _worksetModeBox.Items.Add("Закрыть все наборы");
-            _worksetModeBox.Items.Add("Как при последнем открытии");
+            _worksetModeBox.Items.Add("Open all worksets");
+            _worksetModeBox.Items.Add("Close all worksets");
+            _worksetModeBox.Items.Add("As last opened");
             _worksetModeBox.SelectedIndex = (int)_preferences.WorksetMode;
             _worksetModeBox.SelectionChanged += (s, e) => UpdateWorksetCaption();
 
             _scanButton = new Button
             {
-                Content = "Прочитать наборы",
+                Content = "Read Worksets",
                 Padding = new Thickness(10, 3, 10, 3),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 12, 0),
                 IsEnabled = _readWorksets != null,
                 ToolTip =
-                    "Читает имена рабочих наборов у отмеченных моделей, не открывая их.\n" +
-                    "Нужно только чтобы увидеть список имён: при загрузке наборы читаются\n" +
-                    "заново в любом случае — по именам ведь надо найти сами наборы."
+                    "Reads the workset names of the checked models without opening them.\n" +
+                    "This is only for seeing the name list: on load the worksets are read again\n" +
+                    "regardless — the worksets themselves still have to be found by name."
             };
             _scanButton.Click += OnScanWorksets;
 
             _ruleBox = new ComboBox { Width = 170, VerticalAlignment = VerticalAlignment.Center };
-            _ruleBox.Items.Add("начинающиеся с");
-            _ruleBox.Items.Add("содержащие");
+            _ruleBox.Items.Add("starting with");
+            _ruleBox.Items.Add("containing");
             _ruleBox.SelectedIndex = _preferences.WorksetPatternContains ? 1 : 0;
 
             _patternBox = new TextBox
@@ -257,10 +258,10 @@ namespace VladTools.UI
                 VerticalContentAlignment = VerticalAlignment.Center,
                 Padding = new Thickness(3, 2, 3, 2),
                 ToolTip =
-                    "Правило действует и при загрузке, а не только по кнопке «Отметить»:\n" +
-                    "в каждой связи под него попадут её собственные наборы, даже если\n" +
-                    "точного имени в списке ниже нет. Так ловятся «00_Shared Levels and Grids»\n" +
-                    "и «00_Общие уровни и оси» одной строкой «00_»."
+                    "The rule also applies on load, not only through the \"Check\" button:\n" +
+                    "in every link it catches that link's own worksets, even when the exact\n" +
+                    "name is not in the list below. That is how \"00_Shared Levels and Grids\"\n" +
+                    "and a differently-named equivalent are both caught by one \"00_\" rule."
             };
             _patternBox.TextChanged += (s, e) => UpdateSummary();
 
@@ -271,7 +272,7 @@ namespace VladTools.UI
                 IsChecked = false,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Отметить или снять все показанные связи"
+                ToolTip = "Check or clear every shown link"
             };
             _selectAll.Checked += (s, e) => SetAllSelected(true);
             _selectAll.Unchecked += (s, e) => SetAllSelected(false);
@@ -282,7 +283,7 @@ namespace VladTools.UI
 
             _loadButton = new Button
             {
-                Content = "Загрузить",
+                Content = "Load",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -292,7 +293,7 @@ namespace VladTools.UI
 
             var cancelButton = new Button
             {
-                Content = "Закрыть",
+                Content = "Close",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -304,7 +305,7 @@ namespace VladTools.UI
             foreach (var row in _all)
                 row.PropertyChanged += OnRowChanged;
 
-            // Имена наборов из прошлого раза видны сразу: обычно менять их не нужно вовсе.
+            // The workset names from last time are visible right away: usually there is no need to change them at all.
             foreach (var name in _preferences.Worksets)
                 AddWorkset(name, true);
 
@@ -315,25 +316,25 @@ namespace VladTools.UI
             RebuildVisible();
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button cancelButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // откуда брать
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // сохранённые наборы
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица связей
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // размещение
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // набор проекта
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // наборы внутри связей
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(170) });                  // список наборов
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // where to add from
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // saved sets
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // link table
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // placement
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // project workset
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // worksets inside links
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(170) });                  // workset list
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Соберите список моделей, выберите способ размещения и рабочие наборы — " +
-                       "и всё отмеченное свяжется одной операцией. Работает только то, что показано в таблице.",
+                Text = "Gather a model list, choose the placement and the worksets — " +
+                       "and everything checked links in one operation. Only what is shown in the table is acted on.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -341,18 +342,18 @@ namespace VladTools.UI
             root.Children.Add(hint);
 
             var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-            sources.Children.Add(SourceButton("Файлы…", "Обычные файлы .rvt: диск или сетевая папка.", OnAddFiles));
-            sources.Children.Add(SourceButton("Revit Server…", "Просмотр папок и моделей на Revit Server.", OnBrowseServer));
-            sources.Children.Add(SourceButton("BIM360…", "Просмотр учётных записей, проектов и папок BIM360/ACC.", OnBrowseCloud));
-            sources.Children.Add(SourceButton("BIM360 по GUID…", "Ввод облачных моделей парой GUID — если просмотр недоступен.", OnAddCloudByGuid));
-            sources.Children.Add(SourceButton("Комплект по корпусу…",
-                "Сам находит модели всех разделов вашего корпуса — по папкам проекта и номеру корпуса в имени.",
+            sources.Children.Add(SourceButton("Files…", "Ordinary .rvt files: a disk or a network folder.", OnAddFiles));
+            sources.Children.Add(SourceButton("Revit Server…", "Browse folders and models on Revit Server.", OnBrowseServer));
+            sources.Children.Add(SourceButton("BIM360…", "Browse BIM360/ACC accounts, projects and folders.", OnBrowseCloud));
+            sources.Children.Add(SourceButton("BIM360 by GUID…", "Enter cloud models as pairs of GUIDs — when browsing is unavailable.", OnAddCloudByGuid));
+            sources.Children.Add(SourceButton("Building Kit…",
+                "Finds the models of every discipline of your building on its own — by the project folders and the building number in the name.",
                 OnAddKit));
-            sources.Children.Add(SourceButton("Убрать из списка", "Убирает отмеченные строки из таблицы. Связи в проекте при этом не трогаются.", OnRemove));
+            sources.Children.Add(SourceButton("Remove from list", "Removes the checked rows from the table. The links in the project are left untouched.", OnRemove));
 
             sources.Children.Add(new TextBlock
             {
-                Text = "Показывать:",
+                Text = "Show:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(16, 0, 8, 0)
             });
@@ -364,14 +365,14 @@ namespace VladTools.UI
             var sets = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
             sets.Children.Add(new TextBlock
             {
-                Text = "Набор:",
+                Text = "Set:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
             sets.Children.Add(_setBox);
-            sets.Children.Add(SourceButton("Загрузить набор", "Добавляет в таблицу модели сохранённого набора.", OnLoadSet));
-            sets.Children.Add(SourceButton("Сохранить набор", "Сохраняет показанные строки под именем из поля слева.", OnSaveSet));
-            sets.Children.Add(SourceButton("Удалить набор", "Удаляет сохранённый набор из профиля Windows.", OnDeleteSet));
+            sets.Children.Add(SourceButton("Load set", "Adds the saved set's models into the table.", OnLoadSet));
+            sets.Children.Add(SourceButton("Save set", "Saves the shown rows under the name in the field on the left.", OnSaveSet));
+            sets.Children.Add(SourceButton("Delete set", "Deletes the saved set from the Windows profile.", OnDeleteSet));
 
             Grid.SetRow(sets, 2);
             root.Children.Add(sets);
@@ -382,14 +383,14 @@ namespace VladTools.UI
             var placement = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
             placement.Children.Add(new TextBlock
             {
-                Text = "Размещение для всех связей:",
+                Text = "Placement for every link:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
             placement.Children.Add(_placementBox);
             placement.Children.Add(new TextBlock
             {
-                Text = "Тип связи:",
+                Text = "Link type:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(16, 0, 8, 0)
             });
@@ -402,14 +403,14 @@ namespace VladTools.UI
             var hostWorkset = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
             hostWorkset.Children.Add(new TextBlock
             {
-                Text = "Класть связи в рабочий набор проекта:",
+                Text = "Put the links into the project workset:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
             hostWorkset.Children.Add(_hostWorksetBox);
 
-            var applyWorkset = SourceButton("Задать отмеченным",
-                "Ставит выбранный слева набор всем отмеченным строкам таблицы.", OnApplyHostWorkset);
+            var applyWorkset = SourceButton("Set for checked",
+                "Sets the workset chosen on the left on every checked row of the table.", OnApplyHostWorkset);
             applyWorkset.Margin = new Thickness(8, 0, 8, 4);
             applyWorkset.IsEnabled = HasHostWorksets;
             hostWorkset.Children.Add(applyWorkset);
@@ -419,8 +420,8 @@ namespace VladTools.UI
             hostWorkset.Children.Add(new TextBlock
             {
                 Text = HasHostWorksets
-                    ? "в таблице набор правится и у каждой связи отдельно"
-                    : "проект не совмещённый — рабочих наборов в нём нет",
+                    ? "in the table the workset can also be edited per link"
+                    : "the project is not workshared — it has no worksets",
                 Foreground = SystemColors.GrayTextBrush,
                 VerticalAlignment = VerticalAlignment.Center
             });
@@ -432,20 +433,20 @@ namespace VladTools.UI
             worksets.Children.Add(_scanButton);
             worksets.Children.Add(new TextBlock
             {
-                Text = "При загрузке:",
+                Text = "On load:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
             worksets.Children.Add(_worksetModeBox);
             worksets.Children.Add(new TextBlock
             {
-                Text = "Правило по имени:",
+                Text = "Name rule:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(16, 0, 8, 0)
             });
             worksets.Children.Add(_ruleBox);
             worksets.Children.Add(_patternBox);
-            worksets.Children.Add(SourceButton("Отметить по правилу", "Ставит галочки на подходящих именах в списке ниже.", OnMarkWorksets));
+            worksets.Children.Add(SourceButton("Check by rule", "Checks the names matching the rule in the list below.", OnMarkWorksets));
 
             var worksetHeader = new StackPanel();
             worksetHeader.Children.Add(worksets);
@@ -520,17 +521,17 @@ namespace VladTools.UI
                 CellTemplate = GridBuilder.CheckBoxTemplate()
             });
 
-            grid.Columns.Add(GridBuilder.TextColumn("Модель", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(GridBuilder.TextColumn("Откуда", "Kind", new DataGridLength(100)));
-            grid.Columns.Add(GridBuilder.TextColumn("Расположение", "Location", new DataGridLength(1.2, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(GridBuilder.TextColumn("Model", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(GridBuilder.TextColumn("Source", "Kind", new DataGridLength(100)));
+            grid.Columns.Add(GridBuilder.TextColumn("Location", "Location", new DataGridLength(1.2, DataGridLengthUnitType.Star)));
 
-            // Набор проекта — единственное, что правится прямо в строке: он у каждой связи свой,
-            // и «задать всем» тут помогает не всегда.
+            // The project workset is the only thing edited right in the row: it is different for
+            // every link, and "set for all" does not always help here.
             if (HasHostWorksets)
             {
                 grid.Columns.Add(new DataGridTemplateColumn
                 {
-                    Header = "Набор проекта",
+                    Header = "Project workset",
                     Width = new DataGridLength(190),
                     CanUserSort = true,
                     SortMemberPath = "Workset",
@@ -538,8 +539,8 @@ namespace VladTools.UI
                 });
             }
 
-            grid.Columns.Add(GridBuilder.TextColumn("Наборы в связи", "Worksets", new DataGridLength(110)));
-            grid.Columns.Add(GridBuilder.TextColumn("Состояние", "Status", new DataGridLength(200)));
+            grid.Columns.Add(GridBuilder.TextColumn("Worksets inside", "Worksets", new DataGridLength(110)));
+            grid.Columns.Add(GridBuilder.TextColumn("State", "Status", new DataGridLength(200)));
 
             grid.MouseDoubleClick += (s, e) => ToggleSelectedRows();
             grid.PreviewKeyDown += OnGridKeyDown;
@@ -576,8 +577,8 @@ namespace VladTools.UI
                 CellTemplate = GridBuilder.CheckBoxTemplate()
             });
 
-            grid.Columns.Add(GridBuilder.TextColumn("Рабочий набор", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(GridBuilder.TextColumn("Где есть", "Where", new DataGridLength(160)));
+            grid.Columns.Add(GridBuilder.TextColumn("Workset", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(GridBuilder.TextColumn("Found in", "Where", new DataGridLength(160)));
 
             grid.MouseDoubleClick += (s, e) => ToggleSelectedWorksets();
 
@@ -585,9 +586,9 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Выпадающий список в ячейке. Стоит в шаблоне ячейки, а не редактирования: таблица
-        /// целиком «только для чтения», а так набор виден и меняется одним щелчком, без перехода
-        /// строки в режим правки.
+        /// The drop-down in a cell. It sits in the cell template rather than the editing one: the
+        /// table as a whole is read-only, and this way the workset is visible and can be changed
+        /// with one click, without the row switching into edit mode.
         /// </summary>
         private static DataTemplate BuildWorksetTemplate(IEnumerable<string> worksets)
         {
@@ -601,42 +602,42 @@ namespace VladTools.UI
             return new DataTemplate { VisualTree = combo };
         }
 
-        // ───────────────────────────── откуда берутся связи ─────────────────────────────
+        // ───────────────────────────── where the links come from ─────────────────────────────
 
         private void OnAddFiles(object sender, RoutedEventArgs e)
         {
-            Add(ModelPicker.Files(this, true), "файлов");
+            Add(ModelPicker.Files(this, true), "file(s)");
         }
 
         private void OnBrowseServer(object sender, RoutedEventArgs e)
         {
-            Add(ModelPicker.Server(this, WindowTitle, _preferences, Keys), "моделей с Revit Server");
+            Add(ModelPicker.Server(this, WindowTitle, _preferences, Keys), "Revit Server model(s)");
         }
 
         private void OnBrowseCloud(object sender, RoutedEventArgs e)
         {
-            Add(ModelPicker.Cloud(this, WindowTitle, Keys), "моделей BIM360");
+            Add(ModelPicker.Cloud(this, WindowTitle, Keys), "BIM360 model(s)");
         }
 
         private void OnAddCloudByGuid(object sender, RoutedEventArgs e)
         {
-            Add(ModelPicker.CloudByGuid(this, DefaultRegion()), "облачных моделей");
+            Add(ModelPicker.CloudByGuid(this, DefaultRegion()), "cloud model(s)");
         }
 
         /// <summary>
-        /// Готовый комплект связей по номеру корпуса. Найденное приходит сюда обычными
-        /// записями и дальше живёт как всё остальное: дубли отсеются, рабочий набор проекта
-        /// подберётся по разделу — тому же, по которому модель и нашлась.
+        /// A ready-made link kit by building number. What is found arrives here as ordinary
+        /// entries and lives like everything else from then on: duplicates are filtered out, and
+        /// the project workset is guessed from the same discipline the model was found by.
         /// </summary>
         private void OnAddKit(object sender, RoutedEventArgs e)
         {
             var window = new ModelKitWindow(_host, _preferences, Keys) { Owner = this };
 
             if (window.ShowDialog() == true)
-                Add(window.Selected, "моделей комплекта");
+                Add(window.Selected, "kit model(s)");
         }
 
-        /// <summary>Регион, с которым окно ввода GUID открывается: тот же, что у уже собранных связей.</summary>
+        /// <summary>The region the GUID-entry window opens with: the same as the models already gathered.</summary>
         private string DefaultRegion()
         {
             var region = _all
@@ -662,13 +663,13 @@ namespace VladTools.UI
             RebuildVisible();
         }
 
-        /// <summary>Ставит выбранный рабочий набор проекта всем отмеченным строкам.</summary>
+        /// <summary>Sets the chosen project workset on every checked row.</summary>
         private void OnApplyHostWorkset(object sender, RoutedEventArgs e)
         {
             var marked = Marked();
             if (marked.Count == 0)
             {
-                MessageBox.Show(this, "Отметьте связи, которым задать рабочий набор.", WindowTitle,
+                MessageBox.Show(this, "Check the links to set the workset for.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -679,7 +680,7 @@ namespace VladTools.UI
                 row.Workset = workset;
         }
 
-        /// <summary>Добавляет модели в таблицу, отбрасывая те, что в ней уже есть.</summary>
+        /// <summary>Adds models to the table, dropping the ones already in it.</summary>
         private void Add(IReadOnlyList<LinkEntry> entries, string what)
         {
             if (entries == null || entries.Count == 0)
@@ -706,8 +707,8 @@ namespace VladTools.UI
             if (added < entries.Count)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Добавлено " + what + ": " + added +
-                               ". Уже были в списке: " + (entries.Count - added) + ".";
+                _status.Text = "Added " + what + ": " + added +
+                               ". Already in the list: " + (entries.Count - added) + ".";
             }
         }
 
@@ -717,10 +718,10 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Набор, приехавший из сохранённого списка, в этом проекте может не существовать —
-        /// наборы у каждого проекта свои. Молча оставить такое имя нельзя: в выпадающем списке
-        /// его нет, ячейка выглядела бы пустой, а при загрузке связь ушла бы не туда.
-        /// Сбрасываем на активный и говорим об этом в столбце «Состояние».
+        /// A workset that arrived from a saved list may not exist in this project — every project
+        /// has its own worksets. Such a name cannot be silently kept: it is not in the drop-down,
+        /// the cell would look empty, and on load the link would go to the wrong place.
+        /// It is reset to the active one, and this is said in the "State" column.
         /// </summary>
         private void Normalize(LinkRow row)
         {
@@ -732,16 +733,16 @@ namespace VladTools.UI
                 return;
 
             row.Workset = LinkRow.ActiveWorkset;
-            row.Note = "Набора «" + chosen + "» в проекте нет";
+            row.Note = "There is no \"" + chosen + "\" workset in the project";
         }
 
-        // ───────────────────────────── подбор набора проекта по имени ─────────────────────────────
+        // ───────────────────────────── guessing the project workset from the name ─────────────────────────────
 
         /// <summary>
-        /// Ставит новой связи рабочий набор проекта по коду раздела из имени модели — если
-        /// подбор включён, связь новая и набор ей ещё не задан (ни руками, ни из сохранённого
-        /// набора). Ровно один подходящий набор — ставим; несколько — только помечаем в
-        /// «Состоянии», выбор за пользователем; ни одного — молчим, чтобы не засорять столбец.
+        /// Sets the project workset on a new link from the discipline code in the model name — if
+        /// the guess is turned on, the link is new, and no workset has been set on it yet (neither
+        /// by hand nor from a saved set). Exactly one matching workset — it is set; several — only
+        /// noted in "State", the choice is the user's; none — kept quiet, so as not to clutter the column.
         /// </summary>
         private void SuggestWorkset(LinkRow row)
         {
@@ -754,10 +755,11 @@ namespace VladTools.UI
             var code = DisciplineCatalog.Detect(row.Entry.Name, _preferences.EffectiveDisciplines);
             if (code.Length == 0)
             {
-                // Кода раздела в имени не видно. Там, где наборы по разделам заведены, это
-                // и есть ответ на вопрос «почему пусто»: молчание выглядело бы поломкой.
+                // No discipline code visible in the name. Where per-discipline worksets exist,
+                // that is exactly the answer to "why is it empty" — staying silent would look like
+                // a breakage.
                 if (UsesDisciplineWorksets)
-                    row.Note = "Раздела в имени модели не видно";
+                    row.Note = "No discipline visible in the model name";
 
                 return;
             }
@@ -765,9 +767,9 @@ namespace VladTools.UI
             var worksets = _hostWorksets.Skip(1).ToList();
             var matches = DisciplineCatalog.MatchingWorksets(code, worksets);
 
-            // Из нескольких подходящих берётся тот, что назван как сама модель («…_AR_B03»
-            // на модели корпуса B03) или как наборы остальных разделов («01_Link_AR» рядом
-            // с «01_Link_ES» и «01_Link_OV», а не «05_AR_Фасады»).
+            // Out of several matches, the one named like the model itself is taken ("…_AR_B03" on
+            // a model of building B03), or like the other disciplines' worksets ("01_Link_AR" next
+            // to "01_Link_ES" and "01_Link_OV", rather than "05_AR_Elevations").
             var chosen = DisciplineCatalog.Preferred(
                 code, matches, worksets, _preferences.EffectiveDisciplines, row.Entry.Name);
 
@@ -777,21 +779,21 @@ namespace VladTools.UI
                 if (chosen != null)
                 {
                     row.Workset = chosen;
-                    row.Note = "Набор по разделу «" + code + "»";
+                    row.Note = "Workset by discipline \"" + code + "\"";
                     _autoWorkset.Add(row);
                 }
                 else if (matches.Count > 1)
                 {
-                    // Имена в приписке не для красоты: без них «наборов несколько» ничего
-                    // не говорит о том, из чего именно выбирать.
-                    row.Note = "Раздел «" + code + "»: подходят " + string.Join(", ", matches.Take(3)) +
-                               (matches.Count > 3 ? " и ещё " + (matches.Count - 3) : string.Empty) + " — выберите";
+                    // The names in the note are not decoration: without them "several match" says
+                    // nothing about what to choose from.
+                    row.Note = "Discipline \"" + code + "\": matches " + string.Join(", ", matches.Take(3)) +
+                               (matches.Count > 3 ? " and " + (matches.Count - 3) + " more" : string.Empty) + " — choose one";
                 }
                 else if (UsesDisciplineWorksets)
                 {
-                    // Молчать здесь нельзя: в проекте наборы по разделам заведены, значит
-                    // отсутствие нужного — это ответ, а не «подбор не сработал».
-                    row.Note = "Раздел «" + code + "»: набора с этим кодом в проекте нет";
+                    // Staying quiet here is not allowed: the project has per-discipline worksets,
+                    // so a missing one is an answer, not "the guess failed".
+                    row.Note = "Discipline \"" + code + "\": no workset with this code in the project";
                 }
             }
             finally
@@ -801,8 +803,9 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// В проекте заведены наборы под разделы. Считается один раз: наборы за время окна
-        /// не меняются, а от ответа зависит, говорить ли про каждый ненайденный набор.
+        /// The project has per-discipline worksets set up. Computed once: the worksets do not
+        /// change while the window is open, and the answer decides whether to say something about
+        /// every workset that was not found.
         /// </summary>
         private bool UsesDisciplineWorksets
         {
@@ -816,7 +819,7 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Прогоняет подбор по всем строкам — по кнопке включения подбора.</summary>
+        /// <summary>Runs the guess over every row — from the button that turns the guess on.</summary>
         private void ApplyWorksetSuggestions()
         {
             foreach (var row in _all)
@@ -825,7 +828,7 @@ namespace VladTools.UI
             UpdateSummary();
         }
 
-        /// <summary>Снимает то, что поставил подбор; заданное руками не трогает.</summary>
+        /// <summary>Clears what the guess set; leaves hand-made choices untouched.</summary>
         private void ClearWorksetSuggestions()
         {
             _suggesting = true;
@@ -836,10 +839,9 @@ namespace VladTools.UI
                     if (_autoWorkset.Contains(row))
                         row.Workset = LinkRow.ActiveWorkset;
 
-                    // Приписки про раздел — тоже работа подбора: выключили его, значит
-                    // и объяснять больше нечего.
-                    if (row.Note.StartsWith("Набор по разделу", StringComparison.Ordinal) ||
-                        row.Note.StartsWith("Раздел", StringComparison.Ordinal))
+                    // Discipline notes are also the guess's doing: turn it off, and there is nothing left to explain.
+                    if (row.Note.StartsWith("Workset by discipline", StringComparison.Ordinal) ||
+                        row.Note.StartsWith("Discipline", StringComparison.Ordinal))
                         row.Note = string.Empty;
                 }
             }
@@ -852,7 +854,7 @@ namespace VladTools.UI
             UpdateSummary();
         }
 
-        // ───────────────────────────── сохранённые наборы ─────────────────────────────
+        // ───────────────────────────── saved sets ─────────────────────────────
 
         private void ReloadSetNames()
         {
@@ -871,7 +873,7 @@ namespace VladTools.UI
         {
             if (SetName.Length == 0)
             {
-                MessageBox.Show(this, "Выберите набор в списке или впишите его имя.", WindowTitle,
+                MessageBox.Show(this, "Choose a set in the list or type in its name.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -879,44 +881,44 @@ namespace VladTools.UI
             var entries = LinkSetLibrary.Load(SetName);
             if (entries.Count == 0)
             {
-                MessageBox.Show(this, "Набор «" + SetName + "» пуст или его нет.", WindowTitle,
+                MessageBox.Show(this, "The set \"" + SetName + "\" is empty or does not exist.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            Add(entries, "моделей из набора");
+            Add(entries, "model(s) from the set");
         }
 
         private void OnSaveSet(object sender, RoutedEventArgs e)
         {
             if (SetName.Length == 0)
             {
-                MessageBox.Show(this, "Впишите имя набора в поле слева.", WindowTitle,
+                MessageBox.Show(this, "Type in a set name in the field on the left.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             if (_visible.Count == 0)
             {
-                MessageBox.Show(this, "В таблице нечего сохранять.", WindowTitle,
+                MessageBox.Show(this, "There is nothing in the table to save.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             try
             {
-                // Сохраняется показанное — то же правило, что и у загрузки.
+                // What is shown gets saved — the same rule as on loading.
                 LinkSetLibrary.Save(SetName, _visible.Select(row => row.Entry));
                 ReloadSetNames();
 
                 MessageBox.Show(this,
-                    "Набор «" + SetName + "» сохранён: " + _visible.Count + " моделей.\n\n" +
+                    "The set \"" + SetName + "\" was saved: " + _visible.Count + " models.\n\n" +
                     LinkSetLibrary.FilePathFor(SetName),
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, "Сохранить набор не удалось.\n\n" + exception.Message,
+                MessageBox.Show(this, "Could not save the set.\n\n" + exception.Message,
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
@@ -926,7 +928,7 @@ namespace VladTools.UI
             if (SetName.Length == 0)
                 return;
 
-            var answer = MessageBox.Show(this, "Удалить сохранённый набор «" + SetName + "»?", WindowTitle,
+            var answer = MessageBox.Show(this, "Delete the saved set \"" + SetName + "\"?", WindowTitle,
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
 
             if (answer != MessageBoxResult.Yes)
@@ -940,12 +942,12 @@ namespace VladTools.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, "Удалить набор не удалось.\n\n" + exception.Message,
+                MessageBox.Show(this, "Could not delete the set.\n\n" + exception.Message,
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
-        // ───────────────────────────── рабочие наборы ─────────────────────────────
+        // ───────────────────────────── worksets ─────────────────────────────
 
         private LinkWorksetMode WorksetMode => (LinkWorksetMode)Math.Max(0, _worksetModeBox.SelectedIndex);
 
@@ -953,14 +955,14 @@ namespace VladTools.UI
 
         private bool PatternContains => _ruleBox.SelectedIndex == 1;
 
-        /// <summary>Подпись над списком наборов: при «закрыть все» галочка значит ровно обратное.</summary>
+        /// <summary>The caption above the workset list: under "close all" a check mark means exactly the opposite.</summary>
         private void UpdateWorksetCaption()
         {
             var closing = WorksetMode != LinkWorksetMode.CloseAll;
 
             _worksetCaption.Text = closing
-                ? "Отмеченные наборы закроются во всех выбранных связях. Набора с таким именем в модели нет — строка просто пропускается."
-                : "Открыты будут только отмеченные наборы, остальные закроются.";
+                ? "The checked worksets will be closed in every chosen link. If a model has no workset with that name, the row is simply skipped."
+                : "Only the checked worksets will be open, the rest will close.";
 
             UpdateSummary();
         }
@@ -971,9 +973,9 @@ namespace VladTools.UI
             if (text.Length == 0)
                 return;
 
-            // Дубль считается по тому же правилу, по которому набор потом ищется в связи.
-            // Иначе имя, отличающееся только пробелом по краю, тихо теряется: строкой
-            // не появляется, а найтись при загрузке тоже не может.
+            // A duplicate is judged by the same rule the workset is later looked up in a link by.
+            // Otherwise a name differing only by a trailing space is silently lost: it never
+            // appears as a row, and it can never be found on load either.
             if (_worksets.Any(workset => LinkPreferences.SameWorkset(workset.Name, text)))
                 return;
 
@@ -983,8 +985,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Читает имена наборов у отмеченных моделей. Работа не мгновенная — идёт по сети
-        /// к каждому файлу, — поэтому висит на кнопке и показывает итог.
+        /// Reads the workset names of the checked models. This is not instant — it goes over the
+        /// network to every file — so it sits behind a button and shows the result.
         /// </summary>
         private void OnScanWorksets(object sender, RoutedEventArgs e)
         {
@@ -994,7 +996,7 @@ namespace VladTools.UI
             var marked = Marked();
             if (marked.Count == 0)
             {
-                MessageBox.Show(this, "Отметьте связи, у которых нужно прочитать наборы.", WindowTitle,
+                MessageBox.Show(this, "Check the links to read the worksets of.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -1009,7 +1011,7 @@ namespace VladTools.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, "Прочитать рабочие наборы не удалось.\n\n" + exception.Message,
+                MessageBox.Show(this, "Could not read the worksets.\n\n" + exception.Message,
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -1024,30 +1026,31 @@ namespace VladTools.UI
             _worksetsRead = true;
             RecountWorksets();
 
-            var text = "Прочитано моделей: " + scan.Scanned + " из " + marked.Count +
-                       ".\nРазных рабочих наборов: " + scan.Names.Count + ".";
+            var text = "Models read: " + scan.Scanned + " of " + marked.Count +
+                       ".\nDistinct worksets: " + scan.Names.Count + ".";
 
             if (scan.Failures.Count > 0)
             {
                 const int limit = 10;
-                text += "\n\nНе удалось прочитать (" + scan.Failures.Count + "):\n• " +
+                text += "\n\nCould not be read (" + scan.Failures.Count + "):\n• " +
                         string.Join("\n• ", scan.Failures.Take(limit));
 
                 if (scan.Failures.Count > limit)
-                    text += "\n… и ещё " + (scan.Failures.Count - limit);
+                    text += "\n… and " + (scan.Failures.Count - limit) + " more";
             }
 
             MessageBox.Show(this, text, WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        /// <summary>Пересчитывает, в скольких отмеченных моделях встречается каждое имя набора.</summary>
+        /// <summary>Recomputes how many checked models each workset name occurs in.</summary>
         private void RecountWorksets()
         {
             var marked = Marked();
 
-            // Считать есть по чему только если хоть у одной отмеченной связи наборы прочитаны:
-            // иначе ноль означает «не смотрели», а не «нет ни в одной», и путать эти два
-            // состояния нельзя — из второго растёт «плагин не закрыл набор».
+            // There is something to count only if at least one checked link has had its worksets
+            // read: otherwise zero means "not looked at" rather than "in none of them", and the
+            // two states must not be confused — the second is where "the add-in did not close the
+            // workset" comes from.
             var counted = marked.Any(row => row.WorksetNames != null);
 
             foreach (var workset in _worksets)
@@ -1063,7 +1066,7 @@ namespace VladTools.UI
         {
             if (Pattern.Length == 0)
             {
-                MessageBox.Show(this, "Впишите строку правила — например «00_».", WindowTitle,
+                MessageBox.Show(this, "Type in a rule string — \"00_\", say.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -1082,9 +1085,9 @@ namespace VladTools.UI
             if (marked == 0)
             {
                 MessageBox.Show(this,
-                    "В списке нет наборов, подходящих под правило.\n\n" +
-                    "Это не помеха: правило применяется к каждой связи отдельно уже при загрузке, " +
-                    "даже если сейчас список имён пуст.",
+                    "No workset in the list matches the rule.\n\n" +
+                    "That is not a problem: the rule is applied to each link separately at load time, " +
+                    "even if the name list is empty right now.",
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
@@ -1095,8 +1098,8 @@ namespace VladTools.UI
             if (pattern.Length == 0)
                 return false;
 
-            // Обрезка та же, что в команде: правило должно отмечать в окне ровно то,
-            // что потом закроется при загрузке.
+            // The same trimming as in the command: the rule must check exactly what will end up
+            // closed on load.
             var trimmed = LinkPreferences.NormalizeWorkset(name);
 
             return PatternContains
@@ -1122,7 +1125,7 @@ namespace VladTools.UI
                 UpdateSummary();
         }
 
-        // ───────────────────────────── таблица связей ─────────────────────────────
+        // ───────────────────────────── the link table ─────────────────────────────
 
         private bool InScope(LinkRow row)
         {
@@ -1138,8 +1141,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Пересобирает таблицу. Скрытая строка теряет галочку — то же правило, что в окнах
-        /// удаления: работает только то, что видно.
+        /// Rebuilds the table. A hidden row loses its check mark — the same rule as in the delete
+        /// windows: only what is visible is acted on.
         /// </summary>
         private void RebuildVisible()
         {
@@ -1174,7 +1177,7 @@ namespace VladTools.UI
             SetMany(row => affected.Contains(row) ? value : row.IsSelected);
         }
 
-        /// <summary>Пакетная простановка галочек: итог пересчитываем один раз в конце.</summary>
+        /// <summary>Setting check marks in bulk: the total is recomputed once, at the end.</summary>
         private void SetMany(Func<LinkRow, bool> value)
         {
             _settingMany = true;
@@ -1199,14 +1202,14 @@ namespace VladTools.UI
 
         private void OnRowChanged(object sender, PropertyChangedEventArgs e)
         {
-            // Ручная смена набора в таблице снимает со строки признак «подставлено подбором»:
-            // при выключении подбора такой выбор трогать уже нельзя.
+            // A hand-made change of a row's workset in the table clears the "filled in by the
+            // guess" flag: once the guess is turned off, such a choice must not be touched.
             if (e.PropertyName == nameof(LinkRow.Workset))
             {
                 if (!_suggesting && _autoWorkset.Remove((LinkRow)sender))
                 {
                     var row = (LinkRow)sender;
-                    if (row.Note.StartsWith("Набор по разделу", StringComparison.Ordinal))
+                    if (row.Note.StartsWith("Workset by discipline", StringComparison.Ordinal))
                         row.Note = string.Empty;
                 }
 
@@ -1235,19 +1238,19 @@ namespace VladTools.UI
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
                 _status.Text = _all.Count == 0
-                    ? "Список пуст: добавьте модели кнопками сверху или загрузите сохранённый набор."
-                    : "Показано связей: " + _visible.Count + " из " + _all.Count + ". Не отмечено ни одной.";
+                    ? "The list is empty: add models with the buttons above or load a saved set."
+                    : "Shown links: " + _visible.Count + " of " + _all.Count + ". Nothing is checked.";
             }
             else
             {
                 _status.Foreground = SystemColors.ControlTextBrush;
-                _status.Text = "Связать заново: " + fresh +
-                               (again > 0 ? ", перезагрузить существующих: " + again : string.Empty) +
+                _status.Text = "To link afresh: " + fresh +
+                               (again > 0 ? ", to reload existing: " + again : string.Empty) +
                                ". " + WorksetNote();
             }
 
             _loadButton.IsEnabled = marked.Count > 0;
-            _loadButton.Content = marked.Count > 0 ? "Загрузить (" + marked.Count + ")" : "Загрузить";
+            _loadButton.Content = marked.Count > 0 ? "Load (" + marked.Count + ")" : "Load";
 
             _syncingSelectAll = true;
             _selectAll.IsChecked = _visible.Count == 0 || marked.Count == 0
@@ -1255,7 +1258,7 @@ namespace VladTools.UI
                 : marked.Count == _visible.Count ? true : (bool?)null;
             _syncingSelectAll = false;
 
-            _scanButton.Content = _worksetsRead ? "Прочитать наборы заново" : "Прочитать наборы";
+            _scanButton.Content = _worksetsRead ? "Read worksets again" : "Read Worksets";
         }
 
         private string WorksetNote()
@@ -1264,13 +1267,13 @@ namespace VladTools.UI
 
             if (names == 0 && Pattern.Length == 0)
                 return WorksetMode == LinkWorksetMode.CloseAll
-                    ? "Все рабочие наборы связей будут закрыты."
-                    : "Рабочие наборы не трогаем.";
+                    ? "Every link workset will be closed."
+                    : "The worksets are left alone.";
 
-            var verb = WorksetMode == LinkWorksetMode.CloseAll ? "Открыть наборов: " : "Закрыть наборов: ";
+            var verb = WorksetMode == LinkWorksetMode.CloseAll ? "Worksets to open: " : "Worksets to close: ";
             var note = verb + names;
 
-            return Pattern.Length > 0 ? note + " плюс подходящие под правило «" + Pattern + "»." : note + ".";
+            return Pattern.Length > 0 ? note + " plus whatever matches the rule \"" + Pattern + "\"." : note + ".";
         }
 
         private List<string> MarkedWorksets()
@@ -1278,7 +1281,7 @@ namespace VladTools.UI
             return _worksets.Where(workset => workset.IsSelected).Select(workset => workset.Name).ToList();
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnLoad(object sender, RoutedEventArgs e)
         {
@@ -1289,8 +1292,8 @@ namespace VladTools.UI
             var fresh = marked.Count(row => !row.IsExisting);
             var again = marked.Count - fresh;
 
-            var text = "Связать моделей: " + fresh + ".\n" +
-                       "Размещение: " + _placementBox.SelectedItem + ".\n" +
+            var text = "Models to link: " + fresh + ".\n" +
+                       "Placement: " + _placementBox.SelectedItem + ".\n" +
                        WorksetNote() + "\n";
 
             if (HasHostWorksets)
@@ -1298,20 +1301,20 @@ namespace VladTools.UI
                 var placed = marked.Count(row => row.Entry.Workset.Length > 0);
 
                 text += placed == 0
-                    ? "Рабочий набор проекта не задан ни одной связи — все встанут в активный набор.\n"
-                    : "Рабочий набор проекта задан у " + placed + " из " + marked.Count +
-                      "; остальные встанут в активный набор.\n";
+                    ? "No link has a project workset set — all will go into the active one.\n"
+                    : "A project workset is set on " + placed + " of " + marked.Count +
+                      "; the rest will go into the active one.\n";
             }
 
             text += "\n";
 
             if (again > 0)
-                text += "Существующих связей будет перезагружено: " + again +
-                        ". Перезагрузка идёт первой и в отмену не попадает — она стирает всю историю " +
-                        "отмены документа. Ctrl+Z после неё вернёт только новые связи, но не то, " +
-                        "что вы делали в проекте до нажатия.\n\n";
+                text += "Existing links to be reloaded: " + again +
+                        ". The reload runs first and is not undoable — it wipes the whole document's " +
+                        "undo history. Ctrl+Z after it will only bring back the new links, not whatever " +
+                        "you did in the project before pressing this.\n\n";
 
-            text += "Revit на время загрузки перестанет отвечать. Продолжить?";
+            text += "Revit will stop responding while loading. Continue?";
 
             var answer = MessageBox.Show(this, text, WindowTitle,
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes);
@@ -1324,9 +1327,9 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Настройки сохраняются при любом закрытии окна — и по «Загрузить», и по «Закрыть», и по Esc.
-        /// Ради этого всё и затевалось: набор «00_Shared levels and grids» отмечается один раз
-        /// и подставляется в следующий проект сам.
+        /// The settings are saved whenever the window closes — on "Load", on "Close", and on Esc.
+        /// That is the whole point of it: the "00_Shared levels and grids" workset is checked once
+        /// and offers itself in the next project.
         /// </summary>
         protected override void OnClosed(EventArgs e)
         {

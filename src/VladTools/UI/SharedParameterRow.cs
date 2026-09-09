@@ -4,9 +4,9 @@ using Autodesk.Revit.DB;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Строка таблицы в окне «Удалить параметры»: галочка, то, что видит пользователь,
-    /// плюс ссылка на сам параметр семейства для удаления.
-    /// Галочка ставится и вручную, и правилом, поэтому строка сообщает об изменениях.
+    /// A table row in the "Delete Parameters" window: the check box, what the user sees, plus a
+    /// reference to the family parameter itself so it can be deleted.
+    /// The check box is set both by hand and by the rule, so the row reports its changes.
     /// </summary>
     internal sealed class SharedParameterRow : INotifyPropertyChanged
     {
@@ -30,7 +30,7 @@ namespace VladTools.UI
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        /// <summary>Галочка «удалить этот параметр».</summary>
+        /// <summary>The "delete this parameter" check box.</summary>
         public bool IsSelected
         {
             get { return _isSelected; }
@@ -47,26 +47,26 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Параметр семейства, который стоит за строкой.</summary>
+        /// <summary>The family parameter behind the row.</summary>
         public FamilyParameter Parameter { get; }
 
         public string Name { get; }
 
         public string Guid { get; }
 
-        /// <summary>«Экземпляр» или «Тип».</summary>
+        /// <summary>"Instance" or "Type".</summary>
         public string Binding { get; }
 
-        /// <summary>Группа параметра, как она подписана в интерфейсе Revit.</summary>
+        /// <summary>The parameter group as it is labelled in the Revit interface.</summary>
         public string Group { get; }
 
         /// <summary>
-        /// Параметр стоит меткой на размере. Удалить такой — значит снять метку и сломать
-        /// параметрику семейства, поэтому окно по умолчанию такие строки не показывает.
+        /// The parameter labels a dimension. Deleting such a parameter drops the label and breaks
+        /// the family parametrics, so the window hides those rows by default.
         /// </summary>
         public bool UsedInDimensions { get; }
 
-        /// <summary>Подпись для столбца «Размеры»: у непричастных параметров — пусто.</summary>
-        public string DimensionUse => UsedInDimensions ? "Метка размера" : string.Empty;
+        /// <summary>The caption for the "Dimensions" column: empty for parameters that are not involved.</summary>
+        public string DimensionUse => UsedInDimensions ? "Dimension label" : string.Empty;
     }
 }

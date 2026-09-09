@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Interop;
@@ -11,13 +11,12 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Пакетная загрузка связей Revit: файлы, Revit Server и BIM360 — одним списком,
-    /// с одним способом размещения и одной настройкой рабочих наборов на всю пачку.
+    /// Batch-loading Revit links: files, Revit Server and BIM360 — as one list, with one
+    /// placement and one workset setup for the whole batch.
     ///
-    /// Типовая работа: в новый проект нужно завести два десятка связей смежников,
-    /// все «по общим координатам» и у всех закрыт «00_Shared levels and grids».
-    /// В самом Revit это двадцать диалогов подряд, в каждом из которых заново выбирается
-    /// одно и то же.
+    /// A routine job: a new project needs a couple of dozen consultants' links set up, all "by
+    /// shared coordinates" and all with "00_Shared levels and grids" closed. In Revit itself that
+    /// is twenty dialogs in a row, each one choosing the same thing over again.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
@@ -26,21 +25,20 @@ namespace VladTools.Commands
         private const string DialogTitle = "Link Manager";
 
         /// <summary>
-        /// Прочитанные рабочие наборы связей: ключ строки — список «имя набора → его Id».
-        /// Идентификаторы у каждой модели свои, поэтому имена, отмеченные в окне,
-        /// превращаются в идентификаторы отдельно для каждой связи.
-        /// Заполняется при чтении по кнопке и дочитывается при загрузке.
+        /// The link worksets that were read: keyed by a row's key, a list of "workset name → its
+        /// Id". Every model has its own ids, so the names checked in the window are turned into
+        /// ids separately for each link. Filled in when reading via the button, and topped up on load.
         /// </summary>
         private readonly Dictionary<string, List<WorksetInfo>> _worksets =
             new Dictionary<string, List<WorksetInfo>>(StringComparer.Ordinal);
 
         /// <summary>
-        /// Имена наборов, реально встретившиеся в связях за этот запуск загрузки.
-        /// Нужно ровно для одного: отмеченное имя, которого не нашлось ни в одной связи, —
-        /// самая частая причина «набор не закрылся». Закрывать в этом случае просто нечего,
-        /// <see cref="Matches"/> такого набора не находит, и раньше об этом никто не узнавал:
-        /// в окне столбец «Где есть» показывает «из прошлого раза» и когда набор не нашёлся,
-        /// и когда его никто не искал.
+        /// The workset names actually encountered in links during this load run. This exists for
+        /// exactly one purpose: a checked name that was not found in any link is the most common
+        /// reason behind "the workset did not close". There is simply nothing to close in that
+        /// case, <see cref="Matches"/> never finds such a workset, and until now nobody found out
+        /// about it: the "Found in" column in the window read "from last time" both when a
+        /// workset was not found and when nobody had looked for it at all.
         /// </summary>
         private readonly HashSet<string> _seenNames =
             new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
@@ -55,8 +53,8 @@ namespace VladTools.Commands
             if (doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в проекте.\n" +
-                    "В редактор семейств связи Revit не вставляются.");
+                    "The command works only in a project.\n" +
+                    "Revit links cannot be inserted into the family editor.");
                 return Result.Cancelled;
             }
 
@@ -75,10 +73,10 @@ namespace VladTools.Commands
                 var preferences = window.Preferences;
                 var chosen = window.Selected;
 
-                // Идентификаторы наборов читаются заново. WorksetPreview.Id по документации
-                // Autodesk меняется при синхронизации с центральной моделью, а между кнопкой
-                // «Прочитать наборы» и «Загрузить» проходит сколько угодно времени. Устаревший
-                // WorksetId и Open, и Close игнорируют молча — осечка, которую потом не найти.
+                // The workset ids are read afresh. By Autodesk's documentation, WorksetPreview.Id
+                // changes on synchronising with the central model, and any amount of time can pass
+                // between "Read Worksets" and "Load". A stale WorksetId is silently ignored by both
+                // Open and Close — a failure that is impossible to find afterwards.
                 _worksets.Clear();
                 _seenNames.Clear();
 
@@ -90,10 +88,10 @@ namespace VladTools.Commands
                 var failures = new List<string>();
                 var warnings = new WarningSuppressor();
 
-                // Перезагрузка идёт первой и вне транзакции. LoadFrom требует, чтобы все транзакции
-                // были закрыты, и вдобавок **стирает историю отмены документа**. Сделай её после
-                // создания — и Ctrl+Z уже не вернул бы только что заведённые связи; так порядок
-                // сохраняет отмену хотя бы для новых.
+                // The reload runs first and outside a transaction. LoadFrom requires every
+                // transaction to be closed, and on top of that **it wipes the document's undo
+                // history**. Do it after the creation instead, and Ctrl+Z would no longer bring
+                // back the links just set up; this order keeps undo working at least for the new ones.
                 Reload(doc, chosen.Where(row => row.IsExisting).ToList(), preferences,
                     reloaded, healed, unverified, failures);
 
@@ -110,13 +108,13 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── рабочие наборы ─────────────────────────────
+        // ───────────────────────────── worksets ─────────────────────────────
 
         /// <summary>
-        /// Читает имена рабочих наборов отмеченных моделей, не открывая их. Идёт по сети
-        /// к каждому файлу, поэтому в окне висит на кнопке, а не срабатывает само.
-        /// Заодно наполняет <see cref="_worksets"/> — при загрузке эти же данные пригодятся,
-        /// чтобы перевести отмеченные имена в идентификаторы каждой модели.
+        /// Reads the workset names of the checked models without opening them. It goes over the
+        /// network to every file, so in the window it sits behind a button rather than running on
+        /// its own. Along the way it fills <see cref="_worksets"/> — the same data will be needed
+        /// on load, to turn the checked names into every model's own ids.
         /// </summary>
         private LinkWorksetScan ReadWorksets(IReadOnlyList<LinkRow> rows)
         {
@@ -139,7 +137,7 @@ namespace VladTools.Commands
                 }
                 catch (Exception exception)
                 {
-                    row.Note = "Наборы не прочитаны";
+                    row.Note = "Worksets not read";
                     failures.Add(row.Name + " — " + LinkCatalog.Short(exception.Message));
                 }
             }
@@ -148,11 +146,11 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Рабочие наборы одной модели. Несовмещённый файл наборов не имеет — это пустой
-        /// список, а не отказ. Прочитанное запоминается, чтобы за одно нажатие «Загрузить»
-        /// не ходить к тому же файлу дважды (создание, проверка, повторная загрузка), но
-        /// кэш живёт только этот запуск: <see cref="Execute"/> чистит его перед загрузкой,
-        /// потому что идентификаторы наборов между чтением и загрузкой могут смениться.
+        /// The worksets of one model. A non-workshared file has no worksets — that is an empty
+        /// list, not a failure. What is read is remembered so that a single "Load" click does not
+        /// visit the same file twice (creation, verification, a possible reload), but the cache
+        /// lives only for this run: <see cref="Execute"/> clears it before loading, because
+        /// workset ids can change between the read and the load.
         /// </summary>
         private List<WorksetInfo> Worksets(LinkRow row, bool refresh)
         {
@@ -173,30 +171,29 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Собирает настройку рабочих наборов для одной связи: базовый режим плюс имена,
-        /// отмеченные в окне, плюс правило по имени. Правило применяется здесь, а не в окне,
-        /// именно потому, что наборы у каждой модели свои: «00_» ловит и «00_Shared Levels
-        /// and Grids», и «00_Общие уровни и оси», хотя в списке окна ни того ни другого нет.
+        /// Builds the workset setup for one link: the base mode plus the names checked in the
+        /// window plus a name rule. The rule is applied here rather than in the window, exactly
+        /// because every model's worksets are its own: "00_" catches both "00_Shared Levels and
+        /// Grids" and its Russian-named equivalent, though neither appears in the window's own list.
         ///
-        /// Заказ всегда формулируется как «закрыть все, открыть перечисленные», а не
-        /// «открыть все, закрыть перечисленные». По документации обе формулировки равноправны,
-        /// но CloseAllWorksets + Open — единственная, которой пользуется пример Autodesk
-        /// именно для связей (Developers Guide → Linked Files → Revit Links), и единственная,
-        /// про которую нет сообщений, что она молча не срабатывает. OpenAllWorksets + Close
-        /// на связях оставляет наборы открытыми, отчитываясь об успехе, — ровно то, из-за чего
-        /// кнопка «не справлялась с закрытием». Поэтому «закрыть отмеченные» считается через
-        /// дополнение: открыть все наборы связи, кроме отмеченных. Список наборов для этого
-        /// всё равно уже прочитан.
+        /// The request is always phrased as "close all, open the listed ones" rather than "open
+        /// all, close the listed ones". By the documentation both phrasings are equivalent, but
+        /// CloseAllWorksets + Open is the only one Autodesk's own example uses specifically for
+        /// links (Developers Guide → Linked Files → Revit Links), and the only one with no reports
+        /// of silently doing nothing. OpenAllWorksets + Close on links leaves the worksets open
+        /// while reporting success — exactly what made the button "fail at closing". So "close the
+        /// checked ones" is computed as a complement: open every link workset except the checked
+        /// ones. The workset list needed for that has already been read anyway.
         ///
-        /// Наборы прочитать не удалось — отдаём один базовый режим: связь всё равно загрузится,
-        /// просто без выборочного закрытия.
+        /// The worksets could not be read — we hand back a plain base mode: the link will still
+        /// load, just without the selective closing.
         /// </summary>
         private WorksetConfiguration Configuration(LinkRow row, LinkPreferences preferences, List<string> notes)
         {
             var hasNames = preferences.Worksets.Count > 0;
             var hasPattern = !string.IsNullOrEmpty(preferences.WorksetPattern);
 
-            // Ничего не отмечено — ходить к файлу за наборами незачем.
+            // Nothing is checked — no reason to go to the file for worksets.
             if (!hasNames && !hasPattern)
                 return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
 
@@ -207,19 +204,19 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                notes.Add(row.Name + " — рабочие наборы прочитать не удалось (" + LinkCatalog.Short(exception.Message) +
-                          "), связь загружена как есть");
+                notes.Add(row.Name + " — could not read the worksets (" + LinkCatalog.Short(exception.Message) +
+                          "), the link was loaded as is");
                 return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
             }
 
-            // Пустой список при удачном чтении — подозрительно: у совмещённой модели всегда есть
-            // хотя бы набор по умолчанию. Скорее всего, GetUserWorksetInfo не смог достучаться
-            // до файла и просто не бросил исключение. Не отличать это от «имена не подошли» —
-            // значит потерять единственную зацепку, если Revit тихо не закрыл заказанное.
+            // An empty list after a successful read is suspicious: a workshared model always has
+            // at least the default workset. GetUserWorksetInfo most likely could not reach the
+            // file and simply did not throw. Failing to tell this apart from "no name matched"
+            // would mean losing the only clue when Revit silently did not close what was asked.
             if (worksets.Count == 0)
             {
-                notes.Add(row.Name + " — файл вернул пустой список рабочих наборов " +
-                          "(похоже на сбой чтения, а не на его отсутствие), связь загружена без изменения наборов");
+                notes.Add(row.Name + " — the file returned an empty workset list " +
+                          "(this looks like a read failure rather than an absence), the link was loaded with the worksets unchanged");
                 return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
             }
 
@@ -231,18 +228,18 @@ namespace VladTools.Commands
                 .Select(workset => workset.Id)
                 .ToList();
 
-            // Отмеченных в этой связи нет — закрывать нечего, отдаём чистый базовый режим.
-            // Заодно обходит неоднозначность в XML-doc метода Open: «if all worksets are set
-            // to open, the configuration will be unchanged». Выяснять на живом проекте, не
-            // означает ли это, что CloseAll + Open(все) оставит связь закрытой целиком, —
-            // не та цена ошибки.
+            // Nothing checked matches this link — nothing to close, hand back a plain base mode.
+            // This also sidesteps an ambiguity in the Open method's XML doc: "if all worksets are
+            // set to open, the configuration will be unchanged". Finding out on a live project
+            // whether that means CloseAll + Open(all) would leave the link entirely closed is not
+            // a price worth paying for the answer.
             if (marked.Count == 0)
                 return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
 
-            // «Как при последнем открытии» через Open не выразить: что открывалось в прошлый раз,
-            // знает только Revit, и дополнения тут не посчитать. Остаётся Close — с той самой
-            // ненадёжностью; если Revit его не выполнит, это поймает Check и скажет в отчёте,
-            // а не проглотит.
+            // "As last opened" cannot be expressed through Open: only Revit knows what was open
+            // last time, and there is no complement to compute here. Close is what is left — with
+            // the very unreliability described above; if Revit does not carry it out, Check will
+            // catch that and say so in the report rather than swallow it.
             if (preferences.WorksetMode == LinkWorksetMode.LastViewed)
             {
                 var lastViewed = new WorksetConfiguration(WorksetConfigurationOption.OpenLastViewed);
@@ -251,7 +248,7 @@ namespace VladTools.Commands
                 return lastViewed;
             }
 
-            // При «закрыть все» галочка значит обратное: открыть только отмеченное.
+            // Under "close all", a check mark means the opposite: open only the checked ones.
             var open = preferences.WorksetMode == LinkWorksetMode.CloseAll ? marked : rest;
 
             var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
@@ -263,12 +260,12 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Базовый режим, когда перечислять наборы нечем: отмеченных нет или список наборов
-        /// связи прочитать не удалось.
+        /// The base mode when there is nothing to list by name: nothing is checked, or the link's
+        /// workset list could not be read.
         ///
-        /// Здесь принципиально, что при «открыть все» это именно <c>OpenAllWorksets</c>:
-        /// подставить сюда <c>CloseAllWorksets</c>, как в основном пути, значит на любом
-        /// сбое чтения молча загрузить связь пустой.
+        /// It matters here that "open all" is specifically <c>OpenAllWorksets</c>: substituting
+        /// <c>CloseAllWorksets</c> here, as in the main path, would mean loading the link empty on
+        /// any read failure, silently.
         /// </summary>
         private static WorksetConfigurationOption BaseOption(LinkWorksetMode mode)
         {
@@ -284,9 +281,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Каким должен стать набор с этим именем после загрузки: <c>true</c> — открытым,
-        /// <c>false</c> — закрытым, <c>null</c> — про него ничего не обещали, и проверять
-        /// его нельзя. Зеркало <see cref="Configuration"/>: если правишь там — правь и здесь.
+        /// What a workset with this name should become after loading: <c>true</c> — open,
+        /// <c>false</c> — closed, <c>null</c> — nothing was promised about it, and it cannot be
+        /// checked. A mirror of <see cref="Configuration"/>: edit one, edit the other.
         /// </summary>
         private static bool? Expected(string name, LinkPreferences preferences)
         {
@@ -301,22 +298,23 @@ namespace VladTools.Commands
                     return !marked;
 
                 default:
-                    // «Как при последнем открытии»: что стало с неотмеченными, знает только Revit.
+                    // "As last opened": only Revit knows what happened to the unchecked ones.
                     return marked ? (bool?)false : null;
             }
         }
 
         /// <summary>
-        /// Перечитывает уже загруженный документ связи и сверяет, что Revit на самом деле сделал
-        /// с наборами, с тем, что было заказано. Без этого узнать, послушался ли он, можно было
-        /// только руками — через «Управление рабочими наборами» самого Revit. WorksetConfiguration
-        /// лишь передаёт пожелание; проверка здесь — единственный способ поймать случай, когда
-        /// Revit его не выполнил, и не гадать вслепую.
+        /// Re-reads an already-loaded link document and checks what Revit actually did with the
+        /// worksets against what was asked. Without this, finding out whether it obeyed could only
+        /// be done by hand — through Revit's own "Manage Worksets". A WorksetConfiguration only
+        /// conveys a wish; the check here is the only way to catch a case where Revit did not
+        /// carry it out, instead of guessing blindly.
         ///
-        /// Исходов три, а не два, и это здесь главное. Раньше «проверить не удалось» отдавалось
-        /// как «всё так, как просили»: связь не отдала документ, коллектор отказал — а в отчёте
-        /// «Загружена» и ни слова про наборы. Именно так отказ закрытия и оставался незамеченным,
-        /// поэтому <see cref="WorksetVerdict.Unknown"/> теперь доходит до отчёта отдельной строкой.
+        /// There are three outcomes, not two, and that is the whole point. Previously "could not
+        /// be checked" was returned as "everything as asked": the link would not hand over its
+        /// document, the collector would fail — and the report read "Loaded" with not a word about
+        /// worksets. That is precisely how a closing failure stayed unnoticed, so
+        /// <see cref="WorksetVerdict.Unknown"/> now reaches the report as a line of its own.
         /// </summary>
         private static WorksetCheck Check(Document linkDocument, LinkPreferences preferences)
         {
@@ -326,11 +324,11 @@ namespace VladTools.Commands
                 return WorksetCheck.NotRequested();
 
             if (linkDocument == null)
-                return WorksetCheck.Unknown("связь не отдала свой документ — наборы проверить не удалось");
+                return WorksetCheck.Unknown("the link did not hand over its document — the worksets could not be checked");
 
             try
             {
-                // Несовмещённая связь наборов не имеет вовсе: закрывать нечего, и это не отказ.
+                // A non-workshared link has no worksets at all: nothing to close, and that is not a failure.
                 if (!linkDocument.IsWorkshared)
                     return WorksetCheck.NotRequested();
 
@@ -340,7 +338,7 @@ namespace VladTools.Commands
                     .ToList();
 
                 if (worksets.Count == 0)
-                    return WorksetCheck.Unknown("у совмещённой связи не нашлось ни одного набора — проверить нечем");
+                    return WorksetCheck.Unknown("the workshared link has no worksets at all — nothing to check against");
 
                 var wrong = new List<string>();
 
@@ -356,42 +354,41 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                return WorksetCheck.Unknown("наборы проверить не удалось: " + LinkCatalog.Short(exception.Message));
+                return WorksetCheck.Unknown("could not check the worksets: " + LinkCatalog.Short(exception.Message));
             }
         }
 
-        /// <summary>Документ связи — или <c>null</c>, если связь его не отдаёт.</summary>
+        /// <summary>The link's document — or <c>null</c> if the link does not hand it over.</summary>
         private static Document LinkDocument(Document doc, ElementId typeId)
         {
             return LinkCatalog.Instances(doc, typeId).FirstOrDefault()?.GetLinkDocument();
         }
 
         /// <summary>
-        /// Проверяет наборы уже загруженной связи и, если Revit заказанное не выполнил,
-        /// пробует продавить настройку ещё раз через <c>LoadFrom</c> — тем же путём, которым
-        /// команда меняет наборы у существующих связей.
+        /// Checks the worksets of an already-loaded link and, if Revit did not carry out what was
+        /// asked, tries to force the setup through once more via <c>LoadFrom</c> — the same path
+        /// the command uses to change worksets on existing links.
         ///
-        /// На практике для связей с Revit Server самое первое применение workset-конфигурации
-        /// (что при <c>RevitLinkType.Create</c>, что при первом <c>LoadFrom</c>) иногда молча
-        /// не срабатывает: Revit отчитывается об успехе, но оставляет наборы как были.
-        /// Повторный вызов с той же конфигурацией это обычно исправляет — похоже на особенность
-        /// самого Revit при первом обращении к серверной модели, а не на ошибку в переданных
-        /// данных: несовпадение находится именно в том, что реально загрузилось, а не в том,
-        /// что было запрошено. Не файлы и не облако — там расхождений не наблюдалось.
+        /// In practice, for Revit Server links the very first application of a workset
+        /// configuration (whether from <c>RevitLinkType.Create</c> or the first <c>LoadFrom</c>)
+        /// sometimes silently does nothing: Revit reports success but leaves the worksets as they
+        /// were. Calling it again with the same configuration usually fixes it — this looks like a
+        /// quirk of Revit's own first contact with a server model rather than a fault in the data
+        /// sent: the mismatch shows up in what actually loaded, not in what was requested. Files
+        /// and the cloud were never seen to behave this way.
         ///
-        /// Вызывать можно только вне транзакции: `LoadFrom` внутри открытой транзакции работать
-        /// отказывается.
+        /// This can only be called outside a transaction: `LoadFrom` refuses to work inside an open one.
         /// </summary>
-        /// <param name="retried">Пришлось ли пробовать второй раз — если нет, отчёту сообщать нечего.</param>
+        /// <param name="retried">Whether a second attempt was needed — if not, the report has nothing to say.</param>
         private WorksetCheck EnsureWorksets(Document doc, LinkRow row, ElementId typeId, LinkPreferences preferences, out bool retried)
         {
             retried = false;
 
             var check = Check(LinkDocument(doc, typeId), preferences);
 
-            // Повторяем только тогда, когда точно знаем, что Revit не послушался. При
-            // Unknown второй LoadFrom стрелял бы вслепую, а он стирает историю отмены
-            // документа — цена слишком велика для догадки. Отчёт скажет «не проверено».
+            // We only retry when we know for certain that Revit did not comply. On Unknown, a
+            // second LoadFrom would be firing blind, and it wipes the document's undo history —
+            // too high a price for a guess. The report will say "not checked".
             if (check.Verdict != WorksetVerdict.Mismatched)
                 return check;
 
@@ -405,10 +402,10 @@ namespace VladTools.Commands
             {
                 using (var configuration = Configuration(row, preferences, notes))
                 {
-                    // Повторять есть смысл только с полноценной конфигурацией. Если
-                    // Configuration не смогла прочитать наборы связи, она отдала базовый
-                    // режим: такой LoadFrom ничего не изменит, зато сотрёт историю отмены.
-                    // Причина уже ушла в отчёт из Create/Reload — сообщаем несовпадение как есть.
+                    // Retrying only makes sense with a full configuration. If Configuration could
+                    // not read the link's worksets, it handed back the base mode: such a LoadFrom
+                    // would change nothing, yet it would still wipe the undo history. The reason
+                    // already went into the report from Create/Reload — we report the mismatch as it is.
                     if (notes.Count > 0)
                         return check;
 
@@ -428,9 +425,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Раскладывает итог сверки по спискам отчёта. Отдельной строкой сюда попадает
-        /// и «проверить не удалось»: молчать об этом — значит вернуться к тому, из-за чего
-        /// незакрытые наборы никто не замечал.
+        /// Sorts the check's outcome into the report's lists. "Could not be checked" also lands
+        /// here as a line of its own: staying quiet about it would mean going back to how
+        /// unclosed worksets went unnoticed in the first place.
         /// </summary>
         private static void Account(
             LinkRow row,
@@ -448,8 +445,8 @@ namespace VladTools.Commands
 
                 case WorksetVerdict.Mismatched:
                     failures.Add(row.Name + (retried
-                                     ? " — рабочие наборы не применились даже после повторной загрузки: "
-                                     : " — Revit не применил рабочие наборы: ") +
+                                     ? " — the worksets did not apply even after reloading: "
+                                     : " — Revit did not apply the worksets: ") +
                                  string.Join(", ", check.Names));
                     break;
 
@@ -462,8 +459,9 @@ namespace VladTools.Commands
 
         private static bool Matches(string name, LinkPreferences preferences)
         {
-            // Пробелы по краям обрезаются и здесь, и в правиле: имя набора у смежника
-            // с висящим пробелом иначе не закрывается вовсе — см. LinkPreferences.NormalizeWorkset.
+            // Leading/trailing spaces are trimmed both here and in the rule: a consultant's
+            // workset name with a trailing space would otherwise never close at all —
+            // see LinkPreferences.NormalizeWorkset.
             var trimmed = LinkPreferences.NormalizeWorkset(name);
 
             if (preferences.Worksets.Any(chosen => LinkPreferences.SameWorkset(chosen, trimmed)))
@@ -478,12 +476,12 @@ namespace VladTools.Commands
                 : trimmed.StartsWith(pattern, StringComparison.CurrentCultureIgnoreCase);
         }
 
-        // ───────────────────────────── загрузка ─────────────────────────────
+        // ───────────────────────────── loading ─────────────────────────────
 
         /// <summary>
-        /// Создаёт новые связи и переносит в другой рабочий набор те, что уже стоят в проекте.
-        /// Всё одной транзакцией: пользователь откатывает пачку одним Ctrl+Z. Каждая связь
-        /// в своём try — отказ одной не отменяет остальных.
+        /// Creates new links and moves the ones already in the project into another workset.
+        /// Everything in one transaction: the user rolls back the whole batch with one Ctrl+Z.
+        /// Each link in its own try — a failure on one does not cancel the rest.
         /// </summary>
         private void Apply(
             Document doc,
@@ -505,16 +503,16 @@ namespace VladTools.Commands
             var placement = LinkCatalog.Placement(preferences.Placement);
             var worksets = LinkCatalog.WorksetIds(doc);
 
-            // Кого проверить и, если понадобится, долечить через LoadFrom — обязательно вне
-            // транзакции, поэтому список собирается внутри, а разбирается снаружи.
+            // Who to check and, if needed, heal through LoadFrom — that must happen outside the
+            // transaction, so the list is gathered inside and processed outside.
             var toVerify = new List<KeyValuePair<LinkRow, ElementId>>();
 
-            using (var transaction = new Transaction(doc, "Загрузка связей"))
+            using (var transaction = new Transaction(doc, "Loading links"))
             {
                 transaction.Start();
 
-                // Связь почти всегда приезжает с предупреждениями — о координатах, о дублях
-                // имён, о версии файла. Модальное окно на каждое сорвало бы пакетную загрузку.
+                // A link almost always arrives with warnings — about coordinates, duplicate
+                // names, the file version. A modal dialog for each would wreck the batch load.
                 var options = transaction.GetFailureHandlingOptions();
                 options.SetFailuresPreprocessor(warnings);
                 transaction.SetFailureHandlingOptions(options);
@@ -567,9 +565,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Переносит уже стоящую в проекте связь в выбранный рабочий набор — вместе со всеми
-        /// её экземплярами. Набор не выбран или тот же самый — не трогаем: в окне это
-        /// обычное состояние, а не отказ.
+        /// Moves a link already in the project into the chosen workset — along with all of its
+        /// instances. No workset chosen, or the same one — left alone: in the window that is the
+        /// ordinary state, not a failure.
         /// </summary>
         private static void Move(
             Document doc,
@@ -593,12 +591,12 @@ namespace VladTools.Commands
 
             if (changed > 0)
             {
-                row.Note = "Перенесена в «" + row.Entry.Workset + "»";
+                row.Note = "Moved to \"" + row.Entry.Workset + "\"";
                 moved.Add(row.Name + " → " + row.Entry.Workset);
             }
         }
 
-        /// <summary>Возвращает Id новой связи — или <c>InvalidElementId</c>, если не получилось.</summary>
+        /// <summary>Returns the id of a new link — or <c>InvalidElementId</c> if it did not work out.</summary>
         private ElementId Create(
             Document doc,
             LinkRow row,
@@ -612,8 +610,8 @@ namespace VladTools.Commands
 
             using (var configuration = Configuration(row, preferences, notes))
             {
-                // Относительный путь бывает только у файла: у Revit Server и облака
-                // путь всегда абсолютный, и Revit относительный там просто не примет.
+                // A relative path exists only for a file: for Revit Server and the cloud the path
+                // is always absolute, and Revit simply will not accept a relative one there.
                 var relative = preferences.IsRelativePath && row.Entry.Origin == LinkOrigin.File;
 
                 using (var options = new RevitLinkOptions(relative, configuration))
@@ -622,8 +620,8 @@ namespace VladTools.Commands
 
                     if (result.LoadResult == LinkLoadResultType.LinkExists)
                     {
-                        row.Note = "Уже в проекте";
-                        failures.Add(row.Name + " — такая связь в проекте уже есть");
+                        row.Note = "Already in the project";
+                        failures.Add(row.Name + " — such a link is already in the project");
                         return ElementId.InvalidElementId;
                     }
 
@@ -640,20 +638,22 @@ namespace VladTools.Commands
 
                     var instance = RevitLinkInstance.Create(doc, result.ElementId, placement);
 
-                    // Новую связь сразу закрепляем булавкой: смежник вставлен по координатам,
-                    // и случайный сдвиг мышью потом ищут всей командой. Снять закрепление
-                    // вручную — одна кнопка, вернуть уехавшую связь на место — нет.
+                    // The new link is pinned right away: a consultant's link is inserted by
+                    // coordinates, and an accidental drag with the mouse is later hunted down by
+                    // the whole team. Removing a pin by hand is one button, putting a link that
+                    // drifted back in place is not.
                     try
                     {
                         instance.Pinned = true;
                     }
                     catch (Exception exception)
                     {
-                        failures.Add(row.Name + " — закрепить связь не удалось: " + LinkCatalog.Short(exception.Message));
+                        failures.Add(row.Name + " — could not pin the link: " + LinkCatalog.Short(exception.Message));
                     }
 
-                    // Набор задаётся уже созданным элементам, а не через активный набор документа:
-                    // так связь ложится туда, куда просили, независимо от того, где стоит пользователь.
+                    // The workset is set on the elements that were just created, rather than
+                    // through the document's active workset: that way the link lands wherever it
+                    // was asked to, regardless of where the user is standing.
                     WorksetId hostWorkset;
                     if (row.Entry.Workset.Length > 0 && worksets.TryGetValue(row.Entry.Workset, out hostWorkset))
                     {
@@ -661,24 +661,24 @@ namespace VladTools.Commands
                         LinkCatalog.Place(type, hostWorkset, failures, row.Name);
                     }
 
-                    row.Note = "Загружена";
+                    row.Note = "Loaded";
                     created.Add(row.Name);
                     failures.AddRange(notes);
 
-                    // Наборы связи проверяются и, если нужно, долечиваются позже, вне транзакции
-                    // (Apply.toVerify) — LoadFrom внутри неё работать отказывается.
+                    // The link's worksets are checked and, if needed, healed later, outside the
+                    // transaction (Apply.toVerify) — LoadFrom refuses to work inside one.
                     return result.ElementId;
                 }
             }
         }
 
         /// <summary>
-        /// Перезагружает связи, уже стоящие в проекте, — ради новой настройки рабочих наборов.
-        /// Размещение при этом не меняется: у существующей связи Revit его переопределить не даёт.
+        /// Reloads links already in the project — for the sake of a new workset setup. The
+        /// placement is left unchanged: Revit will not let it be redefined on an existing link.
         ///
-        /// Зовётся вне транзакции и до создания новых связей: <c>LoadFrom</c> требует, чтобы все
-        /// транзакции были закрыты, и стирает историю отмены документа. Сама перезагрузка поэтому
-        /// не откатывается никогда, но идущее следом создание новых связей — откатывается.
+        /// Called outside a transaction and before creating new links: <c>LoadFrom</c> requires
+        /// every transaction to be closed, and it wipes the document's undo history. Because of
+        /// that the reload itself is never undoable, but the creation of new links that follows it is.
         /// </summary>
         private void Reload(
             Document doc,
@@ -696,7 +696,7 @@ namespace VladTools.Commands
                     var type = doc.GetElement(row.ExistingId) as RevitLinkType;
                     if (type == null)
                     {
-                        failures.Add(row.Name + " — связи в проекте больше нет");
+                        failures.Add(row.Name + " — the link is no longer in the project");
                         continue;
                     }
 
@@ -714,12 +714,12 @@ namespace VladTools.Commands
                         }
                     }
 
-                    row.Note = "Перезагружена";
+                    row.Note = "Reloaded";
                     reloaded.Add(row.Name);
                     failures.AddRange(notes);
 
-                    // Reload уже идёт вне транзакции, поэтому долечивать (EnsureWorksets → LoadFrom)
-                    // можно сразу же, не дожидаясь отдельного прохода, как для новых связей.
+                    // Reload already runs outside a transaction, so healing (EnsureWorksets →
+                    // LoadFrom) can happen right away, without waiting for a separate pass as new links need.
                     bool retried;
                     var check = EnsureWorksets(doc, row, row.ExistingId, preferences, out retried);
                     Account(row, check, retried, healed, unverified, failures);
@@ -731,14 +731,14 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── отчёт ─────────────────────────────
+        // ───────────────────────────── the report ─────────────────────────────
 
         /// <summary>
-        /// Отмеченные имена наборов, которых не нашлось ни в одной связи этого запуска.
+        /// The checked workset names that were not found in any link this run.
         ///
-        /// Пустой <see cref="_seenNames"/> значит, что наборы не удалось прочитать вообще
-        /// ни у одной связи, — тогда «не нашлось» сказать не про что: причина другая, и она
-        /// уже в отчёте отдельной строкой.
+        /// An empty <see cref="_seenNames"/> means the worksets could not be read for any link at
+        /// all — then "not found" has nothing to say: the reason is a different one, and it is
+        /// already in the report, on a line of its own.
         /// </summary>
         private List<string> Missing(LinkPreferences preferences)
         {
@@ -763,85 +763,85 @@ namespace VladTools.Commands
             const int limit = 15;
 
             var text = created.Count == 0 && reloaded.Count == 0 && moved.Count == 0
-                ? "Ни одной связи загрузить не удалось."
-                : "Связей загружено: " + created.Count +
-                  (reloaded.Count > 0 ? ", перезагружено: " + reloaded.Count : string.Empty) +
-                  (moved.Count > 0 ? ", перенесено в другой набор: " + moved.Count : string.Empty) + ".";
+                ? "Not a single link could be loaded."
+                : "Links loaded: " + created.Count +
+                  (reloaded.Count > 0 ? ", reloaded: " + reloaded.Count : string.Empty) +
+                  (moved.Count > 0 ? ", moved to another workset: " + moved.Count : string.Empty) + ".";
 
             if (created.Count > 0)
                 text += "\n\n• " + string.Join("\n• ", created.Take(limit)) +
-                        (created.Count > limit ? "\n… и ещё " + (created.Count - limit) : string.Empty);
+                        (created.Count > limit ? "\n… and " + (created.Count - limit) + " more" : string.Empty);
 
             if (healed.Count > 0)
-                text += "\n\nС первого раза Revit не закрыл наборы как просили, помогла повторная " +
-                        "загрузка (она тоже стирает историю отмены документа):\n• " +
+                text += "\n\nRevit did not close the worksets as asked on the first try, a reload fixed it " +
+                        "(that also wipes the document's undo history):\n• " +
                         string.Join("\n• ", healed.Take(limit)) +
-                        (healed.Count > limit ? "\n… и ещё " + (healed.Count - limit) : string.Empty);
+                        (healed.Count > limit ? "\n… and " + (healed.Count - limit) + " more" : string.Empty);
 
             if (moved.Count > 0)
-                text += "\n\nПеренесены в другой рабочий набор:\n• " + string.Join("\n• ", moved.Take(limit)) +
-                        (moved.Count > limit ? "\n… и ещё " + (moved.Count - limit) : string.Empty);
+                text += "\n\nMoved to another workset:\n• " + string.Join("\n• ", moved.Take(limit)) +
+                        (moved.Count > limit ? "\n… and " + (moved.Count - limit) + " more" : string.Empty);
 
-            // Имя, которого нет ни в одной связи, — не отказ Revit, а опечатка или другое
-            // имя набора у смежника. Отличать это от «Revit не послушался» приходится
-            // пользователю, значит, и сказать надо разными словами.
+            // A name found in no link is not a Revit refusal but a typo or a different workset
+            // name on the consultant's side. Telling the two apart is left to the user, so they
+            // have to be worded differently too.
             if (missing.Count > 0)
-                text += "\n\nЭтих отмеченных наборов не нашлось ни в одной связи (" + missing.Count +
-                        ") — сверьте имя: в окне отметьте связи и нажмите «Прочитать наборы», " +
-                        "столбец «Где есть» покажет, где какой набор есть:\n• " +
+                text += "\n\nThese checked worksets were not found in any link (" + missing.Count +
+                        ") — check the name: in the window, check the links and press \"Read Worksets\", " +
+                        "the \"Found in\" column will show where each workset exists:\n• " +
                         string.Join("\n• ", missing.Take(limit)) +
-                        (missing.Count > limit ? "\n… и ещё " + (missing.Count - limit) : string.Empty);
+                        (missing.Count > limit ? "\n… and " + (missing.Count - limit) + " more" : string.Empty);
 
-            // Отдельный раздел, а не тишина: связь загружена, но применились ли наборы —
-            // команда не знает. Молчать здесь — значит выдавать «не проверено» за «сделано».
+            // A section of its own, not silence: the link is loaded, but whether the worksets took
+            // hold, the command does not know. Staying quiet here would pass "not checked" off as "done".
             if (unverified.Count > 0)
-                text += "\n\nНаборы заказаны, но проверить их не удалось (" + unverified.Count +
-                        ") — посмотрите в «Управление рабочими наборами» связи:\n• " +
+                text += "\n\nWorksets were requested but could not be checked (" + unverified.Count +
+                        ") — look in the link's \"Manage Worksets\":\n• " +
                         string.Join("\n• ", unverified.Take(limit)) +
-                        (unverified.Count > limit ? "\n… и ещё " + (unverified.Count - limit) : string.Empty);
+                        (unverified.Count > limit ? "\n… and " + (unverified.Count - limit) + " more" : string.Empty);
 
             if (failures.Count > 0)
             {
-                text += "\n\nНе получилось (" + failures.Count + "):\n• " +
+                text += "\n\nCould not be done (" + failures.Count + "):\n• " +
                         string.Join("\n• ", failures.Take(limit));
 
                 if (failures.Count > limit)
-                    text += "\n… и ещё " + (failures.Count - limit);
+                    text += "\n… and " + (failures.Count - limit) + " more";
             }
 
             if (warnings.Count > 0)
             {
-                text += "\n\nRevit предупредил (" + warnings.Count + "):\n• " +
+                text += "\n\nRevit warned (" + warnings.Count + "):\n• " +
                         string.Join("\n• ", warnings.Take(limit));
 
                 if (warnings.Count > limit)
-                    text += "\n… и ещё " + (warnings.Count - limit);
+                    text += "\n… and " + (warnings.Count - limit) + " more";
             }
 
             TaskDialog.Show(DialogTitle, text);
         }
 
-        /// <summary>Что выяснилось про рабочие наборы уже загруженной связи.</summary>
+        /// <summary>What was found out about the worksets of an already-loaded link.</summary>
         private enum WorksetVerdict
         {
-            /// <summary>Ничего не заказывали — проверять нечего.</summary>
+            /// <summary>Nothing was requested — nothing to check.</summary>
             NotRequested,
 
-            /// <summary>Всё так, как просили.</summary>
+            /// <summary>Everything is as asked.</summary>
             Satisfied,
 
-            /// <summary>Часть наборов не в том состоянии — Revit заказанное не выполнил.</summary>
+            /// <summary>Some worksets are not in the right state — Revit did not carry out the request.</summary>
             Mismatched,
 
-            /// <summary>Проверить не удалось. Это не то же самое, что «всё хорошо».</summary>
+            /// <summary>Could not be checked. This is not the same thing as "all is well".</summary>
             Unknown
         }
 
         /// <summary>
-        /// Итог сверки наборов связи с заказанным. Существует ради того, чтобы
-        /// <see cref="WorksetVerdict.Unknown"/> нельзя было случайно посчитать успехом:
-        /// прежняя проверка отдавала пустой список и в том случае, когда проверила и всё
-        /// сошлось, и в том, когда не смогла проверить вовсе.
+        /// The result of checking a link's worksets against what was requested. It exists so that
+        /// <see cref="WorksetVerdict.Unknown"/> can never be mistaken for a success: the previous
+        /// check returned an empty list both when it checked and everything matched, and when it
+        /// could not check at all.
         /// </summary>
         private sealed class WorksetCheck
         {
@@ -856,10 +856,10 @@ namespace VladTools.Commands
 
             public WorksetVerdict Verdict { get; }
 
-            /// <summary>Имена наборов, состояние которых не совпало с заказанным.</summary>
+            /// <summary>The names of the worksets whose state did not match what was requested.</summary>
             public IReadOnlyList<string> Names { get; }
 
-            /// <summary>Почему проверить не удалось; у остальных исходов пусто.</summary>
+            /// <summary>Why it could not be checked; empty for the other outcomes.</summary>
             public string Reason { get; }
 
             public static WorksetCheck NotRequested()
@@ -880,7 +880,7 @@ namespace VladTools.Commands
             }
         }
 
-        /// <summary>Рабочий набор связи: имя, отмеченное в окне, и его идентификатор в этой модели.</summary>
+        /// <summary>A link's workset: the name checked in the window, and its id in this model.</summary>
         private sealed class WorksetInfo
         {
             public WorksetInfo(string name, WorksetId id)

@@ -3,12 +3,12 @@ using System.Collections.Generic;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Итог чтения рабочих наборов у выбранных связей: сами имена наборов и то,
-    /// у скольких моделей их прочитать не вышло.
+    /// The result of reading the worksets of the selected links: the workset names themselves
+    /// and how many models could not be read.
     ///
-    /// Чтение идёт без открытия моделей, но по сети, и на десятке связей занимает секунды —
-    /// поэтому оно висит на кнопке, а не срабатывает само, и отдаёт результат вот такой
-    /// сводкой, как проверка семейств в окне «Удалить общие параметры».
+    /// Reading does not open the models, but it goes over the network and takes seconds on a dozen
+    /// links — so it sits behind a button instead of running by itself, and returns a summary like
+    /// the family scan in the "Delete Shared Parameters" window.
     /// </summary>
     internal sealed class LinkWorksetScan
     {
@@ -19,13 +19,13 @@ namespace VladTools.UI
             Failures = failures ?? new List<string>();
         }
 
-        /// <summary>Все имена наборов, встретившиеся хоть в одной прочитанной модели.</summary>
+        /// <summary>Every workset name found in at least one model that was read.</summary>
         public IReadOnlyList<string> Names { get; }
 
-        /// <summary>Сколько моделей удалось прочитать.</summary>
+        /// <summary>How many models were read successfully.</summary>
         public int Scanned { get; }
 
-        /// <summary>Модели, которые прочитать не удалось, с причиной.</summary>
+        /// <summary>Models that could not be read, with the reason.</summary>
         public IReadOnlyList<string> Failures { get; }
     }
 }

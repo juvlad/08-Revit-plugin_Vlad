@@ -6,27 +6,27 @@ using System.Reflection;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Токен Autodesk того пользователя, который уже вошёл в учётную запись в самом Revit.
+    /// The Autodesk token of the user who is already signed in inside Revit itself.
     ///
-    /// Зачем так. Чтобы прочитать дерево папок BIM360/ACC, нужен доступ к Autodesk Platform
-    /// Services, а он выдаётся по OAuth: обычно надстройка регистрирует своё приложение,
-    /// хранит client id/secret и гоняет пользователя через окно входа. Ничего этого не нужно:
-    /// Revit сам держит трёхногий токен вошедшего пользователя, и его отдаёт
+    /// Why this way. Reading the BIM360/ACC folder tree needs access to Autodesk Platform Services,
+    /// and that is granted over OAuth: normally an add-in registers an application of its own, keeps
+    /// a client id and secret, and walks the user through a sign-in window. None of that is needed:
+    /// Revit itself holds a three-legged token for the signed-in user, and hands it over from
     /// <c>Autodesk.Revit.AdWebServicesBase.GetInstance().GetOAuth2AccessToken()</c>
-    /// из <c>SSONET.dll</c> — библиотеки, которая лежит рядом с Revit.exe.
+    /// <c>SSONET.dll</c> — the library that sits next to Revit.exe.
     ///
-    /// **Это не документированный API.** Ни в RevitAPI.dll, ни в справке этого класса нет,
-    /// имена методов могут поменяться в любой версии Revit. Поэтому всё здесь идёт рефлексией
-    /// и любой отказ — не поломка, а <see cref="Token"/> == null: окно тогда предлагает
-    /// ввести GUID руками. Ловится <see cref="Exception"/> целиком осознанно: рефлексия по чужой
-    /// сборке бросает с десяток разных типов, и ни один из них не должен ронять кнопку.
+    /// **This is not a documented API.** The class appears neither in RevitAPI.dll nor in the help,
+    /// and the method names may change in any Revit version. So everything here goes through
+    /// reflection, and any failure is not a breakage but <see cref="Token"/> == null: the window then
+    /// offers entering the GUIDs by hand. Catching <see cref="Exception"/> wholesale is deliberate:
+    /// reflection over someone else's assembly throws a dozen different types, and none of them may bring the button down.
     /// </summary>
     internal static class AutodeskSession
     {
         private const string AssemblyName = "SSONET";
         private const string TypeName = "Autodesk.Revit.AdWebServicesBase";
 
-        /// <summary>Пользователь вошёл в Autodesk в этом сеансе Revit.</summary>
+        /// <summary>The user is signed in to Autodesk in this Revit session.</summary>
         public static bool IsLoggedIn
         {
             get
@@ -36,7 +36,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Имя вошедшего пользователя — для подписи в окне; неизвестно — пустая строка.</summary>
+        /// <summary>The name of the signed-in user, for the caption in the window; an empty string if unknown.</summary>
         public static string UserName
         {
             get
@@ -47,8 +47,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Действующий токен доступа или null, если войти не получилось.
-        /// Просроченный токен сначала пробуем обновить — Revit умеет это сам.
+        /// A valid access token, or null if signing in did not work out.
+        /// An expired token is refreshed first — Revit can do that on its own.
         /// </summary>
         public static string Token
         {
@@ -66,23 +66,23 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Почему список облачных проектов не показать. Всё в порядке — пустая строка.</summary>
+        /// <summary>Why the cloud project list cannot be shown. An empty string when all is well.</summary>
         public static string Obstacle()
         {
             if (Instance() == null)
-                return "Revit не отдал сведения о входе в Autodesk (SSONET.dll): в этой версии Revit " +
-                       "просмотр BIM360 недоступен, свяжите модели по GUID.";
+                return "Revit did not report the Autodesk sign-in state (SSONET.dll): browsing BIM360 " +
+                       "is unavailable in this Revit version, link the models by GUID instead.";
 
             if (!IsLoggedIn)
-                return "Вы не вошли в учётную запись Autodesk. Войдите в Revit (значок учётной записи " +
-                       "в правом верхнем углу) и откройте окно заново.";
+                return "You are not signed in to your Autodesk account. Sign in inside Revit (the account " +
+                       "icon in the top right corner) and open the window again.";
 
             return Token == null
-                ? "Revit не отдал токен доступа Autodesk. Попробуйте выйти и войти в учётную запись заново."
+                ? "Revit did not hand over the Autodesk access token. Try signing out and back in."
                 : string.Empty;
         }
 
-        // ───────────────────────────── рефлексия ─────────────────────────────
+        // ───────────────────────────── reflection ─────────────────────────────
 
         private static object Instance()
         {
@@ -102,9 +102,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Сборку берём из уже загруженных: внутри Revit SSONET.dll поднята с самого старта,
-        /// а грузить её заново со стороны — верный способ получить вторую копию нативных ресурсов.
-        /// Файл рядом с Revit.exe — только запасной путь.
+        /// We take the assembly from the ones already loaded: inside Revit SSONET.dll has been up since
+        /// startup, and loading it again from outside is a sure way to get a second copy of the native resources.
+        /// The file next to Revit.exe is only the fallback.
         /// </summary>
         private static Type FindType()
         {
@@ -149,7 +149,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Не обновился — дальше просто не будет токена, и окно предложит ввод по GUID.
+                // It did not refresh — there will simply be no token, and the window will offer GUID entry.
             }
         }
     }

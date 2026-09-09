@@ -4,12 +4,12 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Строка таблицы в окне «Принять изменения»: одно расхождение между проектом
-    /// и координационным файлом.
+    /// A table row in the "Accept Changes" window: one difference between the project and the
+    /// coordination file.
     ///
-    /// Кроме того, что видит пользователь, строка несёт готовую правку
-    /// (<see cref="Update"/>) — как <c>SharedParameterRow</c> несёт <c>FamilyParameter</c>.
-    /// Окно в неё не заглядывает: считает правку <c>CoordinationCatalog</c>, применяет команда.
+    /// Besides what the user sees, the row carries a ready-made edit (<see cref="Update"/>) — just as
+    /// <c>SharedParameterRow</c> carries a <c>FamilyParameter</c>. The window never looks inside it:
+    /// <c>CoordinationCatalog</c> computes the edit, the command applies it.
     /// </summary>
     internal sealed class CoordinationChangeRow : INotifyPropertyChanged
     {
@@ -33,7 +33,7 @@ namespace VladTools.UI
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        /// <summary>Галочка «принять это изменение».</summary>
+        /// <summary>The "accept this change" check box.</summary>
         public bool IsSelected
         {
             get { return _isSelected; }
@@ -49,31 +49,31 @@ namespace VladTools.UI
 
         public CoordinationChangeKind Kind { get; }
 
-        /// <summary>Кнопка умеет это применить; у остальных строк галочка недоступна.</summary>
+        /// <summary>The command can apply this; the other rows have their check box disabled.</summary>
         public bool CanApply => CoordinationChangeKinds.CanApply(Kind);
 
-        /// <summary>Уровень или ось — от этого зависит и подпись, и способ правки.</summary>
+        /// <summary>A level or a grid — both the caption and the way it is edited depend on this.</summary>
         public bool IsLevel { get; }
 
-        /// <summary>«Уровень» или «Ось».</summary>
-        public string Type => IsLevel ? "Уровень" : "Ось";
+        /// <summary>"Level" or "Grid".</summary>
+        public string Type => IsLevel ? "Level" : "Grid";
 
-        /// <summary>Имя элемента в проекте; у нового элемента связи — его имя в связи.</summary>
+        /// <summary>The element name in the project; for a new link element — its name in the link.</summary>
         public string Name { get; }
 
-        /// <summary>Что именно разошлось — подпись вида изменения.</summary>
+        /// <summary>What exactly differs — the caption of the change kind.</summary>
         public string What => CoordinationChangeKinds.Label(Kind);
 
-        /// <summary>Было и станет: «сдвиг 150 мм», «+3000 → +3150», «„1“ → „1а“».</summary>
+        /// <summary>Before and after: "shift 150 mm", "+3000 → +3150", "\"1\" → \"1a\"".</summary>
         public string Detail { get; }
 
-        /// <summary>Почему строка не применяется или на что посмотреть глазами.</summary>
+        /// <summary>Why the row is not applied, or what to check by eye.</summary>
         public string Note { get; }
 
-        /// <summary>Как называть элемент в отчёте: «Ось „1“».</summary>
-        public string Title => Type + " «" + Name + "»";
+        /// <summary>How to name the element in the report: "Grid \"1\"".</summary>
+        public string Title => Type + " \"" + Name + "\"";
 
-        /// <summary>Готовая правка; у неприменимых строк — null.</summary>
+        /// <summary>The ready-made edit; null on rows that cannot be applied.</summary>
         public DatumUpdate Update { get; }
 
         private void Raise(string property)

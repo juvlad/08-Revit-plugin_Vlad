@@ -10,22 +10,22 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Пакетно переименовывает вложенные семейства открытого семейства (и, если нужно, их типоразмеры)
-    /// по правилу «найти и заменить», как в Excel. Само открытое семейство не трогает — его имя
-    /// задаётся именем файла.
+    /// Renames the nested families of the open family (and, if asked, their types) in a batch, by a
+    /// find-and-replace rule, the way Excel does it. It does not touch the open family itself — its
+    /// name is set by the file name.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class RenameNestedFamiliesCommand : IExternalCommand
     {
-        private const string DialogTitle = "Переименовать вложенные";
+        private const string DialogTitle = "Rename Nested";
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             var uidoc = commandData?.Application?.ActiveUIDocument;
             if (uidoc == null)
             {
-                message = "Нет активного документа.";
+                message = "There is no active document.";
                 return Result.Cancelled;
             }
 
@@ -33,8 +33,8 @@ namespace VladTools.Commands
             if (!doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в редакторе семейств.\n" +
-                    "Откройте семейство (.rfa) и повторите.");
+                    "The command works only in the family editor.\n" +
+                    "Open a family (.rfa) and try again.");
                 return Result.Cancelled;
             }
 
@@ -43,7 +43,7 @@ namespace VladTools.Commands
                 var rows = Collect(doc);
                 if (rows.Count == 0)
                 {
-                    TaskDialog.Show(DialogTitle, "В этом семействе нет вложенных семейств.");
+                    TaskDialog.Show(DialogTitle, "This family contains no nested families.");
                     return Result.Cancelled;
                 }
 
@@ -56,7 +56,7 @@ namespace VladTools.Commands
                 var renamed = new List<string>();
                 var failures = new List<string>();
 
-                using (var transaction = new Transaction(doc, "Переименовать вложенные семейства"))
+                using (var transaction = new Transaction(doc, "Rename nested families"))
                 {
                     transaction.Start();
 
@@ -78,7 +78,7 @@ namespace VladTools.Commands
             }
         }
 
-        /// <summary>Вложенные семейства и их типоразмеры одним списком: сначала семейство, следом его типы.</summary>
+        /// <summary>Nested families and their types in one list: the family first, its types right after.</summary>
         private static List<NestedFamilyRow> Collect(Document doc)
         {
             var byFamily = new Dictionary<int, int>();
@@ -112,8 +112,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Считает расставленные экземпляры за один проход по документу — столбец «Экз.» в окне
-        /// подсказывает, какое вложенное семейство реально используется, а какое просто загружено.
+        /// Counts the placed instances in a single pass over the document — the "Inst." column in the
+        /// window shows which nested family is actually used and which is merely loaded.
         /// </summary>
         private static void CountInstances(Document doc, Dictionary<int, int> byFamily, Dictionary<int, int> bySymbol)
         {
@@ -147,8 +147,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Переименовывает в несколько проходов: пока имя занято соседом, которого тоже переименовывают,
-        /// Revit его не отдаёт. Повторяем, пока есть прогресс, и только потом записываем ошибки.
+        /// Renames in several passes: while a name is held by a neighbour that is being renamed too,
+        /// Revit will not release it. We repeat while there is progress, and only then record the errors.
         /// </summary>
         private static void Rename(IReadOnlyList<NestedFamilyRow> rows, List<string> renamed, List<string> failures)
         {
@@ -173,7 +173,7 @@ namespace VladTools.Commands
                     }
                 }
 
-                // Ни одного имени за проход — дальше ничего не изменится.
+                // Not a single name in a whole pass — nothing will change from here on.
                 if (stuck.Count == pending.Count)
                 {
                     failures.AddRange(stuck.Select(row => row.CurrentName + " — " + lastErrors[row]));
@@ -187,8 +187,8 @@ namespace VladTools.Commands
         private static void Report(IReadOnlyList<string> renamed, IReadOnlyList<string> failures)
         {
             var text = renamed.Count > 0
-                ? "Переименовано: " + renamed.Count + "."
-                : "Ничего не переименовано.";
+                ? "Renamed: " + renamed.Count + "."
+                : "Nothing was renamed.";
 
             if (renamed.Count > 0)
             {
@@ -196,17 +196,17 @@ namespace VladTools.Commands
                 text += "\n\n• " + string.Join("\n• ", renamed.Take(shown));
 
                 if (renamed.Count > shown)
-                    text += "\n… и ещё " + (renamed.Count - shown);
+                    text += "\n… and " + (renamed.Count - shown) + " more";
             }
 
             if (failures.Count > 0)
             {
                 const int limit = 15;
-                text += "\n\nНе удалось переименовать (" + failures.Count + "):\n• " +
+                text += "\n\nCould not be renamed (" + failures.Count + "):\n• " +
                         string.Join("\n• ", failures.Take(limit));
 
                 if (failures.Count > limit)
-                    text += "\n… и ещё " + (failures.Count - limit);
+                    text += "\n… and " + (failures.Count - limit) + " more";
             }
 
             TaskDialog.Show(DialogTitle, text);

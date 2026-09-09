@@ -6,68 +6,68 @@ using System.Text;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Настройки кнопки «Базовый файл»: что именно она делает с координационной моделью
-    /// и под каким именем сохранять площадку проекта.
+    /// The "Base File" button settings: what exactly it does with the coordination model and what name
+    /// to save the project site under.
     ///
-    /// Хранить это стоит ровно по той же причине, что и настройки «Link Manager»: имя площадки
-    /// и рабочий набор «00_Shared levels and grids» в конторе одни и те же из проекта в проект,
-    /// а вбиваются заново в каждом. Заодно запоминается и сама модель — в новом разделе того же
-    /// объекта координационный файл тот же, и выбирать его в дереве сервера второй раз незачем.
+    /// This is worth storing for exactly the same reason as the "Link Manager" settings: the site name
+    /// and the "00_Shared levels and grids" workset are the same across an office's projects, yet they
+    /// get typed in again in every one. The model itself is remembered too — in a new discipline of the
+    /// same building the coordination file is the same, and there is no point picking it out of the server tree twice.
     ///
-    /// Файл: `%AppData%\VladTools\basefile\_settings.txt`, строка вида «КЛЮЧ = значение».
+    /// File: `%AppData%\VladTools\basefile\_settings.txt`, lines of the form "KEY = value".
     /// </summary>
     internal sealed class BaseFilePreferences
     {
         private const char Separator = '=';
 
-        /// <summary>Имя набора, куда переходят перед копированием уровней и осей.</summary>
+        /// <summary>The name of the workset switched to before copying the levels and grids.</summary>
         public const string SharedLevelsWorkset = "00_Shared levels and grids";
 
         /// <summary>
-        /// Набор, в который кладут саму связь базового файла. По той же конвенции, что
-        /// «01_Link_OV» у смежников: BM — базовая модель.
+        /// The workset the base file link itself goes into. By the same convention as the consultants'
+        /// "01_Link_OV": BM stands for base model.
         /// </summary>
         public const string BaseLinkWorkset = "01_Link_BM";
 
         private static readonly string[] FileHeader =
         {
-            "# Настройки кнопки «Базовый файл» — панель «Проект».",
-            "# MODEL — координационная модель строкой того же вида, что в наборах связей:",
-            "#   FILE | путь · SERVER | RSN://… · CLOUD | регион | GUID проекта | GUID модели | имя",
-            "#   последним полем — рабочий набор проекта, в который класть саму связь",
-            "# PLACEMENT — Shared | Origin | Centered | Site (по умолчанию Origin:",
-            "#   общие координаты из базового файла ещё только предстоит получить)",
-            "# SITE — имя, которое получит площадка проекта",
-            "# LINK_WORKSET — рабочий набор проекта, в который встанет сама связь (пусто — активный)",
-            "# WORKSET — рабочий набор, в который команда переходит перед копированием уровней и осей",
-            "# ACQUIRE / RENAME / PIN / ACTIVATE / MONITOR — 1/0: делать ли соответствующий шаг",
-            "# AUTO_PICK — 1/0: подбирать ли базовый файл по имени открытой модели при открытии окна",
-            "# BASE_FOLDER — папка, в которой лежат базовые файлы всех корпусов проекта",
-            "# BASE_CODE — код базовой модели в имени файла (MK3-VSC-B01-BM)",
-            "#   какой по счёту кусок имени считать номером корпуса — links\\_settings.txt, ключ KIT_TOKEN",
-            "# Файл перезаписывается при каждом закрытии окна."
+            "# \"Base File\" button settings — the Project panel.",
+            "# MODEL — the coordination model, in the same line format as in link sets:",
+            "#   FILE | path · SERVER | RSN://… · CLOUD | region | project GUID | model GUID | name",
+            "#   the last field is the project workset to put the link itself into",
+            "# PLACEMENT — Shared | Origin | Centered | Site (Origin by default:",
+            "#   the shared coordinates are yet to be acquired from the base file)",
+            "# SITE — the name the project site will be given",
+            "# LINK_WORKSET — the project workset the link itself goes into (empty — the active one)",
+            "# WORKSET — the workset the command switches to before copying the levels and grids",
+            "# ACQUIRE / RENAME / PIN / ACTIVATE / MONITOR — 1/0: whether to perform the matching step",
+            "# AUTO_PICK — 1/0: whether to guess the base file from the open model's name when the window opens",
+            "# BASE_FOLDER — the folder holding the base files of every building in the project",
+            "# BASE_CODE — the base model code in the file name (MK3-VSC-B01-BM)",
+            "#   which piece of the name counts as the building number lives in links\\_settings.txt, key KIT_TOKEN",
+            "# The file is rewritten every time the window closes."
         };
 
-        /// <summary>Координационная модель, выбранная в прошлый раз; ни разу не выбирали — null.</summary>
+        /// <summary>The coordination model chosen last time; null if one was never chosen.</summary>
         public LinkEntry Model { get; set; }
 
         /// <summary>
-        /// Размещение связи. По умолчанию «Совмещение внутренних начал»: общие координаты
-        /// из базового файла в этот момент ещё не получены, и вставлять по ним нечего.
+        /// The link placement. "Origin to origin" by default: the shared coordinates have not yet been
+        /// acquired from the base file at this point, so there is nothing to place by.
         /// </summary>
         public LinkPlacement Placement { get; set; } = LinkPlacement.Origin;
 
-        /// <summary>Имя, которое получит площадка проекта.</summary>
+        /// <summary>The name the project site will be given.</summary>
         public string Site { get; set; } = string.Empty;
 
         /// <summary>
-        /// Рабочий набор проекта, в который встанет сама связь. Хранится отдельно от модели:
-        /// набор один и тот же во всех разделах, а базовый файл в новом объекте другой.
-        /// Пусто — активный набор, как это делает сам Revit.
+        /// The project workset the link itself goes into. Stored separately from the model: the workset
+        /// is the same across all disciplines, while the base file differs in a new building.
+        /// Empty means the active workset, as Revit itself does it.
         /// </summary>
         public string LinkWorkset { get; set; } = BaseLinkWorkset;
 
-        /// <summary>Рабочий набор, в который команда переходит перед копированием уровней и осей.</summary>
+        /// <summary>The workset the command switches to before copying the levels and grids.</summary>
         public string Workset { get; set; } = SharedLevelsWorkset;
 
         public bool Acquire { get; set; } = true;
@@ -75,20 +75,20 @@ namespace VladTools.Infrastructure
         public bool Pin { get; set; } = true;
         public bool Activate { get; set; } = true;
 
-        /// <summary>Открывать ли в конце режим «Копирование/Мониторинг».</summary>
+        /// <summary>Whether to open "Copy/Monitor" mode at the end.</summary>
         public bool Monitor { get; set; } = true;
 
         /// <summary>
-        /// Подбирать ли базовый файл по имени открытой модели при открытии окна. Галочка нужна
-        /// потому, что подбор — это чтение папок хранилища: на облаке пара запросов по сети,
-        /// и тому, кто всегда выбирает файл руками, платить за них незачем.
+        /// Whether to guess the base file from the open model's name when the window opens. The check box
+        /// exists because the guess means reading store folders: a couple of network requests in the
+        /// cloud, and someone who always picks the file by hand has no reason to pay for them.
         /// </summary>
         public bool AutoPick { get; set; } = true;
 
-        /// <summary>Папка базовых файлов — та, в которой подбор их и ищет.</summary>
+        /// <summary>The base file folder — the one the guess searches in.</summary>
         public string BaseFolder { get; set; } = BaseFileFinder.DefaultFolderName;
 
-        /// <summary>Код базовой модели в имени файла: «MK3-VSC-B01-BM» → BM.</summary>
+        /// <summary>The base model code in the file name: "MK3-VSC-B01-BM" → BM.</summary>
         public string BaseCode { get; set; } = BaseFileFinder.DefaultCode;
 
         /// <summary>%AppData%\VladTools\basefile</summary>
@@ -103,7 +103,7 @@ namespace VladTools.Infrastructure
 
         public static string FilePath => Path.Combine(FolderPath, "_settings.txt");
 
-        /// <summary>Читает настройки. Файла нет или он испорчен — значения по умолчанию.</summary>
+        /// <summary>Reads the settings. No file or a corrupt one yields the defaults.</summary>
         public static BaseFilePreferences Load()
         {
             var preferences = new BaseFilePreferences();
@@ -118,13 +118,13 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Испорченный файл настроек — не повод не открывать окно.
+                // A corrupt settings file is no reason not to open the window.
             }
 
             return preferences;
         }
 
-        /// <summary>Перезаписывает файл целиком. Отказ записи проглатывается: это настройки, не данные.</summary>
+        /// <summary>Rewrites the whole file. A write failure is swallowed: these are settings, not data.</summary>
         public void Save()
         {
             try
@@ -149,7 +149,7 @@ namespace VladTools.Infrastructure
 
                 Directory.CreateDirectory(FolderPath);
 
-                // BOM — чтобы кириллица открывалась в «Блокноте» как надо.
+                // The BOM keeps non-Latin names readable when the file is opened in Notepad.
                 File.WriteAllLines(FilePath, lines, new UTF8Encoding(true));
             }
             catch (Exception)

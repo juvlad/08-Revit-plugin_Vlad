@@ -6,15 +6,15 @@ using System.Linq;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Папка с моделями — в любом из трёх хранилищ сразу: сетевая папка, Revit Server, BIM360.
+    /// A folder of models — in any of the three stores at once: a network folder, Revit Server, BIM360.
     ///
-    /// Заведена ради «Комплекта по корпусу»: чтобы обойти папки разделов, нужно уметь сказать
-    /// «содержимое вот этой папки» и «папка уровнем выше», не разбираясь каждый раз, где именно
-    /// модели лежат. Дерево просмотра (<see cref="UI.ModelBrowserWindow"/>) держит для этого
-    /// свои контексты, но они частные и годятся только для показа: там нужна была лишь дорога вниз.
+    /// Introduced for the "Building Kit": walking the discipline folders requires being able to say
+    /// "the contents of this folder" and "the folder one level up" without working out every time where
+    /// exactly the models live. The browser tree (<see cref="UI.ModelBrowserWindow"/>) keeps contexts of
+    /// its own for that, but they are private and fit for display only: all that was needed there was the way down.
     ///
-    /// Облачная папка адресуется идентификатором Data Management (URN), а не путём: пути у неё
-    /// не существует вовсе — ровно как у самой облачной модели.
+    /// A cloud folder is addressed by a Data Management id (a URN) rather than a path: it has no path
+    /// at all — exactly like a cloud model itself.
     /// </summary>
     internal sealed class ModelFolder
     {
@@ -23,13 +23,13 @@ namespace VladTools.Infrastructure
             Origin = origin;
         }
 
-        /// <summary>Обычная папка на диске или в сети.</summary>
+        /// <summary>An ordinary folder on disk or on the network.</summary>
         public static ModelFolder ForFile(string path)
         {
             return new ModelFolder(LinkOrigin.File) { Path = path ?? string.Empty };
         }
 
-        /// <summary>Папка Revit Server: <paramref name="path"/> — в виде службы, «|VSC|3.0_AR».</summary>
+        /// <summary>A Revit Server folder: <paramref name="path"/> is in service form, "|VSC|3.0_AR".</summary>
         public static ModelFolder ForServer(string server, string path)
         {
             return new ModelFolder(LinkOrigin.Server)
@@ -39,8 +39,8 @@ namespace VladTools.Infrastructure
             };
         }
 
-        /// <param name="projectId">Идентификатор проекта Data Management («b.&lt;GUID&gt;»).</param>
-        /// <param name="display">Имя папки для показа: по URN его не восстановить.</param>
+        /// <param name="projectId">The Data Management project id ("b.&lt;GUID&gt;").</param>
+        /// <param name="display">The folder name for display: it cannot be recovered from the URN.</param>
         public static ModelFolder ForCloud(string region, string projectId, string folderId, string display)
         {
             return new ModelFolder(LinkOrigin.Cloud)
@@ -54,20 +54,20 @@ namespace VladTools.Infrastructure
 
         public LinkOrigin Origin { get; private set; }
 
-        /// <summary>Имя сервера Revit Server; у остальных пусто.</summary>
+        /// <summary>The Revit Server name; empty for the others.</summary>
         public string Server { get; private set; } = string.Empty;
 
-        /// <summary>Путь: к папке на диске либо к папке сервера в виде «|VSC|3.0_AR».</summary>
+        /// <summary>The path: to a folder on disk, or to a server folder in the "|VSC|3.0_AR" form.</summary>
         public string Path { get; private set; } = string.Empty;
 
         public string Region { get; private set; } = string.Empty;
         public string ProjectId { get; private set; } = string.Empty;
         public string FolderId { get; private set; } = string.Empty;
 
-        /// <summary>Имя облачной папки — то, что видно в дереве BIM360.</summary>
+        /// <summary>The cloud folder name — what is visible in the BIM360 tree.</summary>
         public string CloudName { get; private set; } = string.Empty;
 
-        /// <summary>Имя самой папки без пути — по нему и опознаётся раздел.</summary>
+        /// <summary>The folder's own name without the path — it is what identifies the discipline.</summary>
         public string Name
         {
             get
@@ -86,7 +86,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Как показать папку пользователю: путь целиком либо имя облачной папки.</summary>
+        /// <summary>How to show the folder to the user: the whole path, or the cloud folder name.</summary>
         public string Display
         {
             get
@@ -94,7 +94,7 @@ namespace VladTools.Infrastructure
                 switch (Origin)
                 {
                     case LinkOrigin.Cloud:
-                        return (CloudName.Length > 0 ? CloudName : "папка BIM360") + " · " + Region;
+                        return (CloudName.Length > 0 ? CloudName : "BIM360 folder") + " · " + Region;
 
                     case LinkOrigin.Server:
                         return RevitServerClient.RsnPath(Server, Path, string.Empty).TrimEnd('/');
@@ -106,9 +106,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Папка одной строкой — тем же приёмом, что <see cref="LinkSetLibrary.Format"/>:
-        /// поля через вертикальную черту. Путь Revit Server записывается в виде <c>RSN://…</c>,
-        /// а не разделителем службы, именно из-за этой черты — она в нём и есть разделитель.
+        /// A folder on a single line — by the same trick as <see cref="LinkSetLibrary.Format"/>: fields
+        /// separated by a vertical bar. A Revit Server path is written in the <c>RSN://…</c> form rather
+        /// than with the service separator precisely because of that bar — it is the separator there.
         /// </summary>
         public string Format()
         {
@@ -125,7 +125,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Разбирает строку, записанную <see cref="Format"/>; мусор — null.</summary>
+        /// <summary>Parses a line written by <see cref="Format"/>; garbage yields null.</summary>
         public static ModelFolder Parse(string line)
         {
             var parts = (line ?? string.Empty).Split('|').Select(part => part.Trim()).ToArray();
@@ -155,13 +155,13 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Ключ сравнения папок — тем же правилом, что у <see cref="LinkEntry.Key"/>.</summary>
+        /// <summary>The key folders are compared by — the same rule as <see cref="LinkEntry.Key"/>.</summary>
         public string Key => Origin == LinkOrigin.Cloud
             ? "cloud|" + ProjectId.ToLowerInvariant() + "|" + FolderId.ToLowerInvariant()
             : "path|" + Server.ToLowerInvariant() + "|" + Path.Replace('\\', '/').ToLowerInvariant();
     }
 
-    /// <summary>Строка содержимого папки: либо вложенная папка, либо модель Revit.</summary>
+    /// <summary>An entry in a folder's contents: either a nested folder or a Revit model.</summary>
     internal sealed class StoreItem
     {
         private StoreItem(string name, ModelFolder folder, LinkEntry entry)
@@ -183,25 +183,25 @@ namespace VladTools.Infrastructure
 
         public string Name { get; }
 
-        /// <summary>Заполнено у папки.</summary>
+        /// <summary>Filled in on a folder.</summary>
         public ModelFolder Folder { get; }
 
-        /// <summary>Заполнено у модели — это и есть то, что уйдёт в таблицу связей.</summary>
+        /// <summary>Filled in on a model — this is exactly what will go into the link table.</summary>
         public LinkEntry Entry { get; }
 
         public bool IsFolder => Folder != null;
     }
 
     /// <summary>
-    /// Обход папок с моделями поверх трёх хранилищ. Здесь только «что внутри» и «что снаружи»:
-    /// ни отбора, ни разбора имён — этим занимается <see cref="ModelKit"/>.
+    /// Walking model folders across the three stores. Only "what is inside" and "what is outside" live
+    /// here: no filtering and no name parsing — <see cref="ModelKit"/> does that.
     ///
-    /// Отказ хранилища наружу выпускается исключением с готовым к показу текстом: тот, кто
-    /// обходит дерево, решает сам, прервать работу или записать папку в непрочитанные.
+    /// A store failure is let out as an exception with ready-to-show text: whoever walks the tree
+    /// decides for themselves whether to stop or to record the folder as unread.
     /// </summary>
     internal static class ModelStore
     {
-        /// <summary>Содержимое папки: сначала вложенные папки, потом модели.</summary>
+        /// <summary>A folder's contents: nested folders first, then models.</summary>
         public static IReadOnlyList<StoreItem> Children(ModelFolder folder)
         {
             if (folder == null)
@@ -220,7 +220,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Папка уровнем выше; выше корня хранилища — null.</summary>
+        /// <summary>The folder one level up; null above the store root.</summary>
         public static ModelFolder Parent(ModelFolder folder)
         {
             if (folder == null)
@@ -245,8 +245,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Имя облачной папки: у неё есть только URN, а показать нужно что-то человеческое.
-        /// Отдельным запросом, поэтому зовётся один раз — на корень поиска.
+        /// The name of a cloud folder: all it has is a URN, and something human has to be shown.
+        /// It costs a separate request, so it is called once — on the search root.
         /// </summary>
         public static ModelFolder WithCloudName(ModelFolder folder)
         {
@@ -260,12 +260,12 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Имя — украшение; без него папка всё равно читается.
+                // The name is decoration; the folder reads fine without it.
                 return folder;
             }
         }
 
-        // ───────────────────────────── хранилища ─────────────────────────────
+        // ───────────────────────────── the stores ─────────────────────────────
 
         private static IReadOnlyList<StoreItem> FileChildren(ModelFolder folder)
         {
@@ -314,7 +314,7 @@ namespace VladTools.Infrastructure
         {
             var token = AutodeskSession.Token;
             if (token == null)
-                throw new InvalidOperationException("Сеанс Autodesk истёк. Войдите в учётную запись в Revit заново.");
+                throw new InvalidOperationException("The Autodesk session has expired. Sign in to your account in Revit again.");
 
             return token;
         }

@@ -5,49 +5,49 @@ using Autodesk.Revit.DB;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Разводит подписи готовой нитки: значение, которому не хватает места между засечками,
-    /// сдвигается с линии в сторону от стены — Revit сам дорисовывает к нему выноску.
+    /// Spreads out the labels of a finished chain: a value that does not fit between its ticks is
+    /// moved off the line away from the wall — Revit draws the leader to it by itself.
     ///
-    /// Зачем: на кладочном плане простенок в 120 мм — обычное дело, а подпись «120» при
-    /// масштабе 1:50 занимает на модели около 250 мм. Оставленные на месте, такие подписи
-    /// налезают друг на друга и на соседние значения, и нитка становится нечитаемой (это и
-    /// было вторым замечанием проектировщика). В образцовом кладочном плане ровно эти мелкие
-    /// значения вынесены на выноски, крупные стоят на линии.
+    /// Why: a 120 mm pier is an everyday thing on a masonry plan, while the "120" label at 1:50 takes
+    /// about 250 mm in model space. Left where they are, such labels overlap each other and the
+    /// neighbouring values, and the chain becomes unreadable (that was the designer's second
+    /// complaint). On the reference masonry plan it is exactly these small values that are pulled out
+    /// onto leaders, while the large ones stay on the line.
     ///
-    /// **Это эвристика, а не расчёт** — того же статуса, что <see cref="FormulaParser"/> и
-    /// разбор образца: ширину отрисованного текста Revit API не отдаёт, её приходится оценивать
-    /// по высоте шрифта из типа размера, коэффициенту ширины и числу знаков. Оценка намеренно
-    /// с запасом: лишний раз вынести подпись не страшно, оставить наложение — страшно.
+    /// **This is a heuristic, not a calculation** — the same status as <see cref="FormulaParser"/> and
+    /// sample parsing: the Revit API does not report the rendered text width, so it has to be
+    /// estimated from the font height of the dimension type, the width factor and the character count.
+    /// The estimate deliberately errs high: pulling a label out needlessly is harmless, leaving an overlap is not.
     ///
-    /// Работает **после** создания всех размеров и одного <c>Document.Regenerate()</c>: до
-    /// регенерации у только что созданного размера ещё не заполнены сегменты, и разводить
-    /// нечего (см. CLAUDE.md, две фазы расстановки).
+    /// It runs **after** every dimension is created and after a single <c>Document.Regenerate()</c>:
+    /// before the regeneration a freshly created dimension has no segments filled in yet, and there is
+    /// nothing to spread out (see CLAUDE.md, the two placement phases).
     /// </summary>
     internal static class DimensionTextLayout
     {
         /// <summary>
-        /// Средняя ширина знака в долях высоты шрифта. Точного числа не существует — оно зависит
-        /// от гарнитуры; 0.62 взято с запасом относительно типичных для чертежей узких шрифтов,
-        /// чтобы оценка ошибалась в сторону «вынести», а не «оставить наложение».
+        /// The average character width as a fraction of the font height. No exact number exists — it
+        /// depends on the typeface; 0.62 is taken generously relative to the narrow fonts typical of
+        /// drawings, so that the estimate errs towards "pull it out" rather than "leave an overlap".
         /// </summary>
         private const double GlyphWidthPerHeight = 0.62;
 
-        /// <summary>Запас по краям подписи, в знаках: между двумя значениями должен остаться просвет.</summary>
+        /// <summary>The margin at the edges of a label, in characters: two values must keep a gap between them.</summary>
         private const double PaddingInGlyphs = 0.8;
 
-        /// <summary>Первая полка — на такой высоте (в высотах шрифта) над линией размера.</summary>
+        /// <summary>The first tier sits this high (in font heights) above the dimension line.</summary>
         private const double FirstLevelInHeights = 1.2;
 
-        /// <summary>Шаг между полками, если подписи не разошлись и на первой.</summary>
+        /// <summary>The step between tiers if the labels still clash on the first one.</summary>
         private const double LevelStepInHeights = 1.0;
 
-        /// <summary>Больше трёх полок не бывает: дальше подпись улетает от своей засечки и путается с соседней ниткой.</summary>
+        /// <summary>Never more than three tiers: beyond that a label flies away from its own tick and gets confused with the neighbouring chain.</summary>
         private const int MaxLevels = 3;
 
         /// <summary>
-        /// Разводит подписи одной нитки. <paramref name="awayNormal"/> — куда сдвигать (единичный
-        /// вектор от стены, тот же, которым нитка отодвинута от стороны). Возвращает, сколько
-        /// подписей вынесено; ноль — всем хватило места, и это нормальный исход.
+        /// Spreads out the labels of one chain. <paramref name="awayNormal"/> is where to move them (the
+        /// unit vector away from the wall, the same one the chain was offset from the side by). Returns
+        /// how many labels were pulled out; zero means everything fitted, and that is a normal outcome.
         /// </summary>
         public static int Arrange(Dimension dimension, XYZ awayNormal, int viewScale)
         {
@@ -78,7 +78,7 @@ namespace VladTools.Infrastructure
                 var halfWidth = (text.Length + PaddingInGlyphs) * textHeight * GlyphWidthPerHeight * 0.5;
                 if (item.Length.Value >= halfWidth * 2.0)
                 {
-                    // Место есть — подпись остаётся на линии, и следующая вынесенная считает себя первой.
+                    // There is room — the label stays on the line, and the next pulled-out one counts itself as the first.
                     lastLevel = 0;
                     continue;
                 }
@@ -89,8 +89,8 @@ namespace VladTools.Infrastructure
 
                 var t = origin.DotProduct(direction);
 
-                // Полка та же, что у предыдущей вынесенной подписи, только если они не налезут
-                // друг на друга уже на ней; иначе — следующая, по кругу.
+                // The tier is the same as the previous pulled-out label's only if the two will not
+                // overlap on it; otherwise the next one, cycling round.
                 var level = lastLevel == 0 || Math.Abs(t - lastT) >= halfWidth + lastHalfWidth
                     ? 1
                     : lastLevel % MaxLevels + 1;
@@ -113,8 +113,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Высота подписи в единицах модели: размер шрифта хранится в бумажных единицах,
-        /// на плане он растянут масштабом вида — 2.5 мм на бумаге при 1:50 это 125 мм в модели.
+        /// The label height in model units: the font size is stored in paper units, and on the plan it
+        /// is stretched by the view scale — 2.5 mm on paper at 1:50 is 125 mm in the model.
         /// </summary>
         private static double ModelTextHeight(Dimension dimension, int viewScale)
         {
@@ -172,8 +172,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Подписи размера единым списком: у нитки из трёх и более засечек это сегменты,
-        /// у размера всего с двумя — сам размер (сегментов у него нет вовсе).
+        /// The labels of a dimension as one list: on a chain of three or more ticks these are the
+        /// segments; on a dimension with only two it is the dimension itself (it has no segments at all).
         /// </summary>
         private static IEnumerable<TextItem> Items(Dimension dimension)
         {
@@ -200,7 +200,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Одна подпись — сегмент нитки или размер целиком; сводит их к общему виду.</summary>
+        /// <summary>One label — a chain segment or a whole dimension; this brings them to a common shape.</summary>
         private sealed class TextItem
         {
             private Dimension _dimension;
@@ -233,8 +233,8 @@ namespace VladTools.Infrastructure
             }
 
             /// <summary>
-            /// Сдвигает подпись. Отказ Revit (размер под шаблоном вида, заблокированный размер)
-            /// не должен ронять расстановку: нитка уже стоит, просто подпись осталась на месте.
+            /// Moves the label. A refusal from Revit (a dimension under a view template, a locked
+            /// dimension) must not bring the placement down: the chain is already there, the label just stayed put.
             /// </summary>
             public bool TryMove(XYZ position)
             {
@@ -279,9 +279,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Просит Revit показать выноску к сдвинутой подписи. У большинства типов размеров это
-        /// и так настроено («выноска при отводе текста»), поэтому отказ здесь не ошибка — просто
-        /// подпись останется без полки.
+        /// Asks Revit to show a leader to the moved label. Most dimension types already have that set
+        /// up ("leader when text is moved"), so a refusal here is not an error — the label will simply
+        /// be left without a leader.
         /// </summary>
         private static void TryShowLeader(Dimension dimension)
         {
@@ -291,7 +291,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Тип размера выносок не поддерживает — подпись всё равно сдвинута, этого достаточно.
+                // The dimension type does not support leaders — the label is moved anyway, and that is enough.
             }
         }
     }

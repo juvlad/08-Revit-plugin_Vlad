@@ -5,13 +5,13 @@ using Autodesk.Revit.DB;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Итог сравнения проекта с одной связью: за ней следят такие-то оси и уровни,
-    /// разошлось вот это.
+    /// The result of comparing the project against a single link: these grids and levels monitor it,
+    /// and this is what differs.
     ///
-    /// Связей, за которыми что-то следит, в проекте может оказаться несколько (базовый файл
-    /// корпуса и общая посадка), поэтому окно перебирает их списком, а команда считает все
-    /// сразу: чтение осей и уровней связи стоит недорого, а переключение между связями
-    /// должно быть мгновенным.
+    /// A project may contain several links that something monitors (the building base file and the
+    /// overall site placement), so the window lists them in a drop-down and the command computes all
+    /// of them at once: reading the grids and levels of a link is cheap, and switching between links
+    /// must be instant.
     /// </summary>
     internal sealed class CoordinationScan
     {
@@ -23,34 +23,34 @@ namespace VladTools.UI
             Rows = new List<CoordinationChangeRow>();
         }
 
-        /// <summary>Экземпляр связи в проекте.</summary>
+        /// <summary>The link instance in the project.</summary>
         public ElementId LinkId { get; }
 
         public string LinkName { get; }
 
-        /// <summary>Сколько осей и уровней проекта следят за этой связью.</summary>
+        /// <summary>How many project grids and levels monitor this link.</summary>
         public int MonitoredCount { get; }
 
-        /// <summary>Связь загружена и её содержимое удалось прочитать.</summary>
+        /// <summary>The link is loaded and its contents could be read.</summary>
         public bool IsLoaded { get; set; }
 
         public IReadOnlyList<CoordinationChangeRow> Rows { get; set; }
 
-        /// <summary>Сколько изменений кнопка умеет применить.</summary>
+        /// <summary>How many changes the command is able to apply.</summary>
         public int ApplicableCount => Rows.Count(row => row.CanApply);
 
-        /// <summary>Подпись связи в выпадающем списке окна.</summary>
+        /// <summary>The caption of the link in the window drop-down.</summary>
         public string Caption
         {
             get
             {
                 if (!IsLoaded)
-                    return LinkName + " — связь не загружена";
+                    return LinkName + " — link is not loaded";
 
                 if (Rows.Count == 0)
-                    return LinkName + " — расхождений нет (следят: " + MonitoredCount + ")";
+                    return LinkName + " — no differences (monitoring: " + MonitoredCount + ")";
 
-                return LinkName + " — расхождений: " + Rows.Count + " (следят: " + MonitoredCount + ")";
+                return LinkName + " — differences: " + Rows.Count + " (monitoring: " + MonitoredCount + ")";
             }
         }
     }

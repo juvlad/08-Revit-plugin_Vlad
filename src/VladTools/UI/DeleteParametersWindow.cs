@@ -12,7 +12,7 @@ using System.Windows.Media;
 
 namespace VladTools.UI
 {
-    /// <summary>Правило отбора параметров по имени.</summary>
+    /// <summary>The name-matching rule for filtering parameters.</summary>
     internal enum NameRule
     {
         StartsWith,
@@ -20,23 +20,22 @@ namespace VladTools.UI
     }
 
     /// <summary>
-    /// Окно «Удалить параметры»: таблица всех общих параметров семейства с галочкой слева
-    /// у каждой строки. Удаляются отмеченные параметры.
+    /// The "Delete Parameters" window: a table of every shared parameter in the family, with a
+    /// check box on the left of each row. The checked parameters are deleted.
     ///
-    /// Галочки ставятся двумя способами: вручную (щелчок по галочке, галочка в шапке — все сразу)
-    /// и правилом «начинаются с» / «содержат». Правило работает как поиск: подходящие имена
-    /// остаются в таблице и отмечаются, остальные из неё уходят; «Инвертировать поиск»
-    /// меняет стороны местами.
+    /// Check boxes are set two ways: by hand (clicking a box, or the one in the header — all at
+    /// once) and by a "starts with" / "contains" rule. The rule works like a search: names that
+    /// match stay in the table and get checked, the rest leave it; "Invert the search" swaps the sides.
     ///
-    /// Параметры, стоящие метками на размерах, по умолчанию из списка убраны: удалить такой —
-    /// значит снять метку и сломать параметрику семейства. Удаляется только то, что показано
-    /// в таблице, поэтому скрытая строка теряет галочку.
+    /// Parameters that label dimensions are left out of the list by default: deleting one means
+    /// dropping the label and breaking the family parametrics. Only what is shown in the table
+    /// gets deleted, so a row that is hidden loses its check mark.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class DeleteParametersWindow : Window
     {
-        private const string WindowTitle = "Удалить параметры";
+        private const string WindowTitle = "Delete Parameters";
 
         private readonly IReadOnlyList<SharedParameterRow> _all;
         private readonly ObservableCollection<SharedParameterRow> _visible = new ObservableCollection<SharedParameterRow>();
@@ -54,7 +53,7 @@ namespace VladTools.UI
         private bool _syncingSelectAll;
         private bool _settingMany;
 
-        /// <summary>Параметры, которые пользователь подтвердил к удалению.</summary>
+        /// <summary>The parameters the user confirmed for deletion.</summary>
         public IReadOnlyList<SharedParameterRow> Selected { get; private set; } = new List<SharedParameterRow>();
 
         public DeleteParametersWindow(IReadOnlyList<SharedParameterRow> parameters)
@@ -71,21 +70,21 @@ namespace VladTools.UI
 
             _skipDimensionsBox = new CheckBox
             {
-                Content = "Не показывать параметры, используемые в размерах",
+                Content = "Hide parameters used on dimensions",
                 IsChecked = true,
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip =
-                    "Параметр, которым помечен размер, держит геометрию семейства.\n" +
-                    "Удалить его — значит снять метку с размера и сломать параметрику,\n" +
-                    "поэтому такие параметры по умолчанию в списке не показываются.\n" +
-                    "Снимите галочку, чтобы увидеть их (в столбце «Размеры» — пометка)."
+                    "A parameter that labels a dimension holds the family geometry together.\n" +
+                    "Deleting it drops the label from the dimension and breaks the parametrics,\n" +
+                    "so such parameters are hidden from the list by default.\n" +
+                    "Clear the box to see them (marked in the \"Dimensions\" column)."
             };
             _skipDimensionsBox.Checked += (s, e) => RebuildVisible();
             _skipDimensionsBox.Unchecked += (s, e) => RebuildVisible();
 
             _ruleBox = new ComboBox { Width = 250, VerticalAlignment = VerticalAlignment.Center };
-            _ruleBox.Items.Add("Отобрать параметры, начинающиеся с");
-            _ruleBox.Items.Add("Отобрать параметры, содержащие");
+            _ruleBox.Items.Add("Match parameters starting with");
+            _ruleBox.Items.Add("Match parameters containing");
             _ruleBox.SelectedIndex = 0;
             _ruleBox.SelectionChanged += (s, e) => RebuildVisible();
 
@@ -101,7 +100,7 @@ namespace VladTools.UI
 
             _caseBox = new CheckBox
             {
-                Content = "Учитывать регистр",
+                Content = "Match case",
                 VerticalAlignment = VerticalAlignment.Center
             };
             _caseBox.Checked += (s, e) => RebuildVisible();
@@ -109,13 +108,13 @@ namespace VladTools.UI
 
             _invertBox = new CheckBox
             {
-                Content = "Инвертировать поиск",
+                Content = "Invert the search",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 0, 0),
                 ToolTip =
-                    "Правило работает наоборот: в таблице остаются параметры, которые ему НЕ подходят.\n" +
-                    "Например «содержащие» + «ADSK» + инверсия — все параметры, кроме ADSK-овских.\n" +
-                    "Пустая строка правила по-прежнему показывает весь список и не отмечает ничего."
+                    "The rule works in reverse: the table keeps the parameters that do NOT match it.\n" +
+                    "For example, \"containing\" + \"ADSK\" + invert leaves every parameter except the ADSK ones.\n" +
+                    "An empty rule still shows the whole list and checks nothing."
             };
             _invertBox.Checked += (s, e) => RebuildVisible();
             _invertBox.Unchecked += (s, e) => RebuildVisible();
@@ -125,7 +124,7 @@ namespace VladTools.UI
                 IsChecked = false,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Отметить или снять все параметры"
+                ToolTip = "Check or clear every parameter"
             };
             _selectAll.Checked += (s, e) => SetAllSelected(true);
             _selectAll.Unchecked += (s, e) => SetAllSelected(false);
@@ -135,7 +134,7 @@ namespace VladTools.UI
 
             _deleteButton = new Button
             {
-                Content = "Удалить",
+                Content = "Delete",
                 MinWidth = 130,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -145,7 +144,7 @@ namespace VladTools.UI
 
             var cancelButton = new Button
             {
-                Content = "Отмена",
+                Content = "Cancel",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -162,21 +161,21 @@ namespace VladTools.UI
             RebuildVisible();
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button cancelButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // отбор
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // правило
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // filter
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // rule
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Удаляются отмеченные параметры. Правило ниже оставляет в таблице только " +
-                       "подходящие по имени и сразу их отмечает; дальше галочки правятся вручную.",
+                Text = "The checked parameters are deleted. The rule below leaves only the names that " +
+                       "match in the table and checks them right away; the check marks can then be edited by hand.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -238,7 +237,8 @@ namespace VladTools.UI
                 Margin = new Thickness(0, 10, 0, 8)
             };
 
-            // Галочка стоит слева от параметра — первым столбцом, с галочкой «все» в шапке.
+            // The check box sits to the left of the parameter — the first column, with an
+            // "all" check box in the header.
             grid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = _selectAll,
@@ -248,14 +248,14 @@ namespace VladTools.UI
                 CellTemplate = BuildCheckBoxTemplate()
             });
 
-            grid.Columns.Add(TextColumn("Имя", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(TextColumn("Экземпляр/Тип", "Binding", new DataGridLength(105)));
-            grid.Columns.Add(TextColumn("Размеры", "DimensionUse", new DataGridLength(110)));
-            grid.Columns.Add(TextColumn("Группа", "Group", new DataGridLength(150)));
+            grid.Columns.Add(TextColumn("Name", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(TextColumn("Instance/Type", "Binding", new DataGridLength(105)));
+            grid.Columns.Add(TextColumn("Dimensions", "DimensionUse", new DataGridLength(110)));
+            grid.Columns.Add(TextColumn("Group", "Group", new DataGridLength(150)));
             grid.Columns.Add(TextColumn("GUID", "Guid", new DataGridLength(240)));
 
-            // Двойной щелчок по строке и пробел тоже переключают галочку —
-            // попадать в маленький квадрат необязательно.
+            // A double click on a row and the space bar also toggle the check box —
+            // hitting the small square is not the only way.
             grid.MouseDoubleClick += (s, e) => ToggleSelectedRows();
             grid.PreviewKeyDown += OnGridKeyDown;
 
@@ -279,7 +279,7 @@ namespace VladTools.UI
             };
         }
 
-        /// <summary>Галочка в ячейке: со своим шаблоном она срабатывает с первого щелчка.</summary>
+        /// <summary>A check box in a cell: with its own template it reacts to the first click.</summary>
         private static DataTemplate BuildCheckBoxTemplate()
         {
             var checkBox = new FrameworkElementFactory(typeof(CheckBox));
@@ -291,7 +291,7 @@ namespace VladTools.UI
             return new DataTemplate { VisualTree = checkBox };
         }
 
-        // ───────────────────────────── отбор ─────────────────────────────
+        // ───────────────────────────── filtering ─────────────────────────────
 
         private NameRule Rule => _ruleBox.SelectedIndex == 1 ? NameRule.Contains : NameRule.StartsWith;
 
@@ -301,23 +301,23 @@ namespace VladTools.UI
             _caseBox.IsChecked == true ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
         /// <summary>
-        /// Строка попадает в таблицу. Скрытая строка — не просто невидимая: удалить её нельзя,
-        /// поэтому она теряет галочку.
+        /// Whether a row belongs in the table. A hidden row is not merely invisible: it cannot be
+        /// deleted, so it loses its check mark.
         /// </summary>
         private bool InScope(SharedParameterRow row)
         {
             return !HiddenByDimensions(row) && MatchesPattern(row);
         }
 
-        /// <summary>Параметр держит размер, и пользователь просил такие не показывать.</summary>
+        /// <summary>The parameter labels a dimension, and the user asked not to show such ones.</summary>
         private bool HiddenByDimensions(SharedParameterRow row)
         {
             return _skipDimensionsBox.IsChecked == true && row.UsedInDimensions;
         }
 
         /// <summary>
-        /// Пустое правило не прячет ничего: пустой строке подходит любое имя — в том числе
-        /// при инверсии, иначе одна галочка убирала бы из таблицы всё разом.
+        /// An empty rule hides nothing: an empty string matches any name — including under
+        /// inversion, otherwise one check box would clear the whole table at once.
         /// </summary>
         private bool MatchesPattern(SharedParameterRow row)
         {
@@ -333,10 +333,10 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Пересобирает таблицу. Правило работает как поиск: оставляет в списке только подходящие
-        /// имена и сразу их отмечает, остальные строки уходят из таблицы и теряют галочку —
-        /// удаляется только то, что видно. Пустое правило показывает всё и не отмечает ничего,
-        /// чтобы «ничего не вписал» не означало «удалить всё».
+        /// Rebuilds the table. The rule works like a search: it leaves only the matching names in
+        /// the list and checks them right away, the rest leave the table and lose their check mark —
+        /// only what is visible gets deleted. An empty rule shows everything and checks nothing, so
+        /// that "typed nothing in" never means "delete everything".
         /// </summary>
         private void RebuildVisible()
         {
@@ -361,14 +361,14 @@ namespace VladTools.UI
             SetMany(row => value && InScope(row));
         }
 
-        /// <summary>Переключает галочки у выделенных в таблице строк — двойным щелчком или пробелом.</summary>
+        /// <summary>Toggles the check marks of the rows selected in the table — by double click or the space bar.</summary>
         private void ToggleSelectedRows()
         {
             var rows = _grid.SelectedItems.OfType<SharedParameterRow>().ToList();
             if (rows.Count == 0)
                 return;
 
-            // Разнобой приводим к одному состоянию: если отмечены не все — отмечаем все.
+            // A mix is brought to one state: if not all are checked, we check all of them.
             var value = !rows.All(row => row.IsSelected);
             var affected = new HashSet<SharedParameterRow>(rows);
 
@@ -376,8 +376,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Пакетная простановка галочек: итог пересчитываем один раз в конце,
-        /// а не на каждую строку.
+        /// Setting check marks in bulk: the totals are recomputed once, at the end,
+        /// rather than for every row.
         /// </summary>
         private void SetMany(Func<SharedParameterRow, bool> value)
         {
@@ -417,22 +417,22 @@ namespace VladTools.UI
         {
             var marked = Marked().Count;
             var hidden = _all.Count(HiddenByDimensions);
-            var hiddenText = hidden > 0 ? " Скрыто как метки размеров: " + hidden + "." : string.Empty;
+            var hiddenText = hidden > 0 ? " Hidden as dimension labels: " + hidden + "." : string.Empty;
 
             if (marked == 0)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Показано: " + _visible.Count + " из " + _all.Count +
-                               " общих параметров семейства." + hiddenText + " Не отмечено ни одного.";
+                _status.Text = "Shown: " + _visible.Count + " of " + _all.Count +
+                               " shared parameters in the family." + hiddenText + " Nothing is checked.";
             }
             else
             {
                 _status.Foreground = Brushes.Firebrick;
-                _status.Text = "Будет удалено: " + marked + " из " + _visible.Count + " показанных." + hiddenText;
+                _status.Text = "Will be deleted: " + marked + " of " + _visible.Count + " shown." + hiddenText;
             }
 
             _deleteButton.IsEnabled = marked > 0;
-            _deleteButton.Content = marked > 0 ? "Удалить (" + marked + ")" : "Удалить";
+            _deleteButton.Content = marked > 0 ? "Delete (" + marked + ")" : "Delete";
 
             _syncingSelectAll = true;
             _selectAll.IsChecked = _visible.Count == 0 || marked == 0
@@ -441,22 +441,22 @@ namespace VladTools.UI
             _syncingSelectAll = false;
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnDelete(object sender, RoutedEventArgs e)
         {
             var marked = Marked();
             if (marked.Count == 0)
             {
-                MessageBox.Show(this, "Не отмечено ни одного параметра.", WindowTitle,
+                MessageBox.Show(this, "No parameter is checked.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             var answer = MessageBox.Show(
                 this,
-                "Удалить из семейства " + marked.Count + " общих параметров?\n\n" +
-                Preview(marked) + "\n\nДействие отменяется только через «Отменить» (Ctrl+Z) в Revit.",
+                "Delete " + marked.Count + " shared parameters from the family?\n\n" +
+                Preview(marked) + "\n\nThis can only be undone through \"Undo\" (Ctrl+Z) in Revit.",
                 WindowTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -475,7 +475,7 @@ namespace VladTools.UI
             var shown = string.Join("\n", rows.Take(limit).Select(row => "• " + row.Name));
 
             return rows.Count > limit
-                ? shown + "\n… и ещё " + (rows.Count - limit)
+                ? shown + "\n… and " + (rows.Count - limit) + " more"
                 : shown;
         }
     }

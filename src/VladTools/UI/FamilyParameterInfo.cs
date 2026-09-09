@@ -1,8 +1,8 @@
 namespace VladTools.UI
 {
     /// <summary>
-    /// Снимок параметра семейства для окна формул. Окно работает без документа Revit,
-    /// ему нужно только имя и то, можно ли этому параметру задать формулу.
+    /// A snapshot of a family parameter for the formulas window. The window works without a Revit
+    /// document; all it needs is the name and whether a formula can be assigned to that parameter.
     /// </summary>
     internal sealed class FamilyParameterInfo
     {
@@ -15,10 +15,10 @@ namespace VladTools.UI
 
         public string Name { get; }
 
-        /// <summary>Revit запрещает формулу, например, у параметров-«отчётов» и у части встроенных.</summary>
+        /// <summary>Revit forbids formulas on reporting parameters and on some built-in ones.</summary>
         public bool CanAssignFormula { get; }
 
-        /// <summary>У параметра уже есть формула — новая её заменит.</summary>
+        /// <summary>The parameter already has a formula — a new one will replace it.</summary>
         public bool HasFormula { get; }
     }
 }

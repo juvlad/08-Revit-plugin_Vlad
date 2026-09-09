@@ -13,27 +13,28 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Расставляет по сторонам выбранных помещений нитки размеров — аналог того, что в
-    /// демонстрациях сторонних плагинов называется «Auto Dim Lines»: пользователь один раз
-    /// вручную ставит несколько ниток вдоль одной стены, дальше кнопка повторяет тот же набор
-    /// по всем сторонам всех выбранных помещений.
+    /// Places dimension chains along the sides of the selected rooms — the counterpart of what
+    /// third-party plugin demos call "Auto Dim Lines": the user places a few chains along one wall
+    /// by hand once, and from then on the button repeats the same set along every side of every
+    /// selected room.
     ///
-    /// Образец не копируется по ссылкам — ссылки образца принадлежат конкретным стенам и
-    /// в другом помещении бессмысленны. Вместо этого заводится каталог видов ниток
-    /// (<see cref="DimensionChainKind"/>), а образец лишь подсказывает, какие виды и с каким
-    /// смещением взять — это подбор (эвристика), и результат всегда можно поправить в окне.
+    /// A sample is not copied by its references — a sample's references belong to specific walls
+    /// and are meaningless in another room. Instead there is a fixed catalogue of chain kinds
+    /// (<see cref="DimensionChainKind"/>), and a sample only suggests which kinds and which offset
+    /// to use — this is a best guess (a heuristic), and the result can always be fixed in the window.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class AutoDimensionCommand : IExternalCommand
     {
-        private const string DialogTitle = "Авторазмеры";
+        private const string DialogTitle = "Auto Dimensions";
 
         /// <summary>
-        /// Насколько линия размера длиннее самой стороны с каждого конца. Не косметика: крайние
-        /// засечки нитки лежат теперь не на конце стороны, а на дальней грани примыкающей стены
-        /// (см. «захватывать толщину примыкающих стен») — то есть за пределами пролёта. Запас
-        /// должен перекрывать любую разумную толщину стены, иначе ссылка окажется вне линии.
+        /// How much longer the dimension line runs past the side itself, at each end. Not
+        /// cosmetic: the end ticks of a chain now sit not at the end of the side but on the far
+        /// face of the adjoining wall (see "capture the thickness of adjoining walls") — that is,
+        /// outside the span. The margin has to clear any reasonable wall thickness, or the
+        /// reference will fall outside the line.
         /// </summary>
         private const double LineMarginMm = 1000;
 
@@ -42,7 +43,7 @@ namespace VladTools.Commands
             var uidoc = commandData?.Application?.ActiveUIDocument;
             if (uidoc == null)
             {
-                message = "Нет активного документа.";
+                message = "There is no active document.";
                 return Result.Cancelled;
             }
 
@@ -50,8 +51,8 @@ namespace VladTools.Commands
             if (doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в проекте — расставляет размеры по помещениям.\n" +
-                    "В редакторе семейств помещений нет.");
+                    "The command works only in a project — it places dimensions along rooms.\n" +
+                    "The family editor has no rooms.");
                 return Result.Cancelled;
             }
 
@@ -59,7 +60,7 @@ namespace VladTools.Commands
             if (view == null || view.ViewType != ViewType.FloorPlan)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает на планах этажей. Перейдите на план этажа и повторите.");
+                    "The command works on floor plans. Switch to a floor plan and try again.");
                 return Result.Cancelled;
             }
 
@@ -71,7 +72,7 @@ namespace VladTools.Commands
 
                 if (rooms.Count == 0)
                 {
-                    TaskDialog.Show(DialogTitle, "На этом виде нет ни одного размещённого помещения.");
+                    TaskDialog.Show(DialogTitle, "This view has no placed room at all.");
                     return Result.Cancelled;
                 }
 
@@ -84,9 +85,9 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── выбор помещений ─────────────────────────────
+        // ───────────────────────────── picking the rooms ─────────────────────────────
 
-        /// <summary>Помещения из текущего выделения; пусто — предлагает взять все помещения активного вида.</summary>
+        /// <summary>Rooms from the current selection; empty — offers to take every room on the active view.</summary>
         private static List<Room> SelectedRooms(UIDocument uidoc, Document doc, ViewPlan view)
         {
             var picked = uidoc.Selection.GetElementIds()
@@ -100,8 +101,8 @@ namespace VladTools.Commands
 
             var dialog = new TaskDialog(DialogTitle)
             {
-                MainInstruction = "Помещения не выбраны.",
-                MainContent = "Взять все размещённые помещения активного плана этажа?",
+                MainInstruction = "No room is selected.",
+                MainContent = "Take every placed room on the active floor plan?",
                 CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.Cancel,
                 DefaultButton = TaskDialogResult.Yes
             };
@@ -117,7 +118,7 @@ namespace VladTools.Commands
                 .ToList();
         }
 
-        // ───────────────────────────── окно и цикл «взять образец» ─────────────────────────────
+        // ───────────────────────────── the window and the "take sample" loop ─────────────────────────────
 
         private static Result RunWindow(ExternalCommandData commandData, UIDocument uidoc, Document doc, ViewPlan view, List<Room> rooms)
         {
@@ -189,7 +190,7 @@ namespace VladTools.Commands
             }
         }
 
-        /// <summary>Настройки окна, общие для всех ниток, — чтобы не таскать полдюжины отдельных параметров.</summary>
+        /// <summary>The window settings shared by every chain — so as not to carry half a dozen loose parameters.</summary>
         private sealed class AutoDimensionSettings
         {
             public SpatialElementBoundaryLocation Boundary;
@@ -222,9 +223,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Выбор образцовых размеров вне модального окна (Revit не даёт вызвать PickObject, пока
-        /// оно открыто) и их разбор в шаблон. Отмена выбора — не ошибка, просто открываем окно
-        /// заново с тем, что в нём уже было.
+        /// Picking sample dimensions outside the modal window (Revit will not let PickObject run
+        /// while it is open) and parsing them into a template. Cancelling the pick is not an
+        /// error, we simply reopen the window with what was already in it.
         /// </summary>
         private static IReadOnlyList<DimensionChainRow> TakeSample(
             UIDocument uidoc,
@@ -238,7 +239,7 @@ namespace VladTools.Commands
                 picked = uidoc.Selection.PickObjects(
                     ObjectType.Element,
                     new DimensionOnlyFilter(),
-                    "Выделите образцовые размеры вдоль одной стены и нажмите «Готово»");
+                    "Select the sample dimensions along one wall and press \"Finish\"");
             }
             catch (Autodesk.Revit.Exceptions.OperationCanceledException)
             {
@@ -259,11 +260,11 @@ namespace VladTools.Commands
             if (result.Messages.Count > 0)
             {
                 const int limit = 10;
-                var text = "Разобрано ниток: " + result.Rows.Count + " из " + samples.Count + " выделенных размеров.\n\n" +
-                           "Не разобрано:\n• " + string.Join("\n• ", result.Messages.Take(limit));
+                var text = "Chains parsed: " + result.Rows.Count + " out of " + samples.Count + " selected dimensions.\n\n" +
+                           "Not parsed:\n• " + string.Join("\n• ", result.Messages.Take(limit));
 
                 if (result.Messages.Count > limit)
-                    text += "\n… и ещё " + (result.Messages.Count - limit);
+                    text += "\n… and " + (result.Messages.Count - limit) + " more";
 
                 TaskDialog.Show(DialogTitle, text);
             }
@@ -284,7 +285,7 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── расстановка ─────────────────────────────
+        // ───────────────────────────── placement ─────────────────────────────
 
         private static Result Place(
             Document doc,
@@ -295,7 +296,7 @@ namespace VladTools.Commands
         {
             if (chains.Count == 0)
             {
-                TaskDialog.Show(DialogTitle, "Не отмечено ни одной нитки — расставлять нечего.");
+                TaskDialog.Show(DialogTitle, "No chain is checked — there is nothing to place.");
                 return Result.Cancelled;
             }
 
@@ -309,17 +310,17 @@ namespace VladTools.Commands
             var approximate = new List<string>();
             var pending = new List<PendingDimension>();
 
-            // ФАЗА ЧТЕНИЯ — вся геометрия стен читается здесь, до единой правки документа.
+            // READ PHASE — every bit of wall geometry is read here, before a single document edit.
             //
-            // Создание Dimension — тоже правка документа: оно помечает геометрию как изменившуюся,
-            // и любой Face/Reference, прочитанный ДО этого момента (в том числе из кэша
-            // DimensionReferenceCollector — тот кэширует не глядя на транзакции), Revit после
-            // такой правки больше не считает валидным. Раньше сбор ссылок и создание размера шли
-            // вперемешку внутри одного цикла по ниткам — и вторая нитка на той же стороне читала
-            // уже устаревшую грань, оставшуюся в кэше от первой, с непонятной ошибкой геометрического
-            // ядра («The input curve is not bound», без адреса в нашем коде). Поэтому сначала —
-            // читаем всё и складываем в pending, потом, отдельным проходом внутри транзакции, —
-            // только пишем.
+            // Creating a Dimension is a document edit too: it marks the geometry as changed, and
+            // any Face/Reference read BEFORE this point (including from the
+            // DimensionReferenceCollector cache — which caches regardless of transactions) is no
+            // longer valid to Revit after such an edit. Collecting references and creating a
+            // dimension used to be interleaved inside one loop over the chains — and the second
+            // chain on the same side would read a face already stale from the first one's cache,
+            // with an obscure geometry-kernel error ("The input curve is not bound", with no clue
+            // pointing at our code). So first — read everything and stack it into pending, then, in
+            // a separate pass inside the transaction — only write.
             foreach (var room in rooms)
             {
                 var roomLabel = RoomLabel(room);
@@ -331,13 +332,13 @@ namespace VladTools.Commands
                 }
                 catch (Exception exception)
                 {
-                    skippedRooms.Add(roomLabel + " — не удалось построить границу: " + exception.Message);
+                    skippedRooms.Add(roomLabel + " — could not build the boundary: " + exception.Message);
                     continue;
                 }
 
                 if (sides.Count == 0)
                 {
-                    skippedRooms.Add(roomLabel + " — у помещения нет границы (не размещено?)");
+                    skippedRooms.Add(roomLabel + " — the room has no boundary (not placed?)");
                     continue;
                 }
 
@@ -347,20 +348,20 @@ namespace VladTools.Commands
                 {
                     if (side.IsCurved)
                     {
-                        skippedChains.Add(roomLabel + ", сторона " + SideLabel(side) + " — сторона криволинейна, пропущена");
+                        skippedChains.Add(roomLabel + ", side " + SideLabel(side) + " — the side is curved, skipped");
                         continue;
                     }
 
                     if (!side.HasWall)
-                        continue; // граница без стены (разделитель помещений) — засекать нечего
+                        continue; // a boundary with no wall (a room separator) — nothing to pick up
 
                     var chainIndex = 0;
                     foreach (var chain in chains)
                     {
                         chainIndex++;
 
-                        var label = roomLabel + ", сторона " + SideLabel(side) + ", нитка «" +
-                                    DimensionChainKindText.Caption(chain.Kind) + "»";
+                        var label = roomLabel + ", side " + SideLabel(side) + ", chain \"" +
+                                    DimensionChainKindText.Caption(chain.Kind) + "\"";
 
                         var result = collector.Collect(side, sides, chain.Kind, settings.IncludeAdjacentThickness);
                         if (!result.Success)
@@ -387,7 +388,7 @@ namespace VladTools.Commands
                 }
 
                 if (foundHere == 0)
-                    skippedRooms.Add(roomLabel + " — не найдено ни одной нитки для расстановки");
+                    skippedRooms.Add(roomLabel + " — no chain was found to place");
             }
 
             if (pending.Count == 0)
@@ -396,13 +397,13 @@ namespace VladTools.Commands
                 return Result.Cancelled;
             }
 
-            // ФАЗА ЗАПИСИ — только создание размеров, никаких новых чтений геометрии стен.
+            // WRITE PHASE — only dimension creation, no new reads of wall geometry.
             var placed = 0;
             var movedTexts = 0;
             var failures = new List<string>();
             var warnings = new WarningSuppressor();
 
-            using (var transaction = new Transaction(doc, "Авторазмеры"))
+            using (var transaction = new Transaction(doc, "Auto dimensions"))
             {
                 transaction.Start();
 
@@ -423,7 +424,7 @@ namespace VladTools.Commands
                         }
                         catch (Exception)
                         {
-                            // старый размер не снялся — новый всё равно встанет рядом, не критично
+                            // the old dimension did not come off — the new one will sit next to it anyway, not critical
                         }
                     }
                 }
@@ -446,10 +447,10 @@ namespace VladTools.Commands
                     }
                 }
 
-                // ФАЗА РАЗВОДКИ ПОДПИСЕЙ — отдельным проходом и только после Regenerate: до неё
-                // у только что созданного размера ещё не заполнены сегменты, и разводить нечего.
-                // Regenerate тут безопасен ровно потому, что грани стен больше не нужны — вся
-                // геометрия уже прочитана в первой фазе.
+                // LABEL LAYOUT PHASE — a separate pass, and only after Regenerate: before it a
+                // freshly created dimension has no segments filled in yet, and there is nothing to
+                // spread out. Regenerate is safe here precisely because the wall faces are no
+                // longer needed — all the geometry was already read in the first phase.
                 if (settings.MoveSmallText && placed > 0)
                 {
                     doc.Regenerate();
@@ -473,12 +474,12 @@ namespace VladTools.Commands
             return placed > 0 ? Result.Succeeded : Result.Cancelled;
         }
 
-        /// <summary>Одна ещё не созданная нитка: геометрия под неё уже прочитана и годна к записи.</summary>
+        /// <summary>One chain not yet created: the geometry for it is already read and ready to be written.</summary>
         private sealed class PendingDimension
         {
             public Line Line;
 
-            /// <summary>Куда отодвигать подписи коротких звеньев — прочь от стены, вдоль смещения нитки.</summary>
+            /// <summary>Where to pull short-link labels out to — away from the wall, along the chain's offset.</summary>
             public XYZ AwayNormal;
 
             public ReferenceArray References;
@@ -487,7 +488,7 @@ namespace VladTools.Commands
             public int ChainIndex;
             public string Label;
 
-            /// <summary>Созданный размер — заполняется в фазе записи, нужен фазе разводки подписей.</summary>
+            /// <summary>The created dimension — filled in during the write phase, needed by the label-layout phase.</summary>
             public Dimension Created;
         }
 
@@ -534,9 +535,10 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Имя типа размера, который Revit поставит сам, если тип не задан. Нужно окну: новая
-        /// строка должна рождаться с ним, а не с первым типом по алфавиту — иначе «по умолчанию»
-        /// в таблице означает случайный тип, который просто оказался первым в списке проекта.
+        /// The name of the dimension type Revit would pick on its own if none is given. The window
+        /// needs it: a new row should be born with that type rather than the alphabetically first
+        /// one — otherwise "default" in the table would mean a random type that simply happened to
+        /// come first in the project's list.
         /// </summary>
         private static string DefaultDimensionTypeName(Document doc)
         {
@@ -600,7 +602,7 @@ namespace VladTools.Commands
         {
             var name = SafeName(room);
             var numberText = string.IsNullOrEmpty(room.Number) ? string.Empty : room.Number + " ";
-            return "Помещение " + numberText + name;
+            return "Room " + numberText + name;
         }
 
         private static string SideLabel(RoomSide side)
@@ -613,7 +615,7 @@ namespace VladTools.Commands
             return UnitUtils.ConvertToInternalUnits(millimeters, UnitTypeId.Millimeters);
         }
 
-        // ───────────────────────────── отчёт ─────────────────────────────
+        // ───────────────────────────── the report ─────────────────────────────
 
         private static void Report(
             int placed,
@@ -626,28 +628,29 @@ namespace VladTools.Commands
             IReadOnlyList<string> warnings)
         {
             var text = placed > 0
-                ? "Размеров поставлено: " + placed + " (помещений: " + roomCount + ")."
-                : "Не поставлено ни одного размера.";
+                ? "Dimensions placed: " + placed + " (rooms: " + roomCount + ")."
+                : "No dimension was placed.";
 
             if (movedTexts > 0)
-                text += "\nПодписей вынесено на полку: " + movedTexts + ".";
+                text += "\nLabels pulled out onto a leader: " + movedTexts + ".";
 
             if (skippedRooms.Count > 0)
-                text += "\n\n" + Bulleted("Пропущено помещений", skippedRooms, 10);
+                text += "\n\n" + Bulleted("Rooms skipped", skippedRooms, 10);
 
             if (skippedChains.Count > 0)
-                text += "\n\n" + Bulleted("Не поставлено ниток", skippedChains, 15);
+                text += "\n\n" + Bulleted("Chains not placed", skippedChains, 15);
 
-            // Отдельным разделом, а не вместе с «не поставлено»: эти нитки стоят, но короче,
-            // чем должны быть. Слить их с успехом значит молча отдать неверный размер.
+            // A section of its own, not merged with "not placed": these chains are in place, just
+            // shorter than they should be. Merging them with the successes would mean silently
+            // handing over a wrong dimension.
             if (approximate.Count > 0)
-                text += "\n\n" + Bulleted("Нитки, которые нужно проверить", approximate, 10);
+                text += "\n\n" + Bulleted("Chains that need checking", approximate, 10);
 
             if (failures.Count > 0)
-                text += "\n\n" + Bulleted("Ошибки Revit", failures, 15);
+                text += "\n\n" + Bulleted("Revit errors", failures, 15);
 
             if (warnings.Count > 0)
-                text += "\n\n" + Bulleted("Предупреждения Revit", warnings.ToList(), 5);
+                text += "\n\n" + Bulleted("Revit warnings", warnings.ToList(), 5);
 
             TaskDialog.Show(DialogTitle, text);
         }
@@ -656,7 +659,7 @@ namespace VladTools.Commands
         {
             var text = title + " (" + items.Count + "):\n• " + string.Join("\n• ", items.Take(limit));
             if (items.Count > limit)
-                text += "\n… и ещё " + (items.Count - limit);
+                text += "\n… and " + (items.Count - limit) + " more";
             return text;
         }
     }

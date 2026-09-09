@@ -13,19 +13,21 @@ using System.Windows.Media;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно «Принять изменения»: расхождения между осями и уровнями проекта и координационным
-    /// файлом, с галочкой у каждого. Отмеченные применяются к проекту одной операцией.
+    /// The "Accept Changes" window: the differences between the project's grids and levels and
+    /// the coordination file, with a check box on each. The checked ones are applied to the
+    /// project as a single operation.
     ///
-    /// Показать список до правки обязательно, а не «принять всё молча»: в «Просмотре координации»
-    /// пользователь видит каждое изменение, и кнопка не должна знать о модели меньше, чем он.
-    /// Отдельно от того, что кнопка умеет применить, в таблице стоят строки только для чтения —
-    /// пропавшие и новые элементы связи: сделать с ними через API нечего, но узнать о них нужно.
+    /// Showing the list before editing is mandatory, not "accept everything silently": in
+    /// "Coordination Review" the user sees every change, and the button must not know less about
+    /// the model than they do. Besides what the button is able to apply, the table also has
+    /// read-only rows — link elements that vanished or are new: there is nothing the API can do
+    /// about them, but the user still needs to know.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class AcceptCoordinationWindow : Window
     {
-        private const string WindowTitle = "Принять координационные изменения";
+        private const string WindowTitle = "Accept Coordination Changes";
 
         private readonly IReadOnlyList<CoordinationScan> _scans;
         private readonly ObservableCollection<CoordinationChangeRow> _visible =
@@ -42,14 +44,14 @@ namespace VladTools.UI
         private bool _syncingSelectAll;
         private bool _settingMany;
 
-        /// <summary>Изменения, которые пользователь подтвердил к применению.</summary>
+        /// <summary>The changes the user confirmed for application.</summary>
         public IReadOnlyList<CoordinationChangeRow> Selected { get; private set; } =
             new List<CoordinationChangeRow>();
 
-        /// <summary>Связь, по которой правим проект, — она же попадает в отчёт.</summary>
+        /// <summary>The link the project is being adjusted against — it also goes into the report.</summary>
         public CoordinationScan Chosen => Current;
 
-        /// <summary>После применения открыть «Просмотр координации» — проверить, что список пуст.</summary>
+        /// <summary>Open "Coordination Review" after applying — to check that the list is empty.</summary>
         public bool OpenReview => _openReviewBox.IsChecked == true;
 
         public AcceptCoordinationWindow(IReadOnlyList<CoordinationScan> scans)
@@ -73,20 +75,20 @@ namespace VladTools.UI
                 SelectedIndex = _scans.Count > 0 ? 0 : -1,
                 IsEnabled = _scans.Count > 1,
                 ToolTip =
-                    "Связи, за которыми следят оси и уровни проекта.\n" +
-                    "Первой стоит та, где расхождений больше всего."
+                    "The links that the project's grids and levels monitor.\n" +
+                    "The one with the most differences comes first."
             };
             _linkBox.SelectionChanged += (s, e) => Reload();
 
             _scopeBox = new ComboBox { Width = 260, VerticalAlignment = VerticalAlignment.Center };
-            _scopeBox.Items.Add("Все расхождения");
-            _scopeBox.Items.Add("Только положение");
-            _scopeBox.Items.Add("Только имена");
-            _scopeBox.Items.Add("Только то, что кнопка не применит");
+            _scopeBox.Items.Add("Every difference");
+            _scopeBox.Items.Add("Position only");
+            _scopeBox.Items.Add("Names only");
+            _scopeBox.Items.Add("Only what the button cannot apply");
             _scopeBox.SelectedIndex = 0;
             _scopeBox.ToolTip =
-                "Применяется только то, что показано в таблице:\n" +
-                "строка, ушедшая из неё, теряет галочку.";
+                "Only what is shown in the table gets applied:\n" +
+                "a row that leaves it loses its check mark.";
             _scopeBox.SelectionChanged += (s, e) => RebuildVisible();
 
             _selectAll = new CheckBox
@@ -94,21 +96,21 @@ namespace VladTools.UI
                 IsChecked = true,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Отметить или снять все показанные изменения"
+                ToolTip = "Check or clear every shown change"
             };
             _selectAll.Checked += (s, e) => SetAllSelected(true);
             _selectAll.Unchecked += (s, e) => SetAllSelected(false);
 
             _openReviewBox = new CheckBox
             {
-                Content = "Открыть «Просмотр координации» после применения",
+                Content = "Open \"Coordination Review\" after applying",
                 IsChecked = true,
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip =
-                    "Кнопка правит саму модель, а не список Revit: нажать «Принять» внутри\n" +
-                    "«Просмотра координации» из API нельзя — этого в нём нет вовсе.\n" +
-                    "Когда элемент встал на место, Revit перестаёт считать его расхождением сам,\n" +
-                    "и список пустеет; открыть его стоит хотя бы затем, чтобы в этом убедиться."
+                    "The button edits the model itself, not Revit's own list: pressing \"Accept\" inside\n" +
+                    "\"Coordination Review\" cannot be done through the API — it is simply not exposed.\n" +
+                    "Once an element is back in place, Revit stops counting it as a difference on its own,\n" +
+                    "and the list empties itself; opening it is worth doing at least to confirm that."
             };
 
             _grid = BuildGrid();
@@ -116,7 +118,7 @@ namespace VladTools.UI
 
             _applyButton = new Button
             {
-                Content = "Принять",
+                Content = "Accept",
                 MinWidth = 140,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -126,7 +128,7 @@ namespace VladTools.UI
 
             var closeButton = new Button
             {
-                Content = "Закрыть",
+                Content = "Close",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -140,23 +142,24 @@ namespace VladTools.UI
 
         private CoordinationScan Current => _linkBox.SelectedItem as CoordinationScan;
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button closeButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // связь
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // отбор
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // «Просмотр координации»
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // link
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // filter
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // "Coordination Review"
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Оси и уровни проекта, которые следят за координационным файлом, сверены с ним. " +
-                       "Отмеченные встанут по файлу одной операцией — она отменяется одним Ctrl+Z. " +
-                       "Строки без галочки Revit API применить не даёт: их видно, чтобы разобрать вручную.",
+                Text = "The project's grids and levels that monitor the coordination file have been compared " +
+                       "against it. The checked ones will be put in line with the file as a single operation — " +
+                       "it can be undone with one Ctrl+Z. Rows with no check box are ones the Revit API does not " +
+                       "let this button apply: they are shown so they can be sorted out by hand.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -166,7 +169,7 @@ namespace VladTools.UI
             var linkPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
             linkPanel.Children.Add(new TextBlock
             {
-                Text = "Координационный файл:",
+                Text = "Coordination file:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
@@ -177,7 +180,7 @@ namespace VladTools.UI
             var scopePanel = new StackPanel { Orientation = Orientation.Horizontal };
             scopePanel.Children.Add(new TextBlock
             {
-                Text = "Показывать:",
+                Text = "Show:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
@@ -239,17 +242,17 @@ namespace VladTools.UI
                 CellTemplate = BuildCheckBoxTemplate()
             });
 
-            grid.Columns.Add(TextColumn("Тип", "Type", new DataGridLength(80)));
-            grid.Columns.Add(TextColumn("Имя", "Name", new DataGridLength(150)));
-            grid.Columns.Add(TextColumn("Что изменилось", "What", new DataGridLength(210)));
-            grid.Columns.Add(TextColumn("Было → станет", "Detail", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(TextColumn("Состояние", "Note", new DataGridLength(260)));
+            grid.Columns.Add(TextColumn("Type", "Type", new DataGridLength(80)));
+            grid.Columns.Add(TextColumn("Name", "Name", new DataGridLength(150)));
+            grid.Columns.Add(TextColumn("What changed", "What", new DataGridLength(210)));
+            grid.Columns.Add(TextColumn("Before → after", "Detail", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(TextColumn("State", "Note", new DataGridLength(260)));
 
             grid.MouseDoubleClick += (s, e) => ToggleSelectedRows();
             grid.PreviewKeyDown += OnGridKeyDown;
 
-            // Строки, которые кнопка применить не может, гасим цветом: галочки у них
-            // всё равно нет, и путать их с рабочими не нужно.
+            // Rows the button cannot apply are dimmed by colour: they have no check box anyway,
+            // and there is no reason to confuse them with actionable ones.
             var style = new Style(typeof(DataGridRow));
             var trigger = new DataTrigger
             {
@@ -281,8 +284,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Галочка в ячейке. Доступность привязана к самой строке: у пропавших и новых элементов
-        /// связи применять нечего, и галочка не должна создавать впечатление, будто есть.
+        /// A check box in a cell. Whether it is enabled is bound to the row itself: a vanished or
+        /// new link element has nothing to apply, and the check box must not suggest otherwise.
         /// </summary>
         private static DataTemplate BuildCheckBoxTemplate()
         {
@@ -300,7 +303,7 @@ namespace VladTools.UI
             return new DataTemplate { VisualTree = checkBox };
         }
 
-        // ───────────────────────────── отбор ─────────────────────────────
+        // ───────────────────────────── filtering ─────────────────────────────
 
         private IReadOnlyList<CoordinationChangeRow> All =>
             Current != null ? Current.Rows : (IReadOnlyList<CoordinationChangeRow>)new List<CoordinationChangeRow>();
@@ -321,12 +324,13 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Переключение связи: таблица собирается заново и всё применимое сразу отмечается.
+        /// Switching the link: the table is rebuilt from scratch and everything applicable is
+        /// checked right away.
         ///
-        /// Здесь «показали — значит отметили» не самодеятельность, а смысл кнопки: её просят
-        /// принять изменения координационного файла разом. От правила «пустой отбор не значит
-        /// выбрать всё» это не отступление — то правило защищает от случайного удаления,
-        /// а тут ничего не удаляется и всё откатывается одним Ctrl+Z.
+        /// "Shown means checked" here is not an oversight but the whole point of the button: it is
+        /// asked to accept the coordination-file changes all at once. This is not an exception to
+        /// the "an empty filter does not mean select everything" rule — that rule guards against
+        /// accidental deletion, and here nothing is deleted and everything rolls back with one Ctrl+Z.
         /// </summary>
         private void Reload()
         {
@@ -344,8 +348,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Пересобирает таблицу. Строка, ушедшая из неё, теряет галочку — применяется только
-        /// то, что видно; то же правило, что в окнах удаления.
+        /// Rebuilds the table. A row that leaves it loses its check mark — only what is visible
+        /// gets applied; the same rule as in the delete windows.
         /// </summary>
         private void RebuildVisible()
         {
@@ -380,7 +384,7 @@ namespace VladTools.UI
             SetMany(row => affected.Contains(row) ? value : row.IsSelected);
         }
 
-        /// <summary>Пакетная простановка галочек: итог пересчитывается один раз в конце.</summary>
+        /// <summary>Setting check marks in bulk: the total is recomputed once, at the end.</summary>
         private void SetMany(Func<CoordinationChangeRow, bool> value)
         {
             _settingMany = true;
@@ -424,34 +428,34 @@ namespace VladTools.UI
             if (scan == null)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Связей, за которыми следят оси и уровни, в проекте нет.";
+                _status.Text = "The project has no link monitored by any grid or level.";
             }
             else if (!scan.IsLoaded)
             {
                 _status.Foreground = Brushes.Firebrick;
-                _status.Text = "Связь не загружена — сравнивать не с чем. Загрузите её в «Диспетчере связей».";
+                _status.Text = "The link is not loaded — there is nothing to compare against. Load it in \"Link Manager\".";
             }
             else if (scan.Rows.Count == 0)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Расхождений нет: все " + scan.MonitoredCount +
-                               " осей и уровней стоят по координационному файлу.";
+                _status.Text = "No differences: all " + scan.MonitoredCount +
+                               " grids and levels are in line with the coordination file.";
             }
             else if (marked.Count == 0)
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
-                _status.Text = "Показано: " + _visible.Count + " из " + scan.Rows.Count +
-                               " расхождений. Не отмечено ни одного." + Unsupported();
+                _status.Text = "Shown: " + _visible.Count + " of " + scan.Rows.Count +
+                               " differences. Nothing is checked." + Unsupported();
             }
             else
             {
                 _status.Foreground = Brushes.DarkGreen;
-                _status.Text = "Будет принято: " + marked.Count + " из " + applicable +
-                               " применимых." + Unsupported();
+                _status.Text = "Will be accepted: " + marked.Count + " of " + applicable +
+                               " applicable." + Unsupported();
             }
 
             _applyButton.IsEnabled = marked.Count > 0;
-            _applyButton.Content = marked.Count > 0 ? "Принять (" + marked.Count + ")" : "Принять";
+            _applyButton.Content = marked.Count > 0 ? "Accept (" + marked.Count + ")" : "Accept";
 
             _syncingSelectAll = true;
             _selectAll.IsChecked = applicable == 0 || marked.Count == 0
@@ -460,7 +464,7 @@ namespace VladTools.UI
             _syncingSelectAll = false;
         }
 
-        /// <summary>Приписка про то, что кнопке не по силам: молчать об этом нельзя.</summary>
+        /// <summary>A note about what the button is not able to do: this must not stay unmentioned.</summary>
         private string Unsupported()
         {
             var scan = Current;
@@ -468,17 +472,17 @@ namespace VladTools.UI
                 return string.Empty;
 
             var count = scan.Rows.Count(row => !row.CanApply);
-            return count == 0 ? string.Empty : " Вручную придётся разобрать: " + count + ".";
+            return count == 0 ? string.Empty : " Will have to be sorted out by hand: " + count + ".";
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnApply(object sender, RoutedEventArgs e)
         {
             var marked = Marked();
             if (marked.Count == 0)
             {
-                MessageBox.Show(this, "Не отмечено ни одного изменения.", WindowTitle,
+                MessageBox.Show(this, "No change is checked.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -488,11 +492,11 @@ namespace VladTools.UI
 
             var answer = MessageBox.Show(
                 this,
-                "Принять изменений: " + marked.Count + " (положение — " + moves + ", имена — " + names + ")?\n\n" +
+                "Accept " + marked.Count + " change(s) (position — " + moves + ", names — " + names + ")?\n\n" +
                 Preview(marked) + "\n\n" +
-                "Оси и уровни встанут по координационному файлу; всё, что к ним привязано, " +
-                "поедет вместе с ними.\n" +
-                "Действие отменяется одним «Отменить» (Ctrl+Z) в Revit.",
+                "The grids and levels will be put in line with the coordination file; anything tied to " +
+                "them moves along with them.\n" +
+                "This can be undone with a single \"Undo\" (Ctrl+Z) in Revit.",
                 WindowTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -511,7 +515,7 @@ namespace VladTools.UI
             var shown = string.Join("\n", rows.Take(limit).Select(row => "• " + row.Title + " — " + row.Detail));
 
             return rows.Count > limit
-                ? shown + "\n… и ещё " + (rows.Count - limit)
+                ? shown + "\n… and " + (rows.Count - limit) + " more"
                 : shown;
         }
     }

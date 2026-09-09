@@ -8,49 +8,51 @@ using VladTools.UI;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Сравнение осей и уровней проекта с координационным файлом.
+    /// Comparing the project's grids and levels against the coordination file.
     ///
-    /// **«Просмотра координации» в Revit API нет вовсе** — ни прочитать его список, ни нажать
-    /// в нём «Принять»: проверено рефлексией по RevitAPI.dll 2022, 2024 и 2025, из всего
-    /// мониторинга наружу выведены только <c>Element.IsMonitoringLinkElement</c>,
-    /// <c>IsMonitoringLocalElement</c>, <c>GetMonitoredLinkElementIds</c> и
-    /// <c>GetMonitoredLocalElementIds</c>. Поэтому расхождения кнопка считает сама: берёт оси
-    /// и уровни, которые следят за связью, и сравнивает их с одноимёнными внутри самой связи.
+    /// **"Coordination Review" does not exist in the Revit API at all** — neither reading its list
+    /// nor pressing "Accept" in it: checked by reflection against RevitAPI.dll 2022, 2024 and 2025,
+    /// of the whole monitoring feature only <c>Element.IsMonitoringLinkElement</c>,
+    /// <c>IsMonitoringLocalElement</c>, <c>GetMonitoredLinkElementIds</c> and
+    /// <c>GetMonitoredLocalElementIds</c> are exposed. So the button computes the differences
+    /// itself: it takes the grids and levels that monitor the link and compares them against the
+    /// same-named ones inside the link itself.
     ///
-    /// **Пару «элемент проекта — элемент связи» API тоже не отдаёт.**
-    /// <c>GetMonitoredLinkElementIds</c>, вопреки имени, возвращает не то, за чем элемент следит,
-    /// а экземпляры связи, в которых это находится. Поэтому пара восстанавливается по имени:
-    /// у осей и уровней имена в документе уникальны, и мониторинг их синхронизирует. Что не
-    /// сошлось по имени — досопоставляется по совпадению положения: так находится переименование.
-    /// Переименованный и одновременно далеко уехавший элемент честно попадает в «нет в файле» +
-    /// «новый в файле», а не сопоставляется наугад.
+    /// **The API does not hand over the "project element — link element" pair either.**
+    /// <c>GetMonitoredLinkElementIds</c>, despite its name, does not return what the element
+    /// monitors, but the link instances it is found in. So the pair is recovered by name: grid and
+    /// level names are unique in a document, and monitoring keeps them in sync. What did not match
+    /// by name is matched further by position: that is how a rename is found. An element that is
+    /// both renamed and moved far away honestly ends up in "not in the file" plus "new in the
+    /// file", rather than being matched at random.
     /// </summary>
     internal static class CoordinationCatalog
     {
         /// <summary>
-        /// Ниже этого расхождения считаем, что элемент не двигался. Ноль сюда не годится:
-        /// внутренние единицы Revit — футы, и пересчёт координат через трансформацию связи
-        /// не воспроизводит точного совпадения даже у нетронутого элемента.
+        /// Below this difference the element is treated as unmoved. Zero will not do: Revit's
+        /// internal unit is feet, and converting coordinates through a link transform does not
+        /// reproduce an exact match even for an element that was never touched.
         /// </summary>
         private const double ToleranceMm = 0.1;
 
-        /// <summary>Поворот меньше этого — тот же шум округления, а не правка проектировщика.</summary>
+        /// <summary>A rotation smaller than this is rounding noise, not a designer's edit.</summary>
         private const double AngleToleranceDeg = 0.001;
 
         /// <summary>
-        /// Насколько далеко ищется пара по положению, когда по имени не нашлось.
-        /// Переименованный элемент обычно остаётся на месте, но его могли заодно и подвинуть.
-        /// Пара принимается, только если кандидат ровно один (см. <see cref="MatchByPosition"/>):
-        /// иначе удалённая ось спарилась бы со случайной новой, и кнопка молча уехала бы не туда.
+        /// How far a positional match is searched for when the name did not match. A renamed
+        /// element usually stays put, but it may have been moved at the same time. A pair is
+        /// accepted only if there is exactly one candidate (see <see cref="MatchByPosition"/>):
+        /// otherwise a deleted grid would pair up with a random new one, and the button would
+        /// silently move the wrong thing.
         /// </summary>
         private const double RenameWindowMm = 300.0;
 
-        /// <summary>Тот же допуск по углу для поиска пары: повёрнутая ось — всё ещё та же ось.</summary>
+        /// <summary>The same angular tolerance for finding a pair: a rotated grid is still the same grid.</summary>
         private const double RenameAngleDeg = 1.0;
 
         /// <summary>
-        /// Оси и уровни связи в координатах проекта — то, с чем сравниваем.
-        /// Геометрия читается один раз: дальше в ходу только числа.
+        /// A link's grid or level in project coordinates — what we compare against.
+        /// The geometry is read once: from here on only numbers are in play.
         /// </summary>
         private sealed class GridSample
         {
@@ -64,16 +66,16 @@ namespace VladTools.Infrastructure
             public double Elevation;
         }
 
-        // ───────────────────────────── обход проекта ─────────────────────────────
+        // ───────────────────────────── walking the project ─────────────────────────────
 
         /// <summary>
-        /// Все связи проекта, за которыми следит хоть одна ось или уровень, вместе с найденными
-        /// расхождениями. Связи, за которыми не следит ничего, в список не попадают: к координации
-        /// они отношения не имеют.
+        /// Every project link monitored by at least one grid or level, together with the
+        /// differences found. Links nothing monitors are left out of the list: they have nothing
+        /// to do with coordination.
         /// </summary>
         /// <param name="failures">
-        /// Куда сложить то, что прочитать не удалось. Пустой список — обычное дело: причина
-        /// отказа должна дойти до пользователя, а не превратить открытие окна в исключение.
+        /// Where to put what could not be read. An empty list is the normal case: the reason for a
+        /// failure has to reach the user, not turn opening the window into an exception.
         /// </param>
         public static IReadOnlyList<CoordinationScan> Scan(Document doc, List<string> failures)
         {
@@ -91,8 +93,8 @@ namespace VladTools.Infrastructure
                 var links = MonitoredLinkIds(doc, element);
                 if (links.Count == 0)
                 {
-                    // Элемент за связью следит, а за какой — Revit не сказал. Догадываться нельзя:
-                    // приписав его к чужой связи, кнопка подвинула бы ось по чужому файлу.
+                    // The element monitors a link, but Revit did not say which one. Guessing is not
+                    // allowed: attributing it to the wrong link would move a grid by the wrong file.
                     unresolved++;
                     continue;
                 }
@@ -112,8 +114,8 @@ namespace VladTools.Infrastructure
 
             if (unresolved > 0)
             {
-                failures.Add("Осей и уровней, у которых не удалось определить связь: " + unresolved +
-                             " — их придётся проверить в «Просмотре координации» вручную.");
+                failures.Add("Grids and levels whose link could not be identified: " + unresolved +
+                             " — they will have to be checked in \"Coordination Review\" by hand.");
             }
 
             var scans = new List<CoordinationScan>();
@@ -133,7 +135,7 @@ namespace VladTools.Infrastructure
                 .ToList();
         }
 
-        /// <summary>Элемент следит за чем-то в связи. Отказ означает «не следит», а не поломку.</summary>
+        /// <summary>The element monitors something in a link. A failure means "does not monitor", not a breakage.</summary>
         private static bool IsMonitoringLink(Element element)
         {
             try
@@ -147,9 +149,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Экземпляры связи, за которыми следит элемент. Возвращённые id прогоняются через
-        /// документ: по документации это должны быть экземпляры связи, но полагаться на слово
-        /// нельзя — что не оказалось <see cref="RevitLinkInstance"/>, то и не связь.
+        /// The link instances an element monitors. The returned ids are run through the document:
+        /// by the documentation these should be link instances, but that cannot be taken on faith —
+        /// whatever does not turn out to be a <see cref="RevitLinkInstance"/> is not a link.
         /// </summary>
         private static IReadOnlyList<ElementId> MonitoredLinkIds(Document doc, Element element)
         {
@@ -167,7 +169,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        // ───────────────────────────── сравнение с одной связью ─────────────────────────────
+        // ───────────────────────────── comparing against one link ─────────────────────────────
 
         private static CoordinationScan Compare(
             Document doc,
@@ -180,8 +182,8 @@ namespace VladTools.Infrastructure
             var linkDoc = link.GetLinkDocument();
             if (linkDoc == null)
             {
-                // Выгруженную связь сравнивать не с чем — это не отказ, а состояние,
-                // и окно про него честно пишет в подписи связи.
+                // An unloaded link has nothing to compare against — that is not a failure but a
+                // state, and the window honestly says so in the link's caption.
                 return scan;
             }
 
@@ -193,9 +195,9 @@ namespace VladTools.Infrastructure
             CompareGrids(hosts.OfType<Grid>().ToList(), linkDoc, transform, rows, failures);
             CompareLevels(hosts.OfType<Level>().ToList(), linkDoc, transform, rows, failures);
 
-            // Сперва то, что кнопка применит, потом то, что придётся разбирать руками.
-            // Порядок здесь не косметика: новых элементов в координационном файле бывает
-            // вдесятеро больше, чем уехавших, и вперемешку они прячут собой всю работу.
+            // What the button will apply comes first, what has to be sorted out by hand comes
+            // after. The order here is not cosmetic: a coordination file can have ten times more
+            // new elements than moved ones, and mixed together they bury all the actual work.
             scan.Rows = rows
                 .OrderBy(row => Weight(row.Kind))
                 .ThenBy(row => row.IsLevel)
@@ -205,7 +207,7 @@ namespace VladTools.Infrastructure
             return scan;
         }
 
-        /// <summary>Порядок видов изменений в таблице: сначала работа, потом сведения.</summary>
+        /// <summary>The order of change kinds in the table: the actionable ones first, information after.</summary>
         private static int Weight(CoordinationChangeKind kind)
         {
             switch (kind)
@@ -236,7 +238,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        // ───────────────────────────── оси ─────────────────────────────
+        // ───────────────────────────── grids ─────────────────────────────
 
         private static void CompareGrids(
             IReadOnlyList<Grid> hosts,
@@ -256,8 +258,9 @@ namespace VladTools.Infrastructure
                 samples.Add(new GridSample { Name = grid.Name, Curve = curve.CreateTransformed(transform) });
             }
 
-            // Кривые осей проекта читаются один раз: одна и та же ось попадает и в подбор пары
-            // по положению, и в саму сверку, а отказ чтения должен прозвучать в отчёте однажды.
+            // The project grid curves are read once: the same grid takes part both in the
+            // positional match and in the comparison itself, and a read failure must be voiced in
+            // the report only once.
             var curves = new Dictionary<ElementId, Curve>();
             var readable = new List<Grid>();
 
@@ -275,7 +278,7 @@ namespace VladTools.Infrastructure
             var free = MatchByName(readable, samples, sample => sample.Name,
                 (host, sample) => EmitGrid(host, curves[host.Id], sample, rows), pending);
 
-            // Что не сошлось по имени — ещё не потеряно: так выглядит переименование.
+            // What did not match by name is not lost yet: this is what a rename looks like.
             MatchByPosition(pending, free,
                 (host, sample) => Distance(curves[host.Id], sample),
                 (host, sample) => EmitGrid(host, curves[host.Id], sample, rows));
@@ -284,7 +287,7 @@ namespace VladTools.Infrastructure
             {
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Missing, false, host.Name,
                     string.Empty,
-                    "в координационном файле нет оси с таким именем и на этом месте",
+                    "the coordination file has no grid with this name in this position",
                     null));
             }
 
@@ -292,14 +295,15 @@ namespace VladTools.Infrastructure
             {
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.New, false, sample.Name,
                     string.Empty,
-                    "скопируйте её через «Копирование/Мониторинг»",
+                    "copy it in through \"Copy/Monitor\"",
                     null));
             }
         }
 
         /// <summary>
-        /// Насколько ось проекта разошлась с осью связи — для поиска пары по положению.
-        /// Не сравнить (дуга против прямой, изменился радиус) — считаем, что это разные оси.
+        /// How far a project grid differs from a link grid — used for finding a positional match.
+        /// If it cannot be compared (an arc against a line, a changed radius) they are treated as
+        /// different grids.
         /// </summary>
         private static double Distance(Curve host, GridSample sample)
         {
@@ -328,7 +332,7 @@ namespace VladTools.Infrastructure
             if (!TryGridDiff(curve, sample.Curve, out offsetMm, out angleDeg, out update, out problem))
             {
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Unsupported, false, host.Name,
-                    string.Empty, problem + " — перенесите ось вручную", null));
+                    string.Empty, problem + " — move the grid by hand", null));
             }
             else if (offsetMm > ToleranceMm || Math.Abs(angleDeg) > AngleToleranceDeg)
             {
@@ -342,12 +346,12 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Перенос и поворот, которыми ось проекта совмещается с осью связи.
+        /// The translation and rotation that align a project grid with a link grid.
         ///
-        /// Совмещается именно **бесконечная прямая**, а не отрезок: длину оси в проекте
-        /// подрезают под свои виды, к координации она отношения не имеет, и подгонять концы
-        /// было бы порчей чужой работы. Отсюда и схема правки: поворот вокруг середины оси
-        /// (после него направления совпадают) плюс сдвиг поперёк себя.
+        /// What is aligned is the **infinite line**, not the segment: a grid's length in the
+        /// project is trimmed to fit its own views and has nothing to do with coordination, and
+        /// matching the ends would mean spoiling somebody else's work. Hence the edit scheme: a
+        /// rotation about the grid's midpoint (after which the directions match) plus a sideways shift.
         /// </summary>
         private static bool TryGridDiff(
             Curve host,
@@ -372,7 +376,7 @@ namespace VladTools.Infrastructure
 
                 if (hostDirection == null || linkDirection == null)
                 {
-                    problem = "ось стоит не в плане";
+                    problem = "the grid does not lie in plan";
                     return false;
                 }
 
@@ -380,8 +384,8 @@ namespace VladTools.Infrastructure
                     hostDirection.CrossProduct(linkDirection).Z,
                     hostDirection.DotProduct(linkDirection));
 
-                // У направления оси нет знака: «слева направо» и «справа налево» — одна и та же
-                // ось, и разворот на 180° поворотом считать нельзя.
+                // A grid's direction has no sign: "left to right" and "right to left" are the same
+                // grid, and a 180° flip must not be counted as a rotation.
                 if (angle > Math.PI / 2)
                     angle -= Math.PI;
                 if (angle <= -Math.PI / 2)
@@ -413,12 +417,12 @@ namespace VladTools.Infrastructure
             {
                 if (Math.Abs(Mm(hostArc.Radius - linkArc.Radius)) > ToleranceMm)
                 {
-                    problem = "у дуговой оси изменился радиус";
+                    problem = "the arc grid's radius has changed";
                     return false;
                 }
 
-                // Поворот дуги вокруг своего центра ничего не меняет, кроме её концов, —
-                // а концы, как и у прямой оси, к координации отношения не имеют.
+                // Rotating an arc about its own centre changes nothing but its ends — and, just
+                // like with a straight grid, the ends have nothing to do with coordination.
                 var shift = linkArc.Center - hostArc.Center;
                 var translation = new XYZ(shift.X, shift.Y, 0);
 
@@ -433,11 +437,11 @@ namespace VladTools.Infrastructure
                 return true;
             }
 
-            problem = "ось в связи стала другого вида (прямая вместо дуги или наоборот)";
+            problem = "the grid in the link changed kind (a line instead of an arc, or the other way round)";
             return false;
         }
 
-        // ───────────────────────────── уровни ─────────────────────────────
+        // ───────────────────────────── levels ─────────────────────────────
 
         private static void CompareLevels(
             IReadOnlyList<Level> hosts,
@@ -452,9 +456,9 @@ namespace VladTools.Infrastructure
             {
                 try
                 {
-                    // Отметка уровня связи — в координатах связи. Через точку на его плоскости
-                    // она переводится в координаты проекта при любой трансформации, включая
-                    // поворот и смещение по вертикали.
+                    // A link level's elevation is in the link's own coordinates. A point on its
+                    // plane converts it to project coordinates under any transform, including a
+                    // rotation and a vertical shift.
                     samples.Add(new LevelSample
                     {
                         Name = level.Name,
@@ -463,7 +467,7 @@ namespace VladTools.Infrastructure
                 }
                 catch (Exception exception)
                 {
-                    failures.Add("Уровень связи прочитать не удалось: " + LinkCatalog.Short(exception.Message));
+                    failures.Add("Could not read a link level: " + LinkCatalog.Short(exception.Message));
                 }
             }
 
@@ -479,7 +483,7 @@ namespace VladTools.Infrastructure
             {
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Missing, true, host.Name,
                     string.Empty,
-                    "в координационном файле нет уровня с таким именем и на этой отметке",
+                    "the coordination file has no level with this name at this elevation",
                     null));
             }
 
@@ -487,7 +491,7 @@ namespace VladTools.Infrastructure
             {
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.New, true, sample.Name,
                     Mark(sample.Elevation),
-                    "скопируйте его через «Копирование/Мониторинг»",
+                    "copy it in through \"Copy/Monitor\"",
                     null));
             }
         }
@@ -500,7 +504,7 @@ namespace VladTools.Infrastructure
             {
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Position, true, host.Name,
                     Mark(host.Elevation) + " → " + Mark(sample.Elevation) +
-                    " (" + (shiftMm > 0 ? "+" : "") + Number(shiftMm) + " мм)",
+                    " (" + (shiftMm > 0 ? "+" : "") + Number(shiftMm) + " mm)",
                     string.Empty,
                     new DatumUpdate { HostId = host.Id, Elevation = sample.Elevation }));
             }
@@ -508,12 +512,12 @@ namespace VladTools.Infrastructure
             AddRename(host, sample.Name, true, rows);
         }
 
-        // ───────────────────────────── сопоставление ─────────────────────────────
+        // ───────────────────────────── matching ─────────────────────────────
 
         /// <summary>
-        /// Сводит элементы проекта с элементами связи по имени. Не нашедшие пары уходят
-        /// в <paramref name="pending"/>, а возвращается то, что осталось от связи, — с этими
-        /// двумя списками дальше работает <see cref="MatchByPosition"/>.
+        /// Matches project elements to link elements by name. The ones with no match go into
+        /// <paramref name="pending"/>, and what is left of the link's own elements is returned —
+        /// <see cref="MatchByPosition"/> works with those two lists next.
         /// </summary>
         private static List<TSample> MatchByName<THost, TSample>(
             IReadOnlyList<THost> hosts,
@@ -525,8 +529,8 @@ namespace VladTools.Infrastructure
         {
             var free = samples.ToList();
 
-            // Имена осей и уровней Revit держит уникальными, так что первый найденный —
-            // он же единственный; словарь на случай, если файл всё-таки принесёт дубль.
+            // Revit keeps grid and level names unique, so the first one found is also the only
+            // one; the dictionary is here in case a file still brings in a duplicate.
             var byName = new Dictionary<string, TSample>(StringComparer.CurrentCultureIgnoreCase);
             foreach (var sample in samples)
             {
@@ -550,12 +554,12 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Досопоставляет оставшихся по положению: элемент, стоящий там же, — тот же самый,
-        /// просто переименованный.
+        /// Matches what is left by position: an element standing in the same place is the same
+        /// element, just renamed.
         ///
-        /// Пара берётся, **только если кандидат в окне ровно один**. Иначе удалённая ось нашла бы
-        /// себе случайную новую по соседству, и кнопка молча подвинула бы не то — осечка,
-        /// которую на плане не видно.
+        /// A pair is taken **only if there is exactly one candidate within the window**. Otherwise
+        /// a deleted grid would find itself a random new neighbour, and the button would silently
+        /// move the wrong one — a mistake invisible on a plan.
         /// </summary>
         private static void MatchByPosition<THost, TSample>(
             List<THost> pending,
@@ -582,13 +586,13 @@ namespace VladTools.Infrastructure
                 return;
 
             rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Name, isLevel, host.Name,
-                "«" + host.Name + "» → «" + linkName + "»", string.Empty,
+                "\"" + host.Name + "\" → \"" + linkName + "\"", string.Empty,
                 new DatumUpdate { HostId = host.Id, NewName = linkName }));
         }
 
-        // ───────────────────────────── мелочи ─────────────────────────────
+        // ───────────────────────────── odds and ends ─────────────────────────────
 
-        /// <summary>Кривая оси; отказ означает «сравнить не с чем», а не поломку команды.</summary>
+        /// <summary>A grid's curve; a failure means "nothing to compare against", not a broken command.</summary>
         private static Curve SafeCurve(Grid grid, List<string> failures)
         {
             try
@@ -597,14 +601,14 @@ namespace VladTools.Infrastructure
             }
             catch (Exception exception)
             {
-                failures.Add("Ось «" + grid.Name + "» прочитать не удалось: " + LinkCatalog.Short(exception.Message));
+                failures.Add("Could not read the grid \"" + grid.Name + "\": " + LinkCatalog.Short(exception.Message));
                 return null;
             }
         }
 
         /// <summary>
-        /// Направление оси в плане. Ось стоит вертикальной плоскостью, её кривая горизонтальна;
-        /// если это не так, оси у нас нет и сравнивать нечего.
+        /// A grid's direction in plan. A grid stands as a vertical plane, its curve is horizontal;
+        /// if that is not the case there is no grid to speak of and nothing to compare.
         /// </summary>
         private static XYZ Direction(Line line)
         {
@@ -617,15 +621,15 @@ namespace VladTools.Infrastructure
             var parts = new List<string>();
 
             if (offsetMm > ToleranceMm)
-                parts.Add("сдвиг " + Number(offsetMm) + " мм");
+                parts.Add("shift " + Number(offsetMm) + " mm");
 
             if (Math.Abs(angleDeg) > AngleToleranceDeg)
-                parts.Add("поворот " + Number(angleDeg) + "°");
+                parts.Add("rotation " + Number(angleDeg) + "°");
 
             return string.Join(", ", parts);
         }
 
-        /// <summary>Отметка уровня так, как её пишут на чертеже: в миллиметрах и со знаком.</summary>
+        /// <summary>A level's elevation as it is written on a drawing: in millimetres, with a sign.</summary>
         private static string Mark(double feet)
         {
             var mm = Mm(feet);

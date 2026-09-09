@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -12,28 +12,30 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно «Комплект по корпусу»: плагин сам предлагает модели смежников, которые нужно
-    /// связать с открытой моделью.
+    /// The "Building Kit" window: the add-in offers the consultants' models it thinks should be
+    /// linked to the open model on its own.
     ///
-    /// Работа, ради которой оно написано: в каждую модель каждого корпуса грузятся связями
-    /// одни и те же разделы — АР, КР, ES, PS, PT, OV, VK, — и каждый раз их выбирают руками
-    /// по папкам, следя, чтобы не подцепить соседний корпус. Между тем в проекте всё названо
-    /// так, что выбирать не за чем: папки разделов зовутся <c>3.0_AR</c>, <c>4.2_KR</c>,
-    /// <c>5.1_ES</c>, а в имени модели стоит номер корпуса — <c>MK3-VSC-B01-AR</c>.
+    /// The job it exists for: every model of every building has the same disciplines linked into
+    /// it — AR, KR, ES, PS, PT, OV, VK — and every time they are picked by hand from the folders,
+    /// taking care not to grab the wrong building. Meanwhile everything in the project is already
+    /// named so there is nothing to pick: discipline folders are called <c>3.0_AR</c>,
+    /// <c>4.2_KR</c>, <c>5.1_ES</c>, and a model's name carries the building number —
+    /// <c>MK3-VSC-B01-AR</c>.
     ///
-    /// Поэтому окно ничего не спрашивает без нужды: номер корпуса берётся из имени открытой
-    /// модели, папка проекта — из того, где эта модель лежит, и поиск запускается сам при
-    /// открытии. Пользователю остаётся посмотреть на таблицу и нажать «Добавить».
+    /// So the window asks nothing it does not have to: the building number comes from the open
+    /// model's name, the project folder from where that model lives, and the search runs by
+    /// itself when the window opens. All that is left for the user is to look at the table and
+    /// press "Add".
     ///
-    /// Найденное показывается **до** того, как что-то будет связано, и это не перестраховка:
-    /// разбор имён — эвристика (см. <see cref="ModelKit"/>), а раздел, в котором моделей
-    /// оказалось несколько, окно отмечать отказывается — там выбор за человеком.
+    /// What was found is shown **before** anything is linked, and that is not overcaution: parsing
+    /// names is a heuristic (see <see cref="ModelKit"/>), and a discipline that turned up several
+    /// models is one the window refuses to check — the choice there belongs to the user.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class ModelKitWindow : Window
     {
-        private const string WindowTitle = "Комплект по корпусу";
+        private const string WindowTitle = "Building Kit";
 
         private readonly ObservableCollection<ModelKitRow> _rows = new ObservableCollection<ModelKitRow>();
 
@@ -51,14 +53,14 @@ namespace VladTools.UI
 
         private ModelFolder _root;
 
-        /// <summary>Итог последнего поиска: к нему дописывается число отмеченного.</summary>
-        private string _lastSummary = "Нажмите «Найти», чтобы обойти папки разделов.";
+        /// <summary>The result of the last search: the number checked is appended to it.</summary>
+        private string _lastSummary = "Press \"Find\" to walk the discipline folders.";
 
-        /// <summary>Модели, которые пользователь согласился добавить в список связей.</summary>
+        /// <summary>The models the user agreed to add to the link list.</summary>
         public IReadOnlyList<LinkEntry> Selected { get; private set; } = new List<LinkEntry>();
 
-        /// <param name="host">Открытая модель: из её имени берётся корпус, из её папки — где искать.</param>
-        /// <param name="known">Ключи моделей, уже собранных в таблице связей, — их предлагать незачем.</param>
+        /// <param name="host">The open model: the building comes from its name, the search root from its folder.</param>
+        /// <param name="known">Keys of the models already gathered in the link table — no point offering those.</param>
         public ModelKitWindow(HostModel host, LinkPreferences preferences, Func<HashSet<string>> known)
         {
             _host = host ?? new HostModel(null, null, string.Empty);
@@ -79,9 +81,9 @@ namespace VladTools.UI
                 IsEditable = true,
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip =
-                    "Кусок имени модели, по которому отбираются модели корпуса.\n" +
-                    "В списке — куски имени открытой модели; обычно нужен третий:\n" +
-                    "MK3-VSC-B01-AR → B01. Можно вписать своё."
+                    "The piece of the model name the building's models are matched by.\n" +
+                    "The list holds the pieces of the open model's name; usually the third one is needed:\n" +
+                    "MK3-VSC-B01-AR → B01. A custom value can be typed in too."
             };
 
             foreach (var token in ModelKit.Tokens(_host.Name))
@@ -97,20 +99,20 @@ namespace VladTools.UI
                 VerticalContentAlignment = VerticalAlignment.Center,
                 Padding = new Thickness(3, 2, 3, 2),
                 ToolTip =
-                    "Разделы, которые нужно догрузить. Папка считается папкой раздела,\n" +
-                    "если код стоит в её имени отдельным словом: «3.0_AR» — да, «Provod» — нет.\n" +
-                    "Список сохраняется в links\\_settings.txt (строки KIT)."
+                    "The disciplines that need to be linked in. A folder counts as a discipline\n" +
+                    "folder if the code stands in its name as a separate word: \"3.0_AR\" — yes, \"Provod\" — no.\n" +
+                    "The list is saved in links\\_settings.txt (the KIT lines)."
             };
 
             _deepBox = new CheckBox
             {
-                Content = "и во вложенных папках раздела",
+                Content = "and inside nested discipline folders",
                 IsChecked = _preferences.KitDeep,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 0, 0),
                 ToolTip =
-                    "Заходить внутрь папки раздела, если модели лежат не прямо в ней («3.0_AR\\Модели»).\n" +
-                    "Каждая папка облака — запрос по сети, поэтому глубже двух уровней поиск не идёт."
+                    "Descend into a discipline folder when the models do not sit right in it (\"3.0_AR\\Models\").\n" +
+                    "Every cloud folder is a network request, so the search never goes deeper than two levels."
             };
 
             _rootText = new TextBlock
@@ -125,7 +127,7 @@ namespace VladTools.UI
 
             _addButton = new Button
             {
-                Content = "Добавить",
+                Content = "Add",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -135,7 +137,7 @@ namespace VladTools.UI
 
             var cancelButton = new Button
             {
-                Content = "Закрыть",
+                Content = "Close",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -148,8 +150,9 @@ namespace VladTools.UI
             ShowRoot();
             UpdateSummary();
 
-            // Поиск сам, при открытии: спрашивать «искать ли», когда и корпус, и папка уже
-            // известны, значит просить лишний щелчок ровно за тем, ради чего окно и открыли.
+            // The search runs by itself when the window opens: asking "search now?" when both the
+            // building and the folder are already known would mean an extra click for exactly what
+            // the window was opened to do.
             Loaded += (sender, args) =>
             {
                 if (_root != null && Building.Length > 0)
@@ -157,23 +160,23 @@ namespace VladTools.UI
             };
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button cancelButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // корпус
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // разделы
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // где искать
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // building
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // disciplines
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // where to search
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Плагин ищет модели вашего корпуса в папках разделов и предлагает их связать. " +
-                       "Номер корпуса взят из имени открытой модели, папка — из того, где она лежит; " +
-                       "и то и другое можно поменять.",
+                Text = "The add-in looks for your building's models in the discipline folders and offers to link them. " +
+                       "The building number comes from the open model's name, the folder from where it lives; " +
+                       "both can be changed.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -181,11 +184,11 @@ namespace VladTools.UI
             root.Children.Add(hint);
 
             var building = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-            building.Children.Add(Caption("Корпус:"));
+            building.Children.Add(Caption("Building:"));
             building.Children.Add(_buildingBox);
             building.Children.Add(new TextBlock
             {
-                Text = _host.Name.Length > 0 ? "из имени: " + _host.Name : "открытая модель ещё не сохранена",
+                Text = _host.Name.Length > 0 ? "from the name: " + _host.Name : "the open model has not been saved yet",
                 Foreground = SystemColors.GrayTextBrush,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(12, 0, 0, 0)
@@ -195,7 +198,7 @@ namespace VladTools.UI
             root.Children.Add(building);
 
             var codes = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-            codes.Children.Add(Caption("Разделы:"));
+            codes.Children.Add(Caption("Disciplines:"));
             codes.Children.Add(_codesBox);
             codes.Children.Add(_deepBox);
 
@@ -203,13 +206,13 @@ namespace VladTools.UI
             root.Children.Add(codes);
 
             var where = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-            where.Children.Add(Caption("Где искать:"));
+            where.Children.Add(Caption("Search in:"));
             where.Children.Add(_rootText);
-            where.Children.Add(SourceButton("Папка модели", "Вернуться к папке, в которой лежит открытая модель.", OnRootAuto));
-            where.Children.Add(SourceButton("На сервере…", "Выбрать папку на Revit Server.", OnRootServer));
-            where.Children.Add(SourceButton("В BIM360…", "Выбрать папку в BIM360 / Autodesk Docs.", OnRootCloud));
-            where.Children.Add(SourceButton("На диске…", "Выбрать папку на диске или в сети — указанием любой модели в ней.", OnRootFile));
-            where.Children.Add(SourceButton("Найти", "Обойти папки разделов заново.", OnFind));
+            where.Children.Add(SourceButton("Model's folder", "Go back to the folder the open model lives in.", OnRootAuto));
+            where.Children.Add(SourceButton("On server…", "Choose a folder on Revit Server.", OnRootServer));
+            where.Children.Add(SourceButton("In BIM360…", "Choose a folder in BIM360 / Autodesk Docs.", OnRootCloud));
+            where.Children.Add(SourceButton("On disk…", "Choose a folder on disk or on the network — by pointing to any model in it.", OnRootFile));
+            where.Children.Add(SourceButton("Find", "Walk the discipline folders again.", OnFind));
 
             Grid.SetRow(where, 3);
             root.Children.Add(where);
@@ -290,10 +293,10 @@ namespace VladTools.UI
                 CellTemplate = GridBuilder.CheckBoxTemplate()
             });
 
-            grid.Columns.Add(GridBuilder.TextColumn("Раздел", "Discipline", new DataGridLength(80)));
-            grid.Columns.Add(GridBuilder.TextColumn("Модель", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
-            grid.Columns.Add(GridBuilder.TextColumn("Папка", "Folder", new DataGridLength(180)));
-            grid.Columns.Add(GridBuilder.TextColumn("Состояние", "Status", new DataGridLength(200)));
+            grid.Columns.Add(GridBuilder.TextColumn("Discipline", "Discipline", new DataGridLength(80)));
+            grid.Columns.Add(GridBuilder.TextColumn("Model", "Name", new DataGridLength(1, DataGridLengthUnitType.Star)));
+            grid.Columns.Add(GridBuilder.TextColumn("Folder", "Folder", new DataGridLength(180)));
+            grid.Columns.Add(GridBuilder.TextColumn("State", "Status", new DataGridLength(200)));
 
             grid.MouseDoubleClick += (sender, args) => ToggleSelected();
             grid.PreviewKeyDown += OnGridKeyDown;
@@ -301,11 +304,11 @@ namespace VladTools.UI
             return grid;
         }
 
-        // ───────────────────────────── откуда и что искать ─────────────────────────────
+        // ───────────────────────────── where and what to search ─────────────────────────────
 
         private string Building => (_buildingBox.Text ?? string.Empty).Trim();
 
-        /// <summary>Разделы из поля ввода; пусто — список по умолчанию, иначе искать было бы нечего.</summary>
+        /// <summary>The disciplines from the input field; empty — the default list, otherwise there would be nothing to search for.</summary>
         private IReadOnlyList<string> Codes
         {
             get
@@ -322,8 +325,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Номер корпуса при открытии: из имени открытой модели тем куском, который выбран
-        /// в настройках. Имени нет или кусков меньше — остаётся номер из прошлого раза.
+        /// The building number on opening: from the open model's name, the piece chosen in the
+        /// settings. No name, or fewer pieces than that — the number from last time is kept.
         /// </summary>
         private string InitialBuilding()
         {
@@ -333,8 +336,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Папка, с которой начинать: та, где лежит открытая модель (поднявшись из папки
-        /// раздела на уровень выше). Модель не сохранена — папка из прошлого раза.
+        /// The folder to start from: the one the open model lives in (climbing up a level from a
+        /// discipline folder). The model is not saved — the folder from last time.
         /// </summary>
         private ModelFolder StartFolder()
         {
@@ -350,7 +353,7 @@ namespace VladTools.UI
             }
             catch (Exception)
             {
-                // Папку не выяснили — её укажут кнопками рядом.
+                // The folder could not be worked out — it will be given through the buttons nearby.
                 return ModelFolder.Parse(_preferences.KitRoot);
             }
             finally
@@ -361,7 +364,7 @@ namespace VladTools.UI
 
         private void ShowRoot()
         {
-            _rootText.Text = _root == null ? "не выбрана" : _root.Display;
+            _rootText.Text = _root == null ? "not chosen" : _root.Display;
             _rootText.Foreground = _root == null ? Brushes.Firebrick : SystemColors.ControlTextBrush;
             _rootText.ToolTip = _rootText.Text;
         }
@@ -371,8 +374,8 @@ namespace VladTools.UI
             if (_host.Folder == null)
             {
                 MessageBox.Show(this,
-                    "Где лежит открытая модель, выяснить не удалось: проект ни разу не сохранён " +
-                    "или открыт отсоединённым. Укажите папку соседними кнопками.",
+                    "Could not work out where the open model lives: the project has never been saved " +
+                    "or is open as detached. Give the folder through the buttons next to this one.",
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -404,20 +407,20 @@ namespace VladTools.UI
             ShowRoot();
         }
 
-        // ───────────────────────────── поиск ─────────────────────────────
+        // ───────────────────────────── the search ─────────────────────────────
 
         private void OnFind(object sender, RoutedEventArgs e)
         {
             Search(true);
         }
 
-        /// <param name="loud">Показывать ли отказы диалогом: при поиске самим окном лишний диалог не нужен.</param>
+        /// <param name="loud">Whether to show failures as a dialog: when the window searches on its own, an extra dialog is not needed.</param>
         private void Search(bool loud)
         {
             if (Building.Length == 0)
             {
                 if (loud)
-                    MessageBox.Show(this, "Впишите номер корпуса — например «B01».", WindowTitle,
+                    MessageBox.Show(this, "Type in the building number — \"B01\", say.", WindowTitle,
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -425,7 +428,7 @@ namespace VladTools.UI
             if (_root == null)
             {
                 if (loud)
-                    MessageBox.Show(this, "Укажите папку, в которой искать.", WindowTitle,
+                    MessageBox.Show(this, "Give the folder to search in.", WindowTitle,
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -445,7 +448,7 @@ namespace VladTools.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, "Просмотреть папки не удалось.\n\n" + exception.Message,
+                MessageBox.Show(this, "Could not browse the folders.\n\n" + exception.Message,
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -454,8 +457,8 @@ namespace VladTools.UI
                 Mouse.OverrideCursor = cursor;
             }
 
-            // Поиск мог подняться на уровень выше — показываем ту папку, в которой он и шёл,
-            // иначе в следующий раз запомнилась бы не та.
+            // The search may have climbed a level up — we show the folder it actually ran in,
+            // otherwise the wrong one would be remembered next time.
             if (scan.Root != null)
             {
                 _root = scan.Root;
@@ -466,9 +469,10 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Раскладывает найденное по строкам. Отмечается только то, что можно отметить не гадая:
-        /// раздел с одной моделью. Несколько моделей в разделе — строки без галочек и приписка
-        /// в «Состоянии»: выбор за человеком, как и при подборе рабочего набора.
+        /// Lays out what was found into rows. Only what can be checked without guessing gets
+        /// checked: a discipline with one model. Several models in a discipline — rows with no
+        /// check box and a note in "State": the choice belongs to the user, the same as when
+        /// guessing a workset.
         /// </summary>
         private void Fill(ModelKitScan scan, IReadOnlyList<string> codes)
         {
@@ -505,22 +509,23 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Почему строка не отмечена. Свою же модель отличаем от чужой уже собранной: «уже
-        /// в списке» про открытый проект звучало бы как ошибка подбора, а это его законное место
-        /// в разделе — и раздел благодаря ей не попадёт в «не нашлось».
+        /// Why a row is not checked. The open model itself is told apart from someone else's
+        /// already-gathered one: "already in the list" about the open project would sound like a
+        /// matching mistake, when really it is that model's rightful place in the discipline —
+        /// and thanks to it the discipline will not end up among "not found".
         /// </summary>
         private string Status(ModelKitHit hit, int choices)
         {
             if (hit.Entry.Key == _host.Key)
-                return "это открытая модель";
+                return "this is the open model";
 
             if (hit.IsKnown)
-                return "уже в списке связей";
+                return "already in the link list";
 
-            return choices > 1 ? "в разделе несколько — выберите нужную" : string.Empty;
+            return choices > 1 ? "several in this discipline — choose the right one" : string.Empty;
         }
 
-        /// <summary>Непрочитанные папки — не мелочь: комплект в них мог оказаться неполным.</summary>
+        /// <summary>Unread folders are not a small thing: the kit found in them could be incomplete.</summary>
         private void Complain(ModelKitScan scan)
         {
             if (scan.Failures.Count == 0 && !scan.IsTruncated)
@@ -531,11 +536,11 @@ namespace VladTools.UI
 
             if (scan.Failures.Count > 0)
             {
-                text = "Не удалось прочитать папок: " + scan.Failures.Count + "\n• " +
+                text = "Could not read " + scan.Failures.Count + " folder(s):\n• " +
                        string.Join("\n• ", scan.Failures.Take(limit));
 
                 if (scan.Failures.Count > limit)
-                    text += "\n… и ещё " + (scan.Failures.Count - limit);
+                    text += "\n… and " + (scan.Failures.Count - limit) + " more";
             }
 
             if (scan.IsTruncated)
@@ -543,14 +548,14 @@ namespace VladTools.UI
                 if (text.Length > 0)
                     text += "\n\n";
 
-                text += "Просмотр остановлен: папок оказалось слишком много. " +
-                        "Похоже, поиск начат не с той папки — укажите ту, внутри которой лежат папки разделов.";
+                text += "The browse was stopped: there turned out to be too many folders. " +
+                        "The search was probably started from the wrong folder — point it at the one holding the discipline folders.";
             }
 
             MessageBox.Show(this, text, WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
-        // ───────────────────────────── таблица ─────────────────────────────
+        // ───────────────────────────── the table ─────────────────────────────
 
         private void OnRowChanged(object sender, PropertyChangedEventArgs e)
         {
@@ -593,22 +598,22 @@ namespace VladTools.UI
                 var missing = scan.Missing(codes);
 
                 _lastSummary = _rows.Count == 0
-                    ? "Ничего не нашлось. Прочитано папок: " + scan.Folders + "."
-                    : "Найдено моделей: " + _rows.Count +
-                      ", разделов: " + (codes.Count - missing.Count) + " из " + codes.Count +
-                      (missing.Count > 0 ? ". Не нашлось: " + string.Join(", ", missing) : string.Empty) + ".";
+                    ? "Nothing was found. Folders read: " + scan.Folders + "."
+                    : "Models found: " + _rows.Count +
+                      ", disciplines: " + (codes.Count - missing.Count) + " of " + codes.Count +
+                      (missing.Count > 0 ? ". Not found: " + string.Join(", ", missing) : string.Empty) + ".";
             }
 
             _status.Foreground = marked == 0 ? SystemColors.GrayTextBrush : SystemColors.ControlTextBrush;
             _status.Text = marked == 0
                 ? _lastSummary
-                : _lastSummary + " Отмечено: " + marked + ".";
+                : _lastSummary + " Checked: " + marked + ".";
 
             _addButton.IsEnabled = marked > 0;
-            _addButton.Content = marked > 0 ? "Добавить (" + marked + ")" : "Добавить";
+            _addButton.Content = marked > 0 ? "Add (" + marked + ")" : "Add";
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnAdd(object sender, RoutedEventArgs e)
         {
@@ -621,9 +626,9 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Настройки запоминаются при любом закрытии — как и в «Link Manager», из которого
-        /// окно открыто: в файл их пишет он сам, здесь только заполняются поля.
-        /// Ради этого всё и затевалось: во второй раз окно откроется уже настроенным.
+        /// The settings are remembered whenever the window closes — just like in "Link Manager",
+        /// the window this one is opened from: that one writes the file itself, here only the
+        /// fields are filled in. That is the whole point: the second time, the window opens already set up.
         /// </summary>
         protected override void OnClosed(EventArgs e)
         {
@@ -636,9 +641,9 @@ namespace VladTools.UI
             if (_root != null)
                 _preferences.KitRoot = _root.Format();
 
-            // Номер куска запоминается, только если выбранное действительно им является:
-            // вписанное руками значение к разбору имени отношения не имеет, и подменять
-            // им настройку — значит испортить подстановку в следующем проекте.
+            // The piece number is remembered only if what is chosen is actually that piece:
+            // a value typed in by hand has nothing to do with parsing the name, and substituting
+            // it into the setting would spoil the guess in the next project.
             var tokens = ModelKit.Tokens(_host.Name);
             for (var index = 0; index < tokens.Count; index++)
             {

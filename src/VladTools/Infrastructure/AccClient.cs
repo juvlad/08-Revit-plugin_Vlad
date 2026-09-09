@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Учётная запись (hub) BIM360/ACC. Регион нужен, чтобы собрать путь к облачной модели.</summary>
+    /// <summary>A BIM360/ACC account (hub). The region is needed to build the path to a cloud model.</summary>
     internal sealed class AccHub
     {
         public AccHub(string id, string name, string region)
@@ -17,11 +17,11 @@ namespace VladTools.Infrastructure
         public string Id { get; }
         public string Name { get; }
 
-        /// <summary>«US», «EMEA» и т. п. — как его назвал Autodesk; Revit принимает эту же строку.</summary>
+        /// <summary>"US", "EMEA" and so on — as Autodesk named it; Revit accepts the very same string.</summary>
         public string Region { get; }
     }
 
-    /// <summary>Проект внутри учётной записи.</summary>
+    /// <summary>A project inside an account.</summary>
     internal sealed class AccProject
     {
         public AccProject(string id, string name, string region)
@@ -37,8 +37,8 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
-    /// Строка содержимого папки: либо вложенная папка, либо модель Revit.
-    /// У модели заполнены оба GUID — из них собирается путь для связи.
+    /// An entry in a folder's contents: either a nested folder or a Revit model.
+    /// A model has both GUIDs filled in — the link path is built from them.
     /// </summary>
     internal sealed class AccEntry
     {
@@ -58,13 +58,13 @@ namespace VladTools.Infrastructure
         public Guid ProjectGuid { get; }
         public Guid ModelGuid { get; }
 
-        /// <summary>Модель совмещённая (C4R) — только такую Revit умеет связать из облака.</summary>
+        /// <summary>The model is workshared (C4R) — that is the only kind Revit can link from the cloud.</summary>
         public bool IsCloudModel => !IsFolder && ProjectGuid != Guid.Empty && ModelGuid != Guid.Empty;
     }
 
     /// <summary>
-    /// Сама папка: как называется и в какой лежит. Нужна, чтобы подниматься вверх по дереву —
-    /// от папки, в которой лежит открытая модель, к папке проекта, где стоят папки разделов.
+    /// The folder itself: what it is called and which folder holds it. Needed for climbing the tree
+    /// upwards — from the folder holding the open model to the project folder with the discipline folders.
     /// </summary>
     internal sealed class AccFolder
     {
@@ -78,27 +78,27 @@ namespace VladTools.Infrastructure
         public string Id { get; }
         public string Name { get; }
 
-        /// <summary>Папка уровнем выше; у корневой пусто.</summary>
+        /// <summary>The folder one level up; empty on the root folder.</summary>
         public string ParentId { get; }
     }
 
     /// <summary>
-    /// Чтение дерева BIM360/ACC через Autodesk Platform Services (Data Management API):
-    /// учётные записи → проекты → корневые папки → содержимое папок.
+    /// Reading the BIM360/ACC tree through Autodesk Platform Services (the Data Management API):
+    /// accounts → projects → root folders → folder contents.
     ///
-    /// Токен берётся у самого Revit (<see cref="AutodeskSession"/>), поэтому ни регистрации
-    /// приложения в APS, ни отдельного окна входа не нужно — работает та учётная запись,
-    /// под которой пользователь уже сидит в Revit.
+    /// The token comes from Revit itself (<see cref="AutodeskSession"/>), so neither registering an
+    /// application in APS nor a separate sign-in window is needed — it works under the account the
+    /// user is already signed in with inside Revit.
     ///
-    /// Связать из облака можно только совмещённую модель (C4R): у неё в ответе есть
-    /// projectGuid и modelGuid, а больше Revit ничего и не спрашивает. Обычный .rvt,
-    /// просто положенный в папку ACC, такой пары не имеет и в список не попадает.
+    /// Only a workshared model (C4R) can be linked from the cloud: the response carries a projectGuid
+    /// and a modelGuid for it, and Revit asks for nothing else. A plain .rvt merely dropped into an
+    /// ACC folder has no such pair and does not make it into the list.
     /// </summary>
     internal static class AccClient
     {
         private const string Api = "https://developer.api.autodesk.com";
 
-        /// <summary>Сколько страниц ответа готовы пролистать: защита от папки на десятки тысяч файлов.</summary>
+        /// <summary>How many response pages we are willing to leaf through: a guard against a folder with tens of thousands of files.</summary>
         private const int PageLimit = 20;
 
         public static IReadOnlyList<AccHub> Hubs(string token)
@@ -131,7 +131,7 @@ namespace VladTools.Infrastructure
                 if (id.Length == 0)
                     continue;
 
-                // Регион проекта точнее региона учётной записи, но есть не всегда.
+                // The project region is more precise than the account region, but it is not always there.
                 var region = Json.Str(item, "attributes", "extension", "data", "region");
                 if (region.Length == 0)
                     region = hub.Region;
@@ -142,7 +142,7 @@ namespace VladTools.Infrastructure
             return projects.OrderBy(project => project.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         }
 
-        /// <summary>Корневые папки проекта — то, что в вебе видно как «Project Files», «Plans» и т. п.</summary>
+        /// <summary>The project root folders — what the web shows as "Project Files", "Plans" and so on.</summary>
         public static IReadOnlyList<AccEntry> TopFolders(string token, AccHub hub, AccProject project)
         {
             var url = Api + "/project/v1/hubs/" + Escape(hub.Id) + "/projects/" + Escape(project.Id) + "/topFolders";
@@ -155,10 +155,10 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Содержимое папки: вложенные папки и модели Revit.
-        /// GUID моделей берутся из раздела included того же ответа — там лежат последние версии
-        /// файлов. Отдельный запрос за каждой моделью не нужен, а на папке в сотню файлов
-        /// это разница между секундой и минутой.
+        /// A folder's contents: nested folders and Revit models.
+        /// The model GUIDs are taken from the "included" section of the same response — the latest file
+        /// versions live there. A separate request per model is not needed, and on a folder of a hundred
+        /// files that is the difference between a second and a minute.
         /// </summary>
         public static IReadOnlyList<AccEntry> Contents(string token, AccProject project, string folderId)
         {
@@ -166,9 +166,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// То же по одному идентификатору проекта. Он же собирается из GUID открытой облачной
-        /// модели (<see cref="ProjectId"/>), когда проект известен, а хаб — нет: смотреть кладовку
-        /// целиком ради имени хаба незачем.
+        /// The same, given a project id alone. It is also assembled from the GUID of the open cloud
+        /// model (<see cref="ProjectId"/>) when the project is known but the hub is not: there is no
+        /// point in walking the whole storeroom just for the hub name.
         /// </summary>
         public static IReadOnlyList<AccEntry> Contents(string token, string projectId, string folderId)
         {
@@ -216,9 +216,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Сведения о самой папке: имя и папка уровнем выше. Data Management отдаёт их одним
-        /// запросом, и это единственный способ подняться по дереву вверх — вниз-то ведут
-        /// содержимое и topFolders, а вверх ничего не ведёт.
+        /// Information about the folder itself: its name and the folder one level up. Data Management
+        /// returns both in a single request, and that is the only way up the tree — downwards there are
+        /// contents and topFolders, upwards there is nothing.
         /// </summary>
         public static AccFolder Folder(string token, string projectId, string folderId)
         {
@@ -234,9 +234,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Идентификатор проекта Data Management по GUID проекта из облачного пути Revit:
-        /// у BIM360/ACC это тот же GUID с приставкой «b.». Проверяется само собой — с неверным
-        /// идентификатором служба ответит отказом, и кнопка предложит выбрать папку руками.
+        /// The Data Management project id from the project GUID of a Revit cloud path: in BIM360/ACC it
+        /// is the same GUID with a "b." prefix. It checks itself — with a wrong id the service refuses,
+        /// and the button offers picking the folder by hand.
         /// </summary>
         public static string ProjectId(string projectGuid)
         {
@@ -245,9 +245,9 @@ namespace VladTools.Infrastructure
             return guid.Length == 0 || guid.StartsWith("b.", StringComparison.OrdinalIgnoreCase) ? guid : "b." + guid;
         }
 
-        // ───────────────────────────── разбор ответа ─────────────────────────────
+        // ───────────────────────────── parsing the response ─────────────────────────────
 
-        /// <summary>Последние версии файлов папки, разложенные по идентификатору самого файла.</summary>
+        /// <summary>The latest versions of the folder's files, keyed by the file id itself.</summary>
         private static Dictionary<string, object> VersionsByItem(object page)
         {
             var map = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -274,7 +274,7 @@ namespace VladTools.Infrastructure
             return Guid.TryParse(text, out value) ? value : Guid.Empty;
         }
 
-        // ───────────────────────────── запросы ─────────────────────────────
+        // ───────────────────────────── requests ─────────────────────────────
 
         private static IEnumerable<object> Pages(string url, string token)
         {
@@ -282,8 +282,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Ответы Data Management разбиты на страницы: следующая лежит в links.next.href.
-        /// Идём по ним, пока есть ссылка, но не больше <see cref="PageLimit"/> раз.
+        /// Data Management responses come in pages: the next one is at links.next.href.
+        /// We follow them while a link exists, but no more than <see cref="PageLimit"/> times.
         /// </summary>
         private static IEnumerable<object> RawPages(string url, string token)
         {

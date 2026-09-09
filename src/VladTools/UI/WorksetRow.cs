@@ -3,13 +3,13 @@ using System.ComponentModel;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Строка списка рабочих наборов в окне «Link Manager»: имя набора и галочка,
-    /// которая относится сразу ко всем выбранным связям.
+    /// A row of the workset list in the "Link Manager" window: the workset name and a check box that
+    /// applies to every selected link at once.
     ///
-    /// Набор здесь — это именно имя, а не набор конкретной модели: у каждой модели свои
-    /// идентификаторы наборов, и единственное, что у «00_Shared levels and grids» общее
-    /// во всех связях, — это имя. Поэтому <see cref="LinkCount"/> и нужен: он показывает,
-    /// в скольких выбранных моделях такой набор вообще есть.
+    /// A workset here is a name, not the workset of a particular model: every model has its own
+    /// workset ids, and the only thing "00_Shared levels and grids" has in common across all links
+    /// is the name. That is why <see cref="LinkCount"/> exists: it shows how many of the selected
+    /// models contain such a workset at all.
     /// </summary>
     internal sealed class WorksetRow : INotifyPropertyChanged
     {
@@ -28,12 +28,12 @@ namespace VladTools.UI
         public string Name { get; }
 
         /// <summary>
-        /// Имя пришло из сохранённых настроек, а не из прочитанной модели.
-        /// Такое имя может в этих связях и не встретиться — это не ошибка.
+        /// The name came from the saved settings rather than from a model that was read.
+        /// Such a name may not occur in these links at all — that is not an error.
         /// </summary>
         public bool IsRemembered { get; }
 
-        /// <summary>Галочка: этот набор трогать во всех выбранных связях.</summary>
+        /// <summary>The check box: act on this workset in every selected link.</summary>
         public bool IsSelected
         {
             get { return _isSelected; }
@@ -47,7 +47,7 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>В скольких выбранных моделях такой набор нашёлся; наборы не читали — 0.</summary>
+        /// <summary>In how many of the selected models the workset was found; 0 if the worksets were never read.</summary>
         public int LinkCount
         {
             get { return _linkCount; }
@@ -63,8 +63,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Наборы отмеченных связей уже читали, так что <see cref="LinkCount"/> — это счёт,
-        /// а не «ещё не смотрели». Без этого признака ноль значил и то и другое.
+        /// The worksets of the checked links have already been read, so <see cref="LinkCount"/> is a
+        /// count rather than "not looked at yet". Without this flag zero meant both.
         /// </summary>
         public bool IsCounted
         {
@@ -80,21 +80,21 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Подпись столбца «Где есть».</summary>
+        /// <summary>The caption of the "Found in" column.</summary>
         public string Where
         {
             get
             {
                 if (LinkCount > 0)
-                    return "в " + LinkCount + " связях";
+                    return "in " + LinkCount + " links";
 
-                // Прочитали и не нашли — совсем не то же, что «не читали»: у имени, которого
-                // нет ни в одной связи, закрывать нечего, и это самая частая причина
-                // «набор не закрылся». Такую строку пользователь должен видеть.
+                // Read and not found is nothing like "not read": a name that occurs in no link has
+                // nothing to close, and that is the most common reason behind "the workset did not
+                // close". The user has to see such a row.
                 if (IsCounted)
-                    return "нет ни в одной";
+                    return "in none of them";
 
-                return IsRemembered ? "из прошлого раза" : string.Empty;
+                return IsRemembered ? "from last time" : string.Empty;
             }
         }
 

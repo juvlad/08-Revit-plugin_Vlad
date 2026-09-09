@@ -5,236 +5,237 @@ using VladTools.Infrastructure;
 namespace VladTools
 {
     /// <summary>
-    /// Точка входа надстройки: создаёт вкладку и кнопки на ленте Revit.
+    /// The add-in's entry point: creates the tab and buttons on the Revit ribbon.
     /// </summary>
     public class App : IExternalApplication
     {
         public const string TabName = "Vlad Tools";
-        private const string FamilyPanelName = "Семейства";
-        private const string ProjectPanelName = "Проект";
+        private const string FamilyPanelName = "Families";
+        private const string ProjectPanelName = "Project";
 
         public Result OnStartup(UIControlledApplication application)
         {
-            // Имя REST-службы Revit Server включает год Revit; берём его у самого Revit,
-            // чтобы одна и та же сборка не путала 2022 и 2024 при обращении к серверу.
+            // The Revit Server REST service name includes the Revit year; we take it from Revit
+            // itself, so the same build does not confuse 2022 and 2024 when talking to the server.
             RevitServerClient.ServiceVersion = application.ControlledApplication.VersionNumber;
 
             var familyPanel = Ribbon.GetOrCreatePanel(application, TabName, FamilyPanelName);
 
-            // ───────────────── Кнопка 1: 3д миниатюра ─────────────────
+            // ───────────────── Button 1: 3D Thumbnail ─────────────────
             Ribbon.AddPushButton(
                 familyPanel,
                 name: "VladTools_Thumbnail3D",
-                text: "3д\nминиатюра",
+                text: "3D\nThumbnail",
                 commandType: typeof(Create3DThumbnailCommand),
-                tooltip: "Создаёт в текущем семействе 3D-вид «" + Create3DThumbnailCommand.ViewName + "».",
+                tooltip: "Creates a \"" + Create3DThumbnailCommand.ViewName + "\" 3D view in the current family.",
                 longDescription:
-                    "Вид настраивается автоматически:\n" +
-                    "• аннотации выключены;\n" +
-                    "• соединители скрыты;\n" +
-                    "• стиль графики — «Реалистичный»;\n" +
-                    "• уровень детализации — «Высокий».\n\n" +
-                    "Если такой вид уже есть, настройки применяются к нему повторно.",
+                    "The view is configured automatically:\n" +
+                    "• annotations off;\n" +
+                    "• connectors hidden;\n" +
+                    "• graphics style — \"Realistic\";\n" +
+                    "• detail level — \"Fine\".\n\n" +
+                    "If such a view already exists, the settings are reapplied to it.",
                 iconBaseName: "thumbnail3d");
 
-            // ───────────────── Кнопка 2: Удалить параметры ─────────────────
+            // ───────────────── Button 2: Delete Parameters ─────────────────
             Ribbon.AddPushButton(
                 familyPanel,
                 name: "VladTools_DeleteSharedParameters",
-                text: "Удалить\nпараметры",
+                text: "Delete\nParameters",
                 commandType: typeof(DeleteSharedParametersCommand),
-                tooltip: "Удаляет из открытого семейства отмеченные галочкой общие параметры.",
+                tooltip: "Deletes the checked shared parameters from the open family.",
                 longDescription:
-                    "Показывает все общие параметры семейства с галочкой слева у каждого.\n" +
-                    "Галочку можно поставить вручную (в шапке — все сразу), а можно правилом:\n" +
-                    "«Отобрать параметры, начинающиеся с» или «…содержащие» и строка, например «SP».\n" +
-                    "Правило работает как поиск: подходящие остаются в таблице и отмечаются,\n" +
-                    "остальные из неё уходят. Галочка «Инвертировать поиск» переворачивает правило —\n" +
-                    "остаётся всё, кроме подходящих. Дальше галочки правятся руками.\n\n" +
-                    "Параметры, которыми помечены размеры, из списка убраны: удалить такой —\n" +
-                    "значит снять метку и сломать параметрику. Показать их можно, сняв галочку\n" +
-                    "«Не показывать параметры, используемые в размерах».\n\n" +
-                    "Затрагивается только сам открытый документ семейства, вложенные семейства — нет.",
+                    "Shows every shared parameter of the family with a check box on the left of each.\n" +
+                    "The box can be checked by hand (all at once from the header), or by a rule:\n" +
+                    "\"Match parameters starting with\" or \"…containing\" plus a string, \"SP\" say.\n" +
+                    "The rule works like a search: matches stay in the table and get checked,\n" +
+                    "the rest leave it. \"Invert the search\" flips the rule —\n" +
+                    "everything except the matches stays. The check marks can then be edited by hand.\n\n" +
+                    "Parameters that label dimensions are left out of the list: deleting one means\n" +
+                    "dropping the label and breaking the parametrics. They can be shown by clearing\n" +
+                    "\"Hide parameters used on dimensions\".\n\n" +
+                    "Only the open family document itself is affected, not nested families.",
                 iconBaseName: "deleteparams");
 
-            // ───────────────── Кнопка 3: Добавить формулы ─────────────────
+            // ───────────────── Button 3: Add Formulas ─────────────────
             Ribbon.AddPushButton(
                 familyPanel,
                 name: "VladTools_AddFormulas",
-                text: "Добавить\nформулы",
+                text: "Add\nFormulas",
                 commandType: typeof(AddFormulasCommand),
-                tooltip: "Задаёт параметрам открытого семейства формулы из сохранённого списка.",
+                tooltip: "Assigns formulas from a saved list to the parameters of the open family.",
                 longDescription:
-                    "Окно открывается уже заполненным: в первый раз — формулами по умолчанию\n" +
-                    "(ADSK_Размер_Диаметр и ADSK_Масса), дальше — списком, который собрал пользователь.\n" +
-                    "Список хранится в профиле Windows и подставляется в каждое следующее семейство.\n\n" +
-                    "Каждая строка проверяется по открытому семейству: если параметра из формулы нет,\n" +
-                    "в столбце «Статус» пишется «Параметр … не найден» и такая формула не применяется.\n" +
-                    "Все отмеченные строки применяются одним пакетом.",
+                    "The window opens already filled in: the first time, with the default formulas\n" +
+                    "(ADSK_Diameter and ADSK_Mass), afterwards with the list the user has built up.\n" +
+                    "The list is stored in the Windows profile and offered in every family that follows.\n\n" +
+                    "Every row is validated against the open family: if a formula's parameter is\n" +
+                    "missing, the \"Status\" column reads \"Parameter … not found\" and that formula is\n" +
+                    "not applied. Every checked row is applied as one batch.",
                 iconBaseName: "formulas");
 
-            // ───────────────── Кнопка 4: Переименовать вложенные ─────────────────
+            // ───────────────── Button 4: Rename Nested ─────────────────
             Ribbon.AddPushButton(
                 familyPanel,
                 name: "VladTools_RenameNested",
-                text: "Переименовать\nвложенные",
+                text: "Rename\nNested",
                 commandType: typeof(RenameNestedFamiliesCommand),
-                tooltip: "Пакетно переименовывает вложенные семейства открытого семейства.",
+                tooltip: "Batch-renames the nested families of the open family.",
                 longDescription:
-                    "Окно работает как «Найти и заменить» в Excel: в поле «Найти» — «DN», в поле\n" +
-                    "«Заменить на» — «ДУ», и в столбце «Новое имя» сразу видно, что получится\n" +
-                    "у каждого вложенного семейства. Отдельно можно дописать текст в начало и в конец,\n" +
-                    "а любую ячейку «Новое имя» — поправить руками.\n\n" +
-                    "Справа — буфер имён: часто повторяющиеся куски имён (например «(ФТ)-ФЛ_ГОСТ…»)\n" +
-                    "сохраняются в профиле Windows и подставляются в поля в следующем семействе.\n\n" +
-                    "Переименовать можно и типоразмеры вложенных семейств — список выбирается\n" +
-                    "в поле «Показывать». Имя самого открытого семейства не меняется.",
+                    "The window works like \"Find and Replace\" in Excel: type \"DN\" into \"Find\" and\n" +
+                    "\"DIA\" into \"Replace with\", and the \"New name\" column shows right away what every\n" +
+                    "nested family will become. A prefix and a suffix can be added on top, and any\n" +
+                    "\"New name\" cell can be fixed by hand.\n\n" +
+                    "On the right — the name buffer: name fragments that repeat often (\"(FT)-FL_GOST…\",\n" +
+                    "say) are saved to the Windows profile and pasted into the fields in the next family.\n\n" +
+                    "Types of the nested families can be renamed too — pick the list in the \"Show\"\n" +
+                    "field. The name of the open family itself is never changed.",
                 iconBaseName: "renamenested");
 
-            // ──────── Следующие кнопки для семейств добавлять здесь, по тому же образцу ────────
+            // ──────── Add the next family buttons here, following the same pattern ────────
 
             var projectPanel = Ribbon.GetOrCreatePanel(application, TabName, ProjectPanelName);
 
-            // ───────────────── Кнопка 5: Удалить общие параметры (проект) ─────────────────
+            // ───────────────── Button 5: Delete Project Shared Parameters ─────────────────
             Ribbon.AddPushButton(
                 projectPanel,
                 name: "VladTools_DeleteProjectParameters",
-                text: "Удалить общие\nпараметры",
+                text: "Delete Shared\nParameters",
                 commandType: typeof(DeleteProjectParametersCommand),
-                tooltip: "Удаляет из открытого проекта отмеченные галочкой общие параметры.",
+                tooltip: "Deletes the checked shared parameters from the open project.",
                 longDescription:
-                    "Для моделей, пришедших со стадии П: сотни чужих общих параметров сносятся пачкой.\n\n" +
-                    "Показывает все общие параметры файла с галочкой слева у каждого.\n" +
-                    "Поле «Показывать» делит их на параметры проекта (привязанные к категориям)\n" +
-                    "и не привязанные — те, что приехали с загруженными семействами.\n\n" +
-                    "Галочку можно поставить вручную (в шапке — все сразу), а можно правилом:\n" +
-                    "«Отобрать параметры, начинающиеся с» или «…содержащие» и строка, например «SP».\n" +
-                    "Правило работает как поиск: подходящие остаются в таблице и отмечаются,\n" +
-                    "остальные из неё уходят. Галочка «Инвертировать поиск» переворачивает правило —\n" +
-                    "остаётся всё, кроме подходящих. Удаляется только то, что показано в таблице.\n\n" +
-                    "Кнопка «Проверить семейства» находит параметры, которыми помечены размеры\n" +
-                    "внутри загруженных семейств, и убирает их из списка — чтобы семейства не ломались.\n" +
-                    "Проверка открывает каждое семейство и на большой модели занимает минуты,\n" +
-                    "поэтому сама не запускается, а результат сохраняется в профиле Windows:\n" +
-                    "дальше открываются только новые и изменившиеся семейства.\n\n" +
-                    "Вместе с параметром пропадают его значения во всех элементах проекта.",
+                    "For models that arrived from the DD stage: hundreds of somebody else's shared\n" +
+                    "parameters are swept away in a batch.\n\n" +
+                    "Shows every shared parameter in the file with a check box on the left of each.\n" +
+                    "The \"Show\" field splits them into project parameters (bound to categories)\n" +
+                    "and unbound ones — the parameters that arrived with loaded families.\n\n" +
+                    "The box can be checked by hand (all at once from the header), or by a rule:\n" +
+                    "\"Match parameters starting with\" or \"…containing\" plus a string, \"SP\" say.\n" +
+                    "The rule works like a search: matches stay in the table and get checked,\n" +
+                    "the rest leave it. \"Invert the search\" flips the rule —\n" +
+                    "everything except the matches stays. Only what is shown in the table gets deleted.\n\n" +
+                    "The \"Scan Families\" button finds the parameters that label dimensions inside the\n" +
+                    "loaded families and removes them from the list — so the families do not break.\n" +
+                    "The scan opens every family and takes minutes on a large model,\n" +
+                    "so it never starts on its own; the result is saved in the Windows profile,\n" +
+                    "so from then on only new and changed families are opened.\n\n" +
+                    "Along with a parameter, its values on every project element disappear too.",
                 iconBaseName: "deleteprojectparams");
 
-            // ───────────────── Кнопка 6: Очистка (проект) ─────────────────
+            // ───────────────── Button 6: Cleanup (project) ─────────────────
             Ribbon.AddPushButton(
                 projectPanel,
                 name: "VladTools_Cleanup",
-                text: "Очистка",
+                text: "Cleanup",
                 commandType: typeof(CleanupCommand),
-                tooltip: "Убирает из открытого проекта отмеченное: листы, виды, фильтры, группы, неиспользуемые семейства.",
+                tooltip: "Removes checked items from the open project: sheets, views, filters, groups, unused families.",
                 longDescription:
-                    "Для моделей, которые нужны только как геометрия: чужое оформление снимается разом,\n" +
-                    "а не по одному узлу браузера.\n\n" +
-                    "Окно предлагает восемь пунктов, у каждого — своя галочка и число найденного\n" +
-                    "в этой модели; «Выбрать всё» отмечает те, которым есть что убирать:\n" +
-                    "• неиспользуемые семейства — загруженные семейства и типоразмеры без единой ссылки;\n" +
-                    "• все листы — вместе с видовыми экранами и рамками, виды при этом остаются;\n" +
-                    "• все фильтры — и фильтры видов, и фильтры выбора;\n" +
-                    "• все виды — планы, разрезы, фасады, 3D, узлы, чертёжные виды;\n" +
-                    "• все легенды;\n" +
-                    "• все спецификации;\n" +
-                    "• группы модели — распускаются, элементы остаются на своих местах;\n" +
-                    "• неиспользуемые группы — типы групп, не размещённые в модели.\n\n" +
-                    "Активный вид и шаблоны видов не трогаются. Всё отмеченное выполняется одной\n" +
-                    "операцией, поэтому откатывается одним Ctrl+Z; сохранить проект перед очисткой\n" +
-                    "всё равно стоит.",
+                    "For models needed only as geometry: someone else's presentation is stripped off\n" +
+                    "in one go rather than one browser node at a time.\n\n" +
+                    "The window offers eight items, each with its own check box and the number found\n" +
+                    "in this model; \"Select all\" checks the ones that have something to remove:\n" +
+                    "• unused families — loaded families and types with no reference at all;\n" +
+                    "• every sheet — together with its viewports and titleblocks, the views themselves stay;\n" +
+                    "• every filter — both view filters and selection filters;\n" +
+                    "• every view — plans, sections, elevations, 3D, callouts, drafting views;\n" +
+                    "• every legend;\n" +
+                    "• every schedule;\n" +
+                    "• model groups — ungrouped, the elements stay where they are;\n" +
+                    "• unused groups — group types not placed in the model.\n\n" +
+                    "The active view and view templates are left alone. Everything checked runs as one\n" +
+                    "operation, so it rolls back with a single Ctrl+Z; saving the project before\n" +
+                    "cleaning up is still worth doing.",
                 iconBaseName: "cleanup");
 
-            // ───────────────── Кнопка 7: Link Manager (проект) ─────────────────
+            // ───────────────── Button 7: Link Manager (project) ─────────────────
             Ribbon.AddPushButton(
                 projectPanel,
                 name: "VladTools_LinkManager",
                 text: "Link\nManager",
                 commandType: typeof(LinkManagerCommand),
-                tooltip: "Связывает с проектом сразу пачку моделей: файлы, Revit Server и BIM360.",
+                tooltip: "Links a whole batch of models to the project at once: files, Revit Server and BIM360.",
                 longDescription:
-                    "В самом Revit каждая связь вставляется своим диалогом, и в каждом заново выбирается\n" +
-                    "одно и то же размещение и заново снимаются галочки с рабочих наборов.\n" +
-                    "Здесь список собирается целиком, а настройка задаётся один раз на всю пачку.\n\n" +
-                    "Модели добавляются четырьмя способами:\n" +
-                    "• «Файлы…» — обычные .rvt с диска или из сетевой папки;\n" +
-                    "• «Revit Server…» — дерево папок сервера с галочками у моделей;\n" +
-                    "• «BIM360…» — учётные записи, проекты и папки Autodesk Docs; вход берётся\n" +
-                    "  из самого Revit, отдельно логиниться не нужно;\n" +
-                    "• «BIM360 по GUID…» — если до облака не достучаться.\n\n" +
-                    "Собранный список сохраняется набором в профиле Windows и подставляется\n" +
-                    "в следующий проект целиком.\n\n" +
-                    "Размещение («По общим координатам» и другие) выбирается одно для всех связей.\n" +
-                    "Рабочие наборы внутри связей отмечаются по имени — тоже сразу для всех:\n" +
-                    "«00_Shared levels and grids» закрывается в каждой связи одной галочкой,\n" +
-                    "а правило вроде «00_» ловит его и там, где он назван иначе.\n\n" +
-                    "Рабочий набор самого проекта, куда положить связь, выбирается у каждой связи\n" +
-                    "отдельно — столбцом в таблице; для общего набора есть «Задать отмеченным».\n\n" +
-                    "Связи, уже стоящие в проекте, видны в списке и могут быть перезагружены\n" +
-                    "с новой настройкой наборов; размещение у них Revit менять не даёт.",
+                    "In Revit itself every link goes in through its own dialog, and each time the same\n" +
+                    "placement is chosen again and the same workset boxes are cleared again.\n" +
+                    "Here the list is gathered as a whole, and the setup is done once for the whole batch.\n\n" +
+                    "Models are added four ways:\n" +
+                    "• \"Files…\" — ordinary .rvt files from disk or a network folder;\n" +
+                    "• \"Revit Server…\" — a folder tree with a check box on every model;\n" +
+                    "• \"BIM360…\" — Autodesk Docs accounts, projects and folders; the sign-in\n" +
+                    "  comes from Revit itself, no separate login needed;\n" +
+                    "• \"BIM360 by GUID…\" — when the cloud cannot be reached.\n\n" +
+                    "The gathered list can be saved as a set in the Windows profile and offered\n" +
+                    "in full in the next project.\n\n" +
+                    "The placement (\"By shared coordinates\" and the rest) is chosen once for all links.\n" +
+                    "The worksets inside the links are checked by name — also for all of them at once:\n" +
+                    "\"00_Shared levels and grids\" is closed in every link with one check box,\n" +
+                    "and a rule like \"00_\" catches it even where it is named differently.\n\n" +
+                    "The project's own workset a link goes into is chosen per link —\n" +
+                    "a column in the table; \"Set for checked\" applies one workset to several at once.\n\n" +
+                    "Links already in the project show up in the list and can be reloaded\n" +
+                    "with a new workset setup; Revit will not let their placement be changed.",
                 iconBaseName: "linkmanager");
 
-            // ───────────────── Кнопка 8: Базовый файл (проект) ─────────────────
+            // ───────────────── Button 8: Base File (project) ─────────────────
             Ribbon.AddPushButton(
                 projectPanel,
                 name: "VladTools_BaseFile",
-                text: "Базовый\nфайл",
+                text: "Base\nFile",
                 commandType: typeof(BaseFileCommand),
-                tooltip: "Связывает координационный файл и сразу настраивает по нему проект.",
+                tooltip: "Links the coordination file and immediately sets up the project against it.",
                 longDescription:
-                    "То, с чего начинается модель раздела: связать базовый файл, получить из него\n" +
-                    "общие координаты, назвать площадку, закрепить связь и перейти в рабочий набор,\n" +
-                    "куда лягут уровни и оси. В Revit это пять команд в разных углах ленты,\n" +
-                    "и порядок между ними важен.\n\n" +
-                    "Модель выбирается так же, как в «Link Manager»: файл с диска, Revit Server,\n" +
-                    "BIM360 или пара GUID. Выбранная модель и все настройки запоминаются в профиле\n" +
-                    "Windows и подставляются в следующем разделе.\n\n" +
-                    "Рабочего набора «00_Shared levels and grids» в проекте ещё нет — команда его создаст.\n\n" +
-                    "Само копирование уровней и осей мониторингом кнопка не делает: создавать связи\n" +
-                    "мониторинга Revit API не умеет. Последним шагом она открывает режим\n" +
-                    "«Копирование/Мониторинг → Выбрать связь» — остаётся выбрать связь и элементы.",
+                    "What every discipline model starts with: link the base file, acquire shared\n" +
+                    "coordinates from it, name the site, pin the link and switch to the workset\n" +
+                    "the levels and grids will go into. In Revit that is five commands scattered\n" +
+                    "across the ribbon, and the order between them matters.\n\n" +
+                    "The model is chosen the same way as in \"Link Manager\": a file from disk, Revit\n" +
+                    "Server, BIM360, or a pair of GUIDs. The chosen model and every setting are\n" +
+                    "remembered in the Windows profile and offered again in the next discipline.\n\n" +
+                    "If the \"00_Shared levels and grids\" workset does not exist yet, the command creates it.\n\n" +
+                    "The button does not do the actual copy-monitoring of levels and grids: the Revit\n" +
+                    "API cannot create monitoring links. As its last step it opens\n" +
+                    "\"Copy/Monitor → Select Link\" — all that is left is picking the link and the elements.",
                 iconBaseName: "basefile");
 
-            // ───────────────── Кнопка 9: Авторазмеры (проект) ─────────────────
+            // ───────────────── Button 9: Auto Dimensions (project) ─────────────────
             Ribbon.AddPushButton(
                 projectPanel,
                 name: "VladTools_AutoDimension",
-                text: "Авто\nразмеры",
+                text: "Auto\nDimensions",
                 commandType: typeof(AutoDimensionCommand),
-                tooltip: "Расставляет по сторонам выбранных помещений те же нитки размеров, что вы поставили вручную.",
+                tooltip: "Places along the sides of the selected rooms the same dimension chains you placed by hand.",
                 longDescription:
-                    "Для кладочных планов АР: один раз расставьте вдоль одной стены несколько ниток размеров " +
-                    "(габарит, проёмы, оси проёмов, перегородки — что нужно), выделите помещения и нажмите кнопку — " +
-                    "тот же набор появится по всем их сторонам.\n\n" +
-                    "Кнопка «Взять образец…» в открывшемся окне разбирает выделенные вами размеры сама: " +
-                    "определяет вид каждой нитки и смещение от стены. Это подбор, а не точный расчёт — " +
-                    "результат всегда можно поправить в таблице руками, добавить или удалить нитку.\n\n" +
-                    "Набор ниток сохраняется шаблоном и переносится в другой проект.\n\n" +
-                    "Затрагивается только активный план этажа открытого проекта; связи не трогаются.",
+                    "For architectural masonry plans: place a few dimension chains along one wall by hand once " +
+                    "(overall, openings, opening centres, partitions — whatever is needed), select the rooms and " +
+                    "press the button — the same set appears along every one of their sides.\n\n" +
+                    "The \"Take a sample…\" button in the window parses the dimensions you selected on its own: " +
+                    "it works out the kind of each chain and its offset from the wall. That is a guess, not an " +
+                    "exact calculation — the result can always be fixed in the table, or a chain added or removed.\n\n" +
+                    "The set of chains can be saved as a template and carried into another project.\n\n" +
+                    "Only the active floor plan of the open project is affected; links are left alone.",
                 iconBaseName: "autodim");
 
-            // ───────────────── Кнопка 10: Принять изменения (проект) ─────────────────
+            // ───────────────── Button 10: Accept Changes (project) ─────────────────
             Ribbon.AddPushButton(
                 projectPanel,
                 name: "VladTools_AcceptCoordination",
-                text: "Принять\nизменения",
+                text: "Accept\nChanges",
                 commandType: typeof(AcceptCoordinationCommand),
-                tooltip: "Принимает координационные изменения: ставит оси и уровни проекта по базовому файлу.",
+                tooltip: "Accepts coordination changes: puts the project's grids and levels in line with the base file.",
                 longDescription:
-                    "После новой выдачи базового файла «Просмотр координации» показывает список\n" +
-                    "уехавших осей и уровней, и каждый принимается отдельно: развернуть узел,\n" +
-                    "выбрать действие, повторить. Здесь весь список принимается одной кнопкой.\n\n" +
-                    "Окно показывает, что именно разошлось: у оси — сдвиг и поворот, у уровня —\n" +
-                    "старая и новая отметка, отдельной строкой — переименование. Отмеченное\n" +
-                    "применяется одной операцией и откатывается одним Ctrl+Z.\n\n" +
-                    "Оси и уровни, пропавшие из базового файла, и новые в нём кнопка показывает,\n" +
-                    "но не трогает: удалить уровень — значит унести всё, что на нём стоит,\n" +
-                    "а завести мониторинг на новый элемент Revit API не позволяет вовсе.\n\n" +
-                    "Работает по связям мониторинга — тем, что заводит «Копирование/Мониторинг».\n" +
-                    "Если их в проекте нет, сравнивать не с чем.",
+                    "After a new base-file issue, \"Coordination Review\" shows a list of grids and\n" +
+                    "levels that moved, and each is accepted one at a time: expand a node, pick an\n" +
+                    "action, repeat. Here the whole list is accepted with one button.\n\n" +
+                    "The window shows exactly what differs: for a grid, the shift and the rotation;\n" +
+                    "for a level, the old and the new elevation; a rename shows as a row of its own.\n" +
+                    "Checked items are applied as one operation and roll back with a single Ctrl+Z.\n\n" +
+                    "Grids and levels missing from the base file, and new ones in it, are shown but\n" +
+                    "never touched: deleting a level means taking everything standing on it with it,\n" +
+                    "and the Revit API does not allow setting up monitoring on a new element at all.\n\n" +
+                    "It works off monitoring links — the ones \"Copy/Monitor\" sets up.\n" +
+                    "If the project has none, there is nothing to compare against.",
                 iconBaseName: "coordination");
 
-            // ──────── Следующие кнопки для проекта добавлять здесь ────────
+            // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;
         }

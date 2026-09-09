@@ -14,47 +14,47 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Дерево моделей с галочками — одно на два хранилища. И Revit Server, и BIM360
-    /// устроены одинаково: вложенные папки, содержимое которых читается по сети и потому
-    /// подгружается только при раскрытии узла. Различается лишь то, чем заполняются дети,
-    /// и это окно получает готовой лямбдой.
+    /// A tree of models with check boxes — one tree for two stores. Both Revit Server and
+    /// BIM360 are built the same way: nested folders whose contents are read over the network
+    /// and are therefore loaded only when a node is expanded. The only thing that differs is
+    /// what fills the children, and the window gets that as a ready-made lambda.
     ///
-    /// Тем же деревом выбирается и **папка** — когда «Комплект по корпусу» спрашивает, где
-    /// искать модели разделов. Отдельного окна для этого нет и не нужно: дерево то же самое,
-    /// меняются только галочки (в режиме папки их нет вовсе) и то, что уходит наружу, —
-    /// вместо отмеченных моделей одна выделенная папка.
+    /// The same tree is also used to pick a **folder** — when the "Building Kit" asks where to
+    /// search for discipline models. There is no separate window for that and none is needed:
+    /// it is the same tree, only the check boxes change (there are none at all in folder mode)
+    /// and so does what leaves at the end — one highlighted folder instead of checked models.
     ///
-    /// Чтение идёт прямо в потоке интерфейса, под курсором ожидания: асинхронность здесь
-    /// была бы лишней сложностью — окно всё равно модальное, а Revit на время диалога
-    /// ничего не делает. Отказ службы не закрывает окно и не роняет кнопку: он становится
-    /// красной строкой внутри той папки, которую не удалось прочитать.
+    /// Reading happens right on the UI thread, under a wait cursor: asynchrony here would be
+    /// needless complexity — the window is modal anyway, and Revit does nothing while the
+    /// dialog is up. A service failure does not close the window or bring the button down: it
+    /// becomes a red line inside the folder that could not be read.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class ModelBrowserWindow : Window
     {
         private readonly ObservableCollection<BrowseNode> _roots = new ObservableCollection<BrowseNode>();
         private readonly Func<BrowseNode, IReadOnlyList<BrowseNode>> _expand;
 
-        /// <summary>Задан — окно выбирает папку, а не модели; сам предикат говорит, годится ли эта папка.</summary>
+        /// <summary>Set — the window picks a folder rather than models; the predicate itself says whether a folder qualifies.</summary>
         private readonly Func<BrowseNode, bool> _pickFolder;
 
         private readonly TreeView _tree;
         private readonly TextBlock _status;
         private readonly Button _addButton;
 
-        /// <summary>Модели, отмеченные пользователем.</summary>
+        /// <summary>The models checked by the user.</summary>
         public IReadOnlyList<LinkEntry> Selected { get; private set; } = new List<LinkEntry>();
 
-        /// <summary>Папка, выбранная в режиме выбора папки; в обычном — null.</summary>
+        /// <summary>The folder chosen in folder-picking mode; null in the ordinary mode.</summary>
         public BrowseNode SelectedFolder { get; private set; }
 
-        /// <param name="hint">Строка над деревом: что здесь показано и что с этим делать.</param>
-        /// <param name="topStrip">Полоса управления над деревом; не нужна — null.</param>
-        /// <param name="expand">Чем заполнить папку. Исключение отсюда показывается внутри узла.</param>
+        /// <param name="hint">The line above the tree: what is shown here and what to do with it.</param>
+        /// <param name="topStrip">The control strip above the tree; pass null if none is needed.</param>
+        /// <param name="expand">What to fill a folder with. An exception from here is shown inside the node.</param>
         /// <param name="pickFolder">
-        /// Задан — окно выбирает одну папку вместо моделей, а предикат говорит, годится ли
-        /// выделенный узел: учётная запись и проект BIM360 папками не являются.
+        /// Set — the window picks a single folder instead of models, and the predicate says
+        /// whether the highlighted node qualifies: a BIM360 account or project is not a folder.
         /// </param>
         public ModelBrowserWindow(
             string title,
@@ -80,7 +80,7 @@ namespace VladTools.UI
 
             _addButton = new Button
             {
-                Content = _pickFolder == null ? "Добавить" : "Выбрать",
+                Content = _pickFolder == null ? "Add" : "Choose",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -90,7 +90,7 @@ namespace VladTools.UI
 
             var cancelButton = new Button
             {
-                Content = "Отмена",
+                Content = "Cancel",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -105,7 +105,7 @@ namespace VladTools.UI
             UpdateSummary();
         }
 
-        /// <summary>Добавляет корень дерева — например, ещё один сервер Revit Server.</summary>
+        /// <summary>Adds a tree root — another Revit Server, say.</summary>
         public void AddRoot(BrowseNode node)
         {
             if (node == null)
@@ -121,15 +121,15 @@ namespace VladTools.UI
             return _roots.Any(match);
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(string hint, UIElement topStrip, Button cancelButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // полоса управления
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // дерево
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // control strip
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // tree
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var text = new TextBlock
             {
@@ -179,7 +179,7 @@ namespace VladTools.UI
                 Margin = new Thickness(0, 6, 0, 8)
             };
 
-            // Содержимое папки читается ровно один раз — в тот момент, когда её раскрыли.
+            // A folder's contents are read exactly once — the moment it is expanded.
             tree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(OnExpanded));
 
             if (_pickFolder != null)
@@ -189,8 +189,9 @@ namespace VladTools.UI
         }
 
         /// <param name="withCheckBoxes">
-        /// В режиме выбора папки галочек нет: отмечать нечего, а видимая, но бессмысленная
-        /// галочка у модели выглядела бы как ещё один способ что-то выбрать.
+        /// There are no check boxes in folder-picking mode: there is nothing to check, and a
+        /// visible but meaningless check box on a model would look like yet another way to
+        /// select something.
         /// </param>
         private static HierarchicalDataTemplate BuildNodeTemplate(bool withCheckBoxes)
         {
@@ -230,7 +231,7 @@ namespace VladTools.UI
             };
         }
 
-        // ───────────────────────────── чтение содержимого ─────────────────────────────
+        // ───────────────────────────── reading the contents ─────────────────────────────
 
         private void OnExpanded(object sender, RoutedEventArgs e)
         {
@@ -267,7 +268,7 @@ namespace VladTools.UI
 
             if (children == null || children.Count == 0)
             {
-                node.Children.Add(BrowseNode.Message("пусто", false));
+                node.Children.Add(BrowseNode.Message("empty", false));
                 UpdateSummary();
                 return;
             }
@@ -281,7 +282,7 @@ namespace VladTools.UI
             UpdateSummary();
         }
 
-        /// <summary>Галочка на любой глубине дерева должна пересчитывать итог внизу окна.</summary>
+        /// <summary>A check box at any depth of the tree must recompute the total at the bottom of the window.</summary>
         private void Watch(BrowseNode node)
         {
             node.PropertyChanged += OnNodeChanged;
@@ -296,14 +297,14 @@ namespace VladTools.UI
                 UpdateSummary();
         }
 
-        // ───────────────────────────── итог ─────────────────────────────
+        // ───────────────────────────── the result ─────────────────────────────
 
         private List<BrowseNode> Marked()
         {
             return _roots.SelectMany(root => root.CheckedModels()).ToList();
         }
 
-        /// <summary>Выделенная в дереве папка, годная для выбора; иначе null.</summary>
+        /// <summary>The folder highlighted in the tree, if it qualifies for picking; otherwise null.</summary>
         private BrowseNode Highlighted()
         {
             var node = _tree.SelectedItem as BrowseNode;
@@ -319,8 +320,8 @@ namespace VladTools.UI
 
                 _status.Foreground = folder == null ? SystemColors.GrayTextBrush : SystemColors.ControlTextBrush;
                 _status.Text = folder == null
-                    ? "Выделите папку, внутри которой лежат папки разделов."
-                    : "Выбрана папка: " + folder.Name;
+                    ? "Highlight the folder holding the discipline folders."
+                    : "Folder chosen: " + folder.Name;
 
                 _addButton.IsEnabled = folder != null;
                 return;
@@ -332,17 +333,17 @@ namespace VladTools.UI
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
                 _status.Text = _roots.Count == 0
-                    ? "Пока пусто."
-                    : "Раскройте папку и отметьте модели.";
+                    ? "Empty so far."
+                    : "Expand a folder and check some models.";
             }
             else
             {
                 _status.Foreground = SystemColors.ControlTextBrush;
-                _status.Text = "Отмечено моделей: " + marked + ".";
+                _status.Text = "Models checked: " + marked + ".";
             }
 
             _addButton.IsEnabled = marked > 0;
-            _addButton.Content = marked > 0 ? "Добавить (" + marked + ")" : "Добавить";
+            _addButton.Content = marked > 0 ? "Add (" + marked + ")" : "Add";
         }
 
         private void OnAdd(object sender, RoutedEventArgs e)

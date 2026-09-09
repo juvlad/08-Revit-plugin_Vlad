@@ -1,35 +1,35 @@
 namespace VladTools.UI
 {
     /// <summary>
-    /// Что именно убирает из проекта команда «Очистка».
+    /// What exactly the "Cleanup" command removes from the project.
     ///
-    /// Порядок значений — это порядок строк в окне. Порядок выполнения другой
-    /// и задан в самой команде: сначала оформление, семейства последними.
+    /// The order of the values is the order of the rows in the window. The execution order is
+    /// different and is defined in the command itself: presentation first, families last.
     /// </summary>
     internal enum CleanupTarget
     {
-        /// <summary>Загруженные семейства и типоразмеры, которых нет ни в одном элементе модели.</summary>
+        /// <summary>Loaded families and types that no model element uses.</summary>
         UnusedFamilies,
 
-        /// <summary>Все листы.</summary>
+        /// <summary>All sheets.</summary>
         Sheets,
 
-        /// <summary>Фильтры видов и фильтры выбора.</summary>
+        /// <summary>View filters and selection filters.</summary>
         Filters,
 
-        /// <summary>Графические виды: планы, разрезы, фасады, 3D, узлы, чертёжные виды.</summary>
+        /// <summary>Graphical views: plans, sections, elevations, 3D, callouts, drafting views.</summary>
         Views,
 
-        /// <summary>Виды-легенды.</summary>
+        /// <summary>Legend views.</summary>
         Legends,
 
-        /// <summary>Спецификации, ведомости материалов и примечаний, спецификации панелей.</summary>
+        /// <summary>Schedules, material and note takeoffs, panel schedules.</summary>
         Schedules,
 
-        /// <summary>Группы модели: распускаются, содержимое остаётся на местах.</summary>
+        /// <summary>Model groups: they are ungrouped, the contents stay in place.</summary>
         ModelGroups,
 
-        /// <summary>Типы групп, не размещённые в модели.</summary>
+        /// <summary>Group types that are not placed in the model.</summary>
         UnusedGroups
     }
 }

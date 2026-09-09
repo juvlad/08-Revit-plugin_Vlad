@@ -7,15 +7,15 @@ using System.Windows.Media;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Две сборки, повторяющиеся во всех таблицах плагина: колонка текста и колонка с галочкой.
+    /// The two pieces repeated in every table of the add-in: a text column and a check box column.
     ///
-    /// Вынесено, когда одна и та же дюжина строк понадобилась третьему окну. Ничего своего
-    /// здесь нет — только то, что в разметке XAML было бы стилем; проект собирает окна кодом
-    /// (см. «Ключевые решения»), поэтому общий стиль и живёт отдельным методом.
+    /// Extracted once the same dozen lines were needed by a third window. There is nothing custom
+    /// here — only what would have been a style in XAML markup; the project builds its windows in
+    /// code (see "Key decisions"), so the shared style lives in a method of its own.
     /// </summary>
     internal static class GridBuilder
     {
-        /// <summary>Колонка текста: по центру строки, с многоточием и подсказкой во всю ширину.</summary>
+        /// <summary>A text column: centred in the row, with an ellipsis and a full-width tooltip.</summary>
         public static DataGridTextColumn TextColumn(string header, string property, DataGridLength width)
         {
             var style = new Style(typeof(TextBlock));
@@ -33,7 +33,7 @@ namespace VladTools.UI
             };
         }
 
-        /// <summary>Галочка в ячейке: со своим шаблоном она срабатывает с первого щелчка.</summary>
+        /// <summary>A check box in a cell: with its own template it reacts to the first click.</summary>
         public static DataTemplate CheckBoxTemplate()
         {
             var checkBox = new FrameworkElementFactory(typeof(CheckBox));

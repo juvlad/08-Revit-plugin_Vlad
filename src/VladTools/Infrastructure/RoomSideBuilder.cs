@@ -7,21 +7,21 @@ using Autodesk.Revit.DB.Architecture;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Собирает прямые стороны границы помещения из петель <c>GetBoundarySegments</c>.
+    /// Builds the straight sides of a room boundary out of the <c>GetBoundarySegments</c> loops.
     ///
-    /// Каждая петля — это ломаная из отрезков, по одному на каждый элемент, к которому
-    /// примыкает граница (кусок стены между двумя проёмами — тоже отдельный отрезок).
-    /// Соседние отрезки сливаются в одну сторону, если они сонаправлены и лежат на одной
-    /// прямой — иначе одна и та же стена превращалась бы в несколько параллельных ниток
-    /// вместо одной длинной. Направление нормали внутрь помещения не берётся из порядка
-    /// петли «как есть» — оно проверяется через <see cref="Room.IsPointInRoom"/>: полагаться
-    /// на то, что Revit всегда обходит петли в одну сторону, нельзя (см. CLAUDE.md, этап 0 плана).
+    /// Each loop is a polyline of segments, one per element the boundary runs along (a piece of wall
+    /// between two openings is a separate segment too).
+    /// Neighbouring segments are merged into one side when they point the same way and lie on the
+    /// same line — otherwise a single wall would turn into several parallel chains instead of one
+    /// long one. The direction of the inward normal is not taken from the loop order as given — it is
+    /// verified through <see cref="Room.IsPointInRoom"/>: relying on Revit always walking its loops
+    /// in the same direction is not safe (see CLAUDE.md).
     /// </summary>
     internal static class RoomSideBuilder
     {
-        // cos(0.06°) — соседние отрезки одной стены после мелких неточностей построения
-        // границы почти всегда идеально сонаправлены; порог жёсткий специально, чтобы
-        // случайный залом в 1-2° (примыкание другой стены) не склеился в одну сторону.
+        // cos(0.06°) — after the small inaccuracies of boundary construction, neighbouring segments of
+        // one wall are almost always perfectly parallel; the threshold is deliberately tight so that a
+        // stray 1-2° kink (another wall meeting this one) is not glued into a single side.
         private const double DirectionDotTolerance = 1e-6;
 
         private const double CollinearToleranceMm = 1.0;
@@ -75,7 +75,7 @@ namespace VladTools.Infrastructure
                 var end = curve.GetEndPoint(1);
 
                 if (start.DistanceTo(end) < FeetOf(MinSideLengthMm))
-                    continue; // вырожденный отрезок — Revit иногда отдаёт такие в стыках
+                    continue; // a degenerate segment — Revit sometimes returns these at joints
 
                 pieces.Add(new Piece
                 {
@@ -114,9 +114,9 @@ namespace VladTools.Infrastructure
 
             if (isCurved)
             {
-                // У кривого отрезка нет прямого направления — берём хорду только для того,
-                // чтобы сторону можно было показать в отчёте; нитки по ней не строятся
-                // (см. DimensionReferenceCollector — IsCurved отсекается раньше).
+                // A curved segment has no straight direction — we take the chord only so the side can
+                // be shown in the report; no chains are built along it
+                // (see DimensionReferenceCollector — IsCurved is filtered out earlier).
                 if (start.DistanceTo(end) < FeetOf(MinSideLengthMm))
                     return null;
 
@@ -151,8 +151,8 @@ namespace VladTools.Infrastructure
                 var prevId = run[i - 1].ElementId;
                 var currId = run[i].ElementId;
 
-                // Стык считается только там, где сосед — другая стена: между двумя кусками
-                // одной и той же стены (разрезанными проёмом) стоит грань откоса, а не стык стен.
+                // A joint counts only where the neighbour is a different wall: between two pieces of
+                // the same wall (split by an opening) there is a jamb face, not a wall joint.
                 var samePiece = prevId != null && currId != null && prevId == currId;
                 if (samePiece)
                     continue;
@@ -168,11 +168,11 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Нормаль «внутрь» не берётся из направления петли как данность: сырое произведение
-        /// <c>BasisZ × direction</c> проверяется точкой в 50 мм от стороны через
-        /// <see cref="Room.IsPointInRoom"/>, и при отрицательном ответе разворачивается.
-        /// Не удалось проверить (например, точка легла ровно на грань) — возвращается сырое
-        /// значение: ошибиться тут значит поставить размер снаружи, а не сломать модель.
+        /// The inward normal is not taken from the loop direction as given: the raw
+        /// <c>BasisZ × direction</c> product is checked with a point 50 mm off the side through
+        /// <see cref="Room.IsPointInRoom"/>, and flipped if the answer is negative.
+        /// If the check fails (the point landed exactly on a face, say) the raw value is returned:
+        /// being wrong here means placing the dimension outside, not breaking the model.
         /// </summary>
         private static XYZ ComputeInwardNormal(Room room, XYZ start, XYZ end, XYZ direction)
         {
@@ -196,7 +196,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // не смогли проверить — отдаём сырое значение как есть
+                // could not check — hand back the raw value as it is
             }
 
             return raw;
@@ -227,8 +227,8 @@ namespace VladTools.Infrastructure
 
             if (splitStart == -1)
             {
-                // Все отрезки слились в один — вырожденный случай (петля без единого залома),
-                // на практике у замкнутого помещения не встречается, но не должен виснуть.
+                // Every segment merged into one — a degenerate case (a loop without a single kink);
+                // it does not occur on a closed room in practice, but it must not hang.
                 runs.Add(new List<Piece>(pieces));
                 return runs;
             }

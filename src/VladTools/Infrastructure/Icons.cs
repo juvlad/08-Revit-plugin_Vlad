@@ -4,7 +4,7 @@ using System.Windows.Media.Imaging;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Загрузка PNG-иконок, вшитых в сборку (папка Resources).
+    /// Loads the PNG icons embedded in the assembly (the Resources folder).
     /// </summary>
     internal static class Icons
     {

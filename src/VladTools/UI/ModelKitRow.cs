@@ -4,10 +4,10 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Строка таблицы окна «Комплект по корпусу»: одна найденная модель раздела.
+    /// A row of the "Building Kit" window table: one discipline model that was found.
     ///
-    /// Про Revit не знает ничего — как и все окна плагина: всё, что нужно, уже лежит
-    /// в <see cref="LinkEntry"/>, а отсюда наружу уходит только он.
+    /// It knows nothing about Revit — like every window in the add-in: everything needed is already
+    /// inside <see cref="LinkEntry"/>, and that is the only thing that leaves here.
     /// </summary>
     internal sealed class ModelKitRow : INotifyPropertyChanged
     {
@@ -26,7 +26,7 @@ namespace VladTools.UI
 
         public LinkEntry Entry => Hit.Entry;
 
-        /// <summary>Галочка «добавить эту модель в список связей».</summary>
+        /// <summary>The "add this model to the link list" check box.</summary>
         public bool IsSelected
         {
             get { return _isSelected; }
@@ -47,10 +47,10 @@ namespace VladTools.UI
 
         public string Name => Hit.Entry.Name;
 
-        /// <summary>Папка, в которой модель нашлась, — по ней и видно, что подбор не промахнулся.</summary>
+        /// <summary>The folder the model was found in — it is what shows the guess did not miss.</summary>
         public string Folder => Hit.Folder;
 
-        /// <summary>Почему строка не отмечена: моделей в разделе несколько, модель уже в списке.</summary>
+        /// <summary>Why the row is not checked: several models in the discipline, model already listed.</summary>
         public string Status { get; }
     }
 }

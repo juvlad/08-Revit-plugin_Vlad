@@ -11,20 +11,20 @@ using System.Windows.Media;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно «Очистка модели»: список того, что можно убрать из открытого проекта,
-    /// с галочкой у каждого пункта и «Выбрать всё» над списком.
+    /// The "Model Cleanup" window: a list of what can be removed from the open project, with a check
+    /// box on every item and "Select all" above the list.
     ///
-    /// Здесь не таблица, а список: пунктов восемь, они разнородны, и у каждого важнее
-    /// не строка данных, а объяснение, что именно исчезнет. Число рядом с заголовком —
-    /// то, что команда нашла в модели при открытии окна; пункт с нулём выключен,
-    /// и «Выбрать всё» его не отмечает — то же правило, что в окнах удаления:
-    /// отмечается только то, что вообще можно сделать.
+    /// This is a list rather than a table: there are eight items, they are of different kinds, and what
+    /// matters on each is not a row of data but an explanation of what exactly will disappear. The
+    /// number next to the heading is what the command found in the model when the window opened; an
+    /// item with zero is disabled and "Select all" does not check it — the same rule as in the delete
+    /// windows: only what can actually be done gets checked.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class CleanupWindow : Window
     {
-        private const string WindowTitle = "Очистка модели";
+        private const string WindowTitle = "Model Cleanup";
 
         private readonly IReadOnlyList<CleanupOption> _options;
 
@@ -35,7 +35,7 @@ namespace VladTools.UI
         private bool _syncingSelectAll;
         private bool _settingMany;
 
-        /// <summary>Пункты, которые пользователь подтвердил к выполнению.</summary>
+        /// <summary>The items the user confirmed for execution.</summary>
         public IReadOnlyList<CleanupOption> Selected { get; private set; } = new List<CleanupOption>();
 
         public CleanupWindow(IReadOnlyList<CleanupOption> options)
@@ -52,10 +52,10 @@ namespace VladTools.UI
 
             _selectAll = new CheckBox
             {
-                Content = "Выбрать всё",
+                Content = "Select all",
                 FontWeight = FontWeights.SemiBold,
                 IsEnabled = _options.Any(option => option.IsAvailable),
-                ToolTip = "Отметить или снять все пункты, которым есть что убирать"
+                ToolTip = "Check or clear every item that has something to remove"
             };
             _selectAll.Checked += (s, e) => SetAllSelected(true);
             _selectAll.Unchecked += (s, e) => SetAllSelected(false);
@@ -64,7 +64,7 @@ namespace VladTools.UI
 
             _cleanButton = new Button
             {
-                Content = "Очистить",
+                Content = "Clean up",
                 MinWidth = 130,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -74,7 +74,7 @@ namespace VladTools.UI
 
             var cancelButton = new Button
             {
-                Content = "Отмена",
+                Content = "Cancel",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -91,21 +91,21 @@ namespace VladTools.UI
             UpdateSummary();
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button cancelButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // выбрать всё
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // список
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // select all
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // list
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
-                Text = "Отметьте, что убрать из открытого проекта. Всё отмеченное выполняется одной операцией — " +
-                       "её можно отменить в Revit через Ctrl+Z, но проект перед очисткой лучше сохранить. " +
-                       "Пункты, которым в этой модели нечего убирать, недоступны.",
+                Text = "Check what to remove from the open project. Everything checked is carried out as a single " +
+                       "operation — it can be undone in Revit with Ctrl+Z, but it is better to save the project " +
+                       "before cleaning up. Items with nothing to remove in this model are unavailable.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10)
             };
@@ -152,7 +152,7 @@ namespace VladTools.UI
             return root;
         }
 
-        /// <summary>Пункт списка: галочка, заголовок с числом и серое пояснение под ним.</summary>
+        /// <summary>A list item: the check box, the heading with the number, and the grey explanation under it.</summary>
         private static UIElement BuildOptionRow(CleanupOption option)
         {
             var text = new StackPanel { Margin = new Thickness(4, 0, 0, 0) };
@@ -186,7 +186,7 @@ namespace VladTools.UI
             return box;
         }
 
-        // ───────────────────────────── галочки ─────────────────────────────
+        // ───────────────────────────── check boxes ─────────────────────────────
 
         private void SetAllSelected(bool value)
         {
@@ -196,7 +196,7 @@ namespace VladTools.UI
             SetMany(option => value && option.IsAvailable);
         }
 
-        /// <summary>Пакетная простановка галочек: итог пересчитываем один раз в конце.</summary>
+        /// <summary>Setting check boxes in bulk: the totals are recomputed once, at the end.</summary>
         private void SetMany(Func<CleanupOption, bool> value)
         {
             _settingMany = true;
@@ -231,18 +231,18 @@ namespace VladTools.UI
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
                 _status.Text = available == 0
-                    ? "Чистить нечего: ни один пункт в этой модели ничего не находит."
-                    : "Ничего не отмечено. Доступно пунктов: " + available + " из " + _options.Count + ".";
+                    ? "Nothing to clean up: no item finds anything in this model."
+                    : "Nothing is checked. Items available: " + available + " of " + _options.Count + ".";
             }
             else
             {
                 _status.Foreground = Brushes.Firebrick;
-                _status.Text = "Отмечено пунктов: " + marked.Count + " из " + available +
-                               ". Затронуто объектов: " + marked.Sum(option => option.Count) + ".";
+                _status.Text = "Items checked: " + marked.Count + " of " + available +
+                               ". Objects affected: " + marked.Sum(option => option.Count) + ".";
             }
 
             _cleanButton.IsEnabled = marked.Count > 0;
-            _cleanButton.Content = marked.Count > 0 ? "Очистить (" + marked.Count + ")" : "Очистить";
+            _cleanButton.Content = marked.Count > 0 ? "Clean up (" + marked.Count + ")" : "Clean up";
 
             _syncingSelectAll = true;
             _selectAll.IsChecked = available == 0 || marked.Count == 0
@@ -251,24 +251,24 @@ namespace VladTools.UI
             _syncingSelectAll = false;
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnClean(object sender, RoutedEventArgs e)
         {
             var marked = Marked();
             if (marked.Count == 0)
             {
-                MessageBox.Show(this, "Не отмечено ни одного пункта.", WindowTitle,
+                MessageBox.Show(this, "No item is checked.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             var answer = MessageBox.Show(
                 this,
-                "Очистить проект? Отмечено пунктов: " + marked.Count + ".\n\n" +
+                "Clean up the project? Items checked: " + marked.Count + ".\n\n" +
                 string.Join("\n", marked.Select(option => "• " + option.Caption)) + "\n\n" +
-                "Всё выполняется одной операцией: отменить её можно только целиком, через «Отменить» (Ctrl+Z) " +
-                "в Revit. Если проект не сохранён — сохраните его перед очисткой.",
+                "Everything is carried out as a single operation: it can only be undone as a whole, through " +
+                "\"Undo\" (Ctrl+Z) in Revit. If the project is unsaved, save it before cleaning up.",
                 WindowTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,

@@ -4,21 +4,21 @@ using Autodesk.Revit.DB;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Гасит предупреждения Revit при фиксации транзакции и запоминает их текст.
+    /// Suppresses Revit warnings when a transaction is committed and remembers their text.
     ///
-    /// Нужен там, где за одну транзакцию правится много элементов: без него Revit
-    /// показывал бы модальное окно на каждое предупреждение и пакетная работа
-    /// превращалась бы в щёлканье по диалогам. Предупреждения не пропадают молча —
-    /// команда достаёт их из <see cref="Messages"/> и печатает в итоговом отчёте.
+    /// It is needed wherever a single transaction edits many elements: without it Revit would show
+    /// a modal dialog for every warning and batch work would turn into clicking through dialogs.
+    /// The warnings do not disappear silently — the command takes them from <see cref="Messages"/>
+    /// and prints them in the final report.
     ///
-    /// Ошибки (severity выше предупреждения) не трогаются: их разбирает сам Revit.
+    /// Errors (a severity above warning) are left alone: Revit handles those itself.
     /// </summary>
     internal sealed class WarningSuppressor : IFailuresPreprocessor
     {
         private readonly List<string> _messages = new List<string>();
         private readonly HashSet<string> _seen = new HashSet<string>();
 
-        /// <summary>Тексты погашенных предупреждений, без повторов и в порядке появления.</summary>
+        /// <summary>The text of the suppressed warnings, deduplicated and in order of appearance.</summary>
         public IReadOnlyList<string> Messages => _messages;
 
         public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
@@ -35,7 +35,7 @@ namespace VladTools.Infrastructure
 
             failuresAccessor.DeleteAllWarnings();
 
-            // Continue, а не ProceedWithCommit: оставшиеся ошибки должны обрабатываться как обычно.
+            // Continue, not ProceedWithCommit: any remaining errors must be handled as usual.
             return FailureProcessingResult.Continue;
         }
     }

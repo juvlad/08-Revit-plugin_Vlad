@@ -11,25 +11,25 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Убирает из открытого проекта то, что отмечено галочками в окне: листы, виды,
-    /// легенды, спецификации, фильтры, группы модели и неиспользуемые семейства.
+    /// Removes from the open project whatever is checked in the window: sheets, views, legends,
+    /// schedules, filters, model groups and unused families.
     ///
-    /// Типовая работа: модель пришла со стороны и нужна только как геометрия —
-    /// всё чужое оформление снимается разом, а не по одному узлу браузера.
+    /// A routine job: a model arrived from outside and is needed only as geometry — someone else's
+    /// presentation is stripped off in one go rather than one browser node at a time.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class CleanupCommand : IExternalCommand
     {
-        private const string DialogTitle = "Очистка модели";
+        private const string DialogTitle = "Model Cleanup";
 
         /// <summary>
-        /// Порядок выполнения — не тот, в котором пункты стоят в окне.
-        /// Сначала уходит оформление (листы, виды, легенды, спецификации, фильтры),
-        /// потом группы, и только в конце — неиспользуемые семейства: к этому моменту
-        /// ненужными становятся ещё и рамки листов, марки и узловые элементы.
-        /// Перечислены все значения <see cref="CleanupTarget"/>: пункта, которого здесь нет,
-        /// окно предложит, а команда не выполнит.
+        /// The execution order is not the order the items stand in inside the window.
+        /// The presentation goes first (sheets, views, legends, schedules, filters), then the groups,
+        /// and only at the end the unused families: by that point titleblocks, tags and detail
+        /// components have become unneeded as well.
+        /// Every <see cref="CleanupTarget"/> value is listed: an item missing from here would be
+        /// offered by the window and never carried out by the command.
         /// </summary>
         private static readonly CleanupTarget[] Order =
         {
@@ -48,7 +48,7 @@ namespace VladTools.Commands
             var uidoc = commandData?.Application?.ActiveUIDocument;
             if (uidoc == null)
             {
-                message = "Нет активного документа.";
+                message = "There is no active document.";
                 return Result.Cancelled;
             }
 
@@ -56,15 +56,15 @@ namespace VladTools.Commands
             if (doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в проекте.\n" +
-                    "В редакторе семейств чистить нечего: ни листов, ни фильтров, ни групп там нет.");
+                    "The command works only in a project.\n" +
+                    "There is nothing to clean in the family editor: no sheets, no filters, no groups there.");
                 return Result.Cancelled;
             }
 
             try
             {
-                // Активный вид не трогаем нигде: Revit не даёт удалить вид, на котором стоит
-                // пользователь, и на нём же держится сеанс.
+                // The active view is left alone everywhere: Revit will not delete the view the user is
+                // standing on, and the session rests on it too.
                 var activeViewId = uidoc.ActiveView?.Id ?? ElementId.InvalidElementId;
 
                 var options = Survey(doc, activeViewId);
@@ -82,13 +82,13 @@ namespace VladTools.Commands
                 var failures = new List<string>();
                 var warnings = new WarningSuppressor();
 
-                using (var transaction = new Transaction(doc, "Очистка модели"))
+                using (var transaction = new Transaction(doc, "Model cleanup"))
                 {
                     transaction.Start();
 
-                    // Пакетное удаление видов, фильтров и семейств тянет за собой ворох
-                    // предупреждений Revit. Модальное окно на каждое сорвало бы очистку,
-                    // поэтому они гасятся и уходят в итоговый отчёт.
+                    // Deleting views, filters and families in bulk drags a pile of Revit warnings along.
+                    // A modal dialog for each would wreck the cleanup, so they are suppressed and go
+                    // into the final report instead.
                     var failureOptions = transaction.GetFailureHandlingOptions();
                     failureOptions.SetFailuresPreprocessor(warnings);
                     transaction.SetFailureHandlingOptions(failureOptions);
@@ -115,12 +115,12 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── что есть в модели ─────────────────────────────
+        // ───────────────────────────── what the model holds ─────────────────────────────
 
         /// <summary>
-        /// Считает, сколько чего в модели, и собирает из этого пункты окна.
-        /// Самый долгий здесь — подсчёт неиспользуемых семейств: он обходит все элементы
-        /// документа, потому что занятость типоразмера иначе не узнать.
+        /// Counts how much of everything the model holds and builds the window items out of that.
+        /// The slowest part is counting the unused families: it walks every element of the document,
+        /// because there is no other way to tell whether a type is in use.
         /// </summary>
         private static IReadOnlyList<CleanupOption> Survey(Document doc, ElementId activeViewId)
         {
@@ -143,8 +143,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Выполняет один пункт. Списки собираются заново, а не берутся из окна: предыдущие
-        /// пункты уже поменяли документ, и половины найденного могло не остаться.
+        /// Carries out one item. The lists are gathered afresh rather than taken from the window: the
+        /// previous items have already changed the document, and half of what was found may be gone.
         /// </summary>
         private static void Run(
             Document doc,
@@ -157,23 +157,23 @@ namespace VladTools.Commands
             switch (target)
             {
                 case CleanupTarget.Sheets:
-                    Removed(doc, ViewsOf(doc, target, activeViewId), "Лист", "Листов удалено: ", done, failures);
+                    Removed(doc, ViewsOf(doc, target, activeViewId), "Sheet", "Sheets deleted: ", done, failures);
                     break;
 
                 case CleanupTarget.Views:
-                    Removed(doc, ViewsOf(doc, target, activeViewId), "Вид", "Видов удалено: ", done, failures);
+                    Removed(doc, ViewsOf(doc, target, activeViewId), "View", "Views deleted: ", done, failures);
                     break;
 
                 case CleanupTarget.Legends:
-                    Removed(doc, ViewsOf(doc, target, activeViewId), "Легенда", "Легенд удалено: ", done, failures);
+                    Removed(doc, ViewsOf(doc, target, activeViewId), "Legend", "Legends deleted: ", done, failures);
                     break;
 
                 case CleanupTarget.Schedules:
-                    Removed(doc, ViewsOf(doc, target, activeViewId), "Спецификация", "Спецификаций удалено: ", done, failures);
+                    Removed(doc, ViewsOf(doc, target, activeViewId), "Schedule", "Schedules deleted: ", done, failures);
                     break;
 
                 case CleanupTarget.Filters:
-                    Removed(doc, Filters(doc), "Фильтр", "Фильтров удалено: ", done, failures);
+                    Removed(doc, Filters(doc), "Filter", "Filters deleted: ", done, failures);
                     break;
 
                 case CleanupTarget.ModelGroups:
@@ -181,7 +181,7 @@ namespace VladTools.Commands
                     break;
 
                 case CleanupTarget.UnusedGroups:
-                    Removed(doc, UnusedGroupTypes(doc), "Тип группы", "Неиспользуемых групп удалено: ", done, failures);
+                    Removed(doc, UnusedGroupTypes(doc), "Group type", "Unused groups deleted: ", done, failures);
                     break;
 
                 case CleanupTarget.UnusedFamilies:
@@ -190,11 +190,11 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── виды, листы, фильтры ─────────────────────────────
+        // ───────────────────────────── views, sheets, filters ─────────────────────────────
 
         /// <summary>
-        /// Виды нужного разряда. Шаблоны и активный вид не отдаются никогда: шаблон —
-        /// не вид в браузере, а активный Revit удалить не даст.
+        /// The views of the required kind. Templates and the active view are never returned: a template
+        /// is not a browser view, and Revit will not let the active one be deleted.
         /// </summary>
         private static List<ElementId> ViewsOf(Document doc, CleanupTarget target, ElementId activeViewId)
         {
@@ -207,8 +207,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// К какому пункту очистки относится вид. Служебные виды (браузеры, внутренние,
-        /// отчёты расчётов) не относятся ни к какому и не удаляются вовсе.
+        /// Which cleanup item a view belongs to. Internal views (browsers, system views, analysis
+        /// reports) belong to none and are never deleted.
         /// </summary>
         private static CleanupTarget? Kind(View view)
         {
@@ -244,8 +244,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Спецификация, которая живёт не в браузере, а внутри рамки листа или самого файла.
-        /// Такую удалять нельзя: рамка без своей спецификации изменений сломается.
+        /// A schedule that lives not in the browser but inside a titleblock or the file itself.
+        /// Such a schedule must not be deleted: a titleblock without its revision schedule breaks.
         /// </summary>
         private static bool IsInternalSchedule(View view)
         {
@@ -259,15 +259,15 @@ namespace VladTools.Commands
             }
             catch (Exception)
             {
-                // Не смогли спросить — считаем служебной: не тронуть безопаснее.
+                // We could not ask — we treat it as internal: leaving it alone is the safer error.
                 return true;
             }
         }
 
         /// <summary>
-        /// Фильтры видов и фильтры выбора: и то и другое живёт в «Вид → Фильтры».
-        /// Классы перечислены по отдельности, а не общим предком <c>FilterElement</c>:
-        /// коллектор поддерживает не всякий абстрактный класс, а тут выбора и не из чего.
+        /// View filters and selection filters: both live under "View → Filters".
+        /// The classes are listed separately rather than by their common ancestor <c>FilterElement</c>:
+        /// the collector does not support every abstract class, and here there is nothing to choose from.
         /// </summary>
         private static List<ElementId> Filters(Document doc)
         {
@@ -279,9 +279,9 @@ namespace VladTools.Commands
                 .ToList();
         }
 
-        // ───────────────────────────── группы ─────────────────────────────
+        // ───────────────────────────── groups ─────────────────────────────
 
-        /// <summary>Размещённые группы модели; узловые и прикреплённые узловые — другая категория.</summary>
+        /// <summary>Placed model groups; detail and attached detail groups are a different category.</summary>
         private static List<Group> ModelGroups(Document doc)
         {
             return new FilteredElementCollector(doc)
@@ -292,7 +292,7 @@ namespace VladTools.Commands
                 .ToList();
         }
 
-        /// <summary>Типы групп, которых нет ни в одном месте модели.</summary>
+        /// <summary>Group types that are placed nowhere in the model.</summary>
         private static List<ElementId> UnusedGroupTypes(Document doc)
         {
             return new FilteredElementCollector(doc)
@@ -312,17 +312,17 @@ namespace VladTools.Commands
             }
             catch (Exception)
             {
-                // Не смогли спросить — считаем размещённым и не трогаем.
+                // We could not ask — we treat it as placed and leave it alone.
                 return false;
             }
         }
 
         /// <summary>
-        /// Распускает все группы модели: элементы остаются на местах, исчезают только группы.
+        /// Ungroups every model group: the elements stay in place, only the groups disappear.
         ///
-        /// Проходов несколько, как при удалении параметров: вложенную группу Revit не отдаёт,
-        /// пока она внутри другой, — она распустится следующим проходом. Проход без единого
-        /// успеха означает, что дальше не сдвинется, и его отказы идут в отчёт.
+        /// There are several passes, as with deleting parameters: Revit will not release a nested group
+        /// while it sits inside another — it gets ungrouped on the next pass. A pass without a single
+        /// success means nothing more will move, and its failures go into the report.
         /// </summary>
         private static void Ungroup(Document doc, List<string> done, List<string> failures)
         {
@@ -343,8 +343,8 @@ namespace VladTools.Commands
 
                     try
                     {
-                        // Закреплённую группу Revit распустить не даёт, а «разгруппировать всё»
-                        // без открепления превратилось бы в список отказов.
+                        // Revit will not ungroup a pinned group, and "ungroup everything" without
+                        // unpinning would turn into a list of refusals.
                         if (group.Pinned)
                             group.Pinned = false;
 
@@ -353,7 +353,7 @@ namespace VladTools.Commands
                     }
                     catch (Exception exception)
                     {
-                        stuck.Add("Группа «" + name + "» — " + exception.Message);
+                        stuck.Add("Group \"" + name + "\" — " + exception.Message);
                     }
                 }
 
@@ -365,15 +365,15 @@ namespace VladTools.Commands
             }
 
             if (total > 0)
-                done.Add("Групп модели разгруппировано: " + total + ".");
+                done.Add("Model groups ungrouped: " + total + ".");
         }
 
-        // ───────────────────────────── неиспользуемые семейства ─────────────────────────────
+        // ───────────────────────────── unused families ─────────────────────────────
 
         /// <summary>
-        /// Сносит загруженные семейства и типоразмеры, на которые в модели никто не ссылается.
-        /// Семейство, у которого свободны все типоразмеры, удаляется целиком — иначе оно
-        /// осталось бы висеть в браузере пустой веткой.
+        /// Deletes the loaded families and types nothing in the model refers to.
+        /// A family whose types are all free is deleted whole — otherwise it would be left hanging in
+        /// the browser as an empty branch.
         /// </summary>
         private static void PurgeFamilies(Document doc, List<string> done, List<string> notes, List<string> failures)
         {
@@ -396,8 +396,8 @@ namespace VladTools.Commands
                 if (free.Count == 0)
                     continue;
 
-                // Ключ невалиден, если у типоразмера не удалось спросить семейство:
-                // тогда сносим его в одиночку, а не целую ветку браузера.
+                // The key is invalid when a type would not report its family: then we delete it on its
+                // own rather than a whole branch of the browser.
                 var family = group.Key == ElementId.InvalidElementId
                     ? null
                     : doc.GetElement(group.Key) as Family;
@@ -408,23 +408,23 @@ namespace VladTools.Commands
                     symbols.AddRange(free);
             }
 
-            var removedFamilies = Delete(doc, families, "Семейство", failures);
-            var removedSymbols = Delete(doc, symbols, "Типоразмер", failures);
+            var removedFamilies = Delete(doc, families, "Family", failures);
+            var removedSymbols = Delete(doc, symbols, "Type", failures);
 
             if (removedFamilies > 0 || removedSymbols > 0)
             {
-                done.Add("Неиспользуемых семейств удалено: " + removedFamilies +
-                         ", отдельных типоразмеров: " + removedSymbols + ".");
+                done.Add("Unused families deleted: " + removedFamilies +
+                         ", individual types: " + removedSymbols + ".");
             }
 
             if (busy > 0)
             {
-                notes.Add("Типоразмеров оставлено: " + busy +
-                          " — Revit сообщил, что вместе с ними из модели ушли бы элементы.");
+                notes.Add("Types kept: " + busy +
+                          " — Revit reported that model elements would go with them.");
             }
         }
 
-        /// <summary>Все типоразмеры семейства свободны — значит и само семейство никому не нужно.</summary>
+        /// <summary>Every type of the family is free — so the family itself is needed by nobody.</summary>
         private static bool AllSymbolsFree(Family family, IReadOnlyList<ElementId> free)
         {
             try
@@ -439,8 +439,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Типоразмеры загруженных семейств, на которые в модели нет ни одной ссылки.
-        /// Системные типы (стены, перекрытия, трубы) сюда не попадают — у них нет FamilySymbol.
+        /// The types of loaded families that nothing in the model refers to.
+        /// System types (walls, floors, pipes) do not appear here — they have no FamilySymbol.
         /// </summary>
         private static List<FamilySymbol> UnusedSymbols(Document doc)
         {
@@ -454,16 +454,15 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Идентификаторы типов, которыми в документе кто-то пользуется.
+        /// The ids of the types something in the document uses.
         ///
-        /// Проход идёт по всем размещённым элементам, а не по одним FamilyInstance:
-        /// типоразмер семейства держат и марки, и рамки листов, и узловые элементы —
-        /// классы у них разные, а GetTypeId есть у каждого. Отдельно добираются типы
-        /// (панель навесной стены и вложенный типоразмер лежат у них в параметре,
-        /// а не в GetTypeId) и компоненты легенд.
+        /// The pass walks every placed element rather than FamilyInstances alone: a family type is held
+        /// by tags, titleblocks and detail components too — their classes differ, but every one of them
+        /// has a GetTypeId. Types are collected separately (a curtain panel and a nested type sit in a
+        /// parameter rather than in GetTypeId), and so are legend components.
         ///
-        /// Проход по всей модели не бесплатен, но обойтись без него нельзя: команду
-        /// «Удалить неиспользуемые» Revit 2022 через API не отдаёт.
+        /// Walking the whole model is not free, but there is no way around it: Revit 2022 does not
+        /// expose the "Purge Unused" command through the API.
         /// </summary>
         private static HashSet<ElementId> UsedTypeIds(Document doc)
         {
@@ -488,10 +487,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Складывает в набор все элементы, на которые ссылаются параметры этого элемента.
-        /// Ссылки на самого себя и на своё семейство пропускаются: встроенные параметры
-        /// «Семейство» и «Тип» есть у каждого типоразмера, и без этой проверки занятыми
-        /// оказались бы поголовно все.
+        /// Adds to the set every element this element's parameters point at.
+        /// References to itself and to its own family are skipped: every type has the built-in "Family"
+        /// and "Type" parameters, and without this check every single one of them would count as in use.
         /// </summary>
         private static void AddReferences(Element element, HashSet<ElementId> used)
         {
@@ -515,17 +513,17 @@ namespace VladTools.Commands
             }
             catch (Exception)
             {
-                // Элемент не дал прочитать параметры — просто ничего от него не берём.
+                // The element would not let its parameters be read — we simply take nothing from it.
             }
         }
 
         /// <summary>
-        /// Есть ли в модели элементы, которые Revit унесёт вместе с этим типоразмером.
+        /// Whether the model holds elements Revit would take away together with this type.
         ///
-        /// Проход по GetTypeId ловит почти всё, но ссылка бывает и косвенной, а цена ошибки —
-        /// стёртая геометрия, поэтому перед самым удалением спрашиваем сам Revit. Фильтр
-        /// «не типы» оставляет в ответе только размещённые элементы: сам типоразмер в него
-        /// не попадает.
+        /// The GetTypeId pass catches almost everything, but a reference can also be indirect, and the
+        /// price of a mistake is erased geometry — so right before deleting we ask Revit itself. The
+        /// "not types" filter leaves only placed elements in the answer: the type itself does not appear
+        /// in it.
         /// </summary>
         private static bool HasInstances(FamilySymbol symbol)
         {
@@ -536,7 +534,7 @@ namespace VladTools.Commands
             }
             catch (Exception)
             {
-                // Не смогли спросить — считаем занятым: не дочистить безопаснее, чем стереть лишнее.
+                // We could not ask — we treat it as in use: under-cleaning is safer than erasing too much.
                 return true;
             }
         }
@@ -554,7 +552,7 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── удаление ─────────────────────────────
+        // ───────────────────────────── deletion ─────────────────────────────
 
         private static void Removed(
             Document doc,
@@ -571,9 +569,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Удаляет элементы по одному: отказ на одном не должен срывать всю пачку.
-        /// Revit уносит за раз и связанное — зависимый вид вместе с основным, типоразмеры
-        /// вместе с семейством, — поэтому перед каждым удалением проверяем, жив ли элемент.
+        /// Deletes the elements one by one: a failure on one must not wreck the whole batch.
+        /// Revit takes related things along in one go — a dependent view with its parent, the types with
+        /// their family — so before every deletion we check whether the element is still alive.
         /// </summary>
         private static int Delete(Document doc, IReadOnlyList<ElementId> ids, string what, List<string> failures)
         {
@@ -596,7 +594,7 @@ namespace VladTools.Commands
                     if (removed != null && removed.Count > 0)
                         count++;
                     else
-                        failures.Add(what + " «" + name + "» — Revit не отдал элемент на удаление");
+                        failures.Add(what + " \"" + name + "\" — Revit would not release the element for deletion");
                 }
                 catch (Exception exception)
                 {
@@ -633,7 +631,7 @@ namespace VladTools.Commands
             }
         }
 
-        // ───────────────────────────── отчёт ─────────────────────────────
+        // ───────────────────────────── the report ─────────────────────────────
 
         private static void Report(
             IReadOnlyList<string> done,
@@ -642,8 +640,8 @@ namespace VladTools.Commands
             IReadOnlyList<string> warnings)
         {
             var text = done.Count > 0
-                ? "Очистка выполнена.\n\n• " + string.Join("\n• ", done)
-                : "Из модели ничего не убрано.";
+                ? "Cleanup complete.\n\n• " + string.Join("\n• ", done)
+                : "Nothing was removed from the model.";
 
             if (notes.Count > 0)
                 text += "\n\n" + string.Join("\n", notes);
@@ -651,21 +649,21 @@ namespace VladTools.Commands
             if (failures.Count > 0)
             {
                 const int limit = 15;
-                text += "\n\nНе удалось убрать (" + failures.Count + "):\n• " +
+                text += "\n\nCould not be removed (" + failures.Count + "):\n• " +
                         string.Join("\n• ", failures.Take(limit));
 
                 if (failures.Count > limit)
-                    text += "\n… и ещё " + (failures.Count - limit);
+                    text += "\n… and " + (failures.Count - limit) + " more";
             }
 
             if (warnings.Count > 0)
             {
                 const int limit = 5;
-                text += "\n\nПредупреждения Revit (" + warnings.Count + "):\n• " +
+                text += "\n\nRevit warnings (" + warnings.Count + "):\n• " +
                         string.Join("\n• ", warnings.Take(limit));
 
                 if (warnings.Count > limit)
-                    text += "\n… и ещё " + (warnings.Count - limit);
+                    text += "\n… and " + (warnings.Count - limit) + " more";
             }
 
             TaskDialog.Show(DialogTitle, text);

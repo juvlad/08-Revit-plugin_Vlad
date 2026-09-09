@@ -4,60 +4,60 @@ using System.Linq;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Итог подбора: номер корпуса, папка базовых файлов, кандидаты и непрочитанное.</summary>
+    /// <summary>The result of the guess: the building number, the base file folder, the candidates and what could not be read.</summary>
     internal sealed class BaseFileScan
     {
-        /// <summary>Номер корпуса из имени открытой модели; не нашёлся — пусто.</summary>
+        /// <summary>The building number from the open model's name; empty if none was found.</summary>
         public string Building { get; set; } = string.Empty;
 
-        /// <summary>Папка базовых файлов, если она нашлась: её и показывают пользователю.</summary>
+        /// <summary>The base file folder if it was found: that is what is shown to the user.</summary>
         public ModelFolder Folder { get; set; }
 
         /// <summary>
-        /// Подходящие модели. Одна — можно подставлять; несколько — выбирает человек,
-        /// то же правило, что при подборе рабочего набора и комплекта по корпусу.
+        /// The matching models. One — it can be filled in; several — the user chooses, the same rule as
+        /// when guessing the workset and the building kit.
         /// </summary>
         public List<LinkEntry> Hits { get; } = new List<LinkEntry>();
 
-        /// <summary>Папки, которые хранилище не отдало: подбор из-за одной такой не прерывается.</summary>
+        /// <summary>Folders the store would not hand over: one of these does not abort the guess.</summary>
         public List<string> Failures { get; } = new List<string>();
 
         /// <summary>
-        /// Совпало только по корпусу: кода базовой модели («BM») в имени нет. Модель всё равно
-        /// лежит в папке базовых файлов, поэтому она кандидат, — но сказать об этом обязаны.
+        /// It matched by building only: the base model code ("BM") is missing from the name. The model
+        /// still lies in the base file folder, so it is a candidate — but we are obliged to say so.
         /// </summary>
         public bool IsLoose { get; set; }
     }
 
     /// <summary>
-    /// Подбор базового (координационного) файла по имени открытой модели.
+    /// Guessing the base (coordination) file from the open model's name.
     ///
-    /// Держится на том же соглашении, что и «Комплект по корпусу»: в имени каждой модели стоит
-    /// номер корпуса (<c>MK3-VSC-B01-VOIDS</c> → <c>B01</c>), а базовые файлы всего проекта лежат
-    /// в одной папке — <c>01_Base Model</c> — рядом с папками разделов. Значит, базовый файл
-    /// корпуса можно назвать самому: <c>MK3-VSC-B01-BM</c>, и искать его в дереве незачем.
+    /// It rests on the same convention as the "Building Kit": every model name carries a building number
+    /// (<c>MK3-VSC-B01-VOIDS</c> → <c>B01</c>), and the base files of the whole project lie in one
+    /// folder — <c>01_Base Model</c> — next to the discipline folders. So a building's base file can be
+    /// named outright: <c>MK3-VSC-B01-BM</c>, and there is no need to hunt for it in a tree.
     ///
-    /// Это эвристика того же уровня, что <see cref="DisciplineCatalog"/> и <see cref="ModelKit"/>:
-    /// набор правил по токенам имени, а не разбор соглашения об именовании. Поэтому подобранное
-    /// показывается в окне до того, как что-то будет связано, а когда подходящих моделей
-    /// несколько — не берётся ни одна: гадать тут нельзя.
+    /// This is a heuristic of the same level as <see cref="DisciplineCatalog"/> and <see cref="ModelKit"/>:
+    /// a set of rules over name tokens, not a parser of a naming convention. That is why what was guessed
+    /// is shown in the window before anything is linked, and when several models match, none is
+    /// taken: guessing is not allowed here.
     ///
-    /// Обход намеренно узкий — две папки, а не дерево проекта: папка самой модели и папка уровнем
-    /// выше. Каждая папка облака стоит запроса по сети, а подбор идёт при открытии окна, то есть
-    /// в тот момент, когда пользователь ждёт.
+    /// The walk is deliberately narrow — two folders rather than the project tree: the model's own folder
+    /// and the one a level up. Every cloud folder costs a network request, and the guess runs when the
+    /// window opens, that is, while the user is waiting.
     /// </summary>
     internal static class BaseFileFinder
     {
-        /// <summary>Папка, в которой лежат базовые файлы всех корпусов проекта.</summary>
+        /// <summary>The folder holding the base files of every building in the project.</summary>
         public const string DefaultFolderName = "01_Base Model";
 
-        /// <summary>Код базовой модели в имени файла — по той же конвенции, что коды разделов.</summary>
+        /// <summary>The base model code in the file name — by the same convention as the discipline codes.</summary>
         public const string DefaultCode = "BM";
 
-        /// <param name="host">Открытая модель: из имени берётся корпус, из папки — где искать.</param>
-        /// <param name="folderName">Имя папки базовых файлов; пусто — <see cref="DefaultFolderName"/>.</param>
-        /// <param name="code">Код базовой модели в имени; пусто — <see cref="DefaultCode"/>.</param>
-        /// <param name="buildingToken">Какой по счёту кусок имени считать номером корпуса.</param>
+        /// <param name="host">The open model: the building comes from its name, the search root from its folder.</param>
+        /// <param name="folderName">The base file folder name; empty means <see cref="DefaultFolderName"/>.</param>
+        /// <param name="code">The base model code in the name; empty means <see cref="DefaultCode"/>.</param>
+        /// <param name="buildingToken">Which piece of the name counts as the building number.</param>
         public static BaseFileScan Find(HostModel host, string folderName, string code, int buildingToken)
         {
             var scan = new BaseFileScan();
@@ -74,8 +74,8 @@ namespace VladTools.Infrastructure
 
             scan.Folder = folder;
 
-            // Сама открытая модель из кандидатов вычёркивается: связаться с собой Revit
-            // всё равно не даст, а лежать в этой же папке она вполне может.
+            // The open model itself is struck off the candidates: Revit will not let it link to itself
+            // anyway, and it may well live in that very folder.
             var models = Read(folder, scan)
                 .Where(item => !item.IsFolder && item.Entry != null)
                 .Select(item => item.Entry)
@@ -95,8 +95,8 @@ namespace VladTools.Infrastructure
                 return scan;
             }
 
-            // Кода в имени нет — но модель нужного корпуса лежит в папке базовых файлов,
-            // и это лучший ответ, чем «ничего не нашлось». Про натяжку скажет окно.
+            // The code is missing from the name — but a model of the right building lies in the base
+            // file folder, and that is a better answer than "nothing was found". The window will say it is a stretch.
             var loose = models
                 .Where(entry => DisciplineCatalog.HasToken(entry.Name, scan.Building))
                 .ToList();
@@ -107,12 +107,12 @@ namespace VladTools.Infrastructure
             return scan;
         }
 
-        // ───────────────────────────── где искать ─────────────────────────────
+        // ───────────────────────────── where to search ─────────────────────────────
 
         /// <summary>
-        /// Папка базовых файлов рядом с открытой моделью. Смотрим ровно в двух местах: там, где
-        /// модель лежит (она сама может оказаться той папкой — базовые файлы правят из неё же),
-        /// и уровнем выше — модель раздела стоит в «3.0_AR», а базовые файлы рядом, не внутри.
+        /// The base file folder next to the open model. We look in exactly two places: where the model
+        /// lies (that folder may itself be the one — base files are edited from there too), and one level
+        /// up — a discipline model sits in "3.0_AR" while the base files are beside it, not inside.
         /// </summary>
         private static ModelFolder Locate(ModelFolder start, IReadOnlyList<string> wanted, BaseFileScan scan)
         {
@@ -134,7 +134,7 @@ namespace VladTools.Infrastructure
             return Matches(above.Name, wanted) ? above : Pick(Read(above, scan), wanted);
         }
 
-        /// <summary>Папка уровнем выше; не получилось — null и строка в непрочитанные.</summary>
+        /// <summary>The folder one level up; on failure, null plus a line among the unread ones.</summary>
         private static ModelFolder Above(ModelFolder folder, BaseFileScan scan)
         {
             try
@@ -143,7 +143,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception exception)
             {
-                scan.Failures.Add("папка выше " + folder.Display + " — " + LinkCatalog.Short(exception.Message));
+                scan.Failures.Add("the folder above " + folder.Display + " — " + LinkCatalog.Short(exception.Message));
                 return null;
             }
         }
@@ -164,21 +164,21 @@ namespace VladTools.Infrastructure
             }
             catch (Exception exception)
             {
-                // Непрочитанная папка не отменяет подбор: вторую попробуем всё равно,
-                // а причина уйдёт в подпись под выбранной моделью.
+                // An unread folder does not cancel the guess: we try the second one anyway, and the
+                // reason goes into the caption under the chosen model.
                 scan.Failures.Add(folder.Display + " — " + LinkCatalog.Short(exception.Message));
                 return new List<StoreItem>();
             }
         }
 
-        // ───────────────────────────── имя папки ─────────────────────────────
+        // ───────────────────────────── the folder name ─────────────────────────────
 
         /// <summary>
-        /// Имя папки сравнивается словами, без ведущих номеров: «01_Base Model», «02 Base Model»
-        /// и «Base Model» — одна и та же папка. Номер в начале от проекта к проекту меняют,
-        /// а само имя остаётся; сравнивать строкой целиком значило бы промахиваться на ровном месте.
-        /// Слова при этом должны совпасть все и по порядку — «Base Models» уже другая папка,
-        /// и такую подставляет пользователь через настройку, а не догадка.
+        /// The folder name is compared word by word, without the leading numbers: "01_Base Model",
+        /// "02 Base Model" and "Base Model" are the same folder. The leading number changes from project
+        /// to project while the name itself stays; comparing whole strings would miss for no reason.
+        /// All the words must match, and in order — "Base Models" is already a different folder, and one
+        /// like that is supplied by the user through the setting, not by a guess.
         /// </summary>
         private static bool Matches(string name, IReadOnlyList<string> wanted)
         {
@@ -188,7 +188,7 @@ namespace VladTools.Infrastructure
                    !words.Where((word, i) => !string.Equals(word, wanted[i], StringComparison.OrdinalIgnoreCase)).Any();
         }
 
-        /// <summary>Слова имени без чисто числовых кусков; разбор — общий с подбором разделов.</summary>
+        /// <summary>The name's words without purely numeric pieces; the split is shared with the discipline guess.</summary>
         private static IReadOnlyList<string> Words(string text)
         {
             return DisciplineCatalog.Tokens(text).Where(token => !token.All(char.IsDigit)).ToList();

@@ -16,23 +16,23 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно «Переименовать вложенные»: таблица вложенных семейств (и, если нужно, их типоразмеров)
-    /// со столбцами «Текущее имя» и «Новое имя».
+    /// The "Rename Nested" window: a table of nested families (and, if asked, their types) with
+    /// "Current name" and "New name" columns.
     ///
-    /// Работает как «Найти и заменить» в Excel: вписал «DN» → «ДУ» — и во всех отмеченных строках
-    /// сразу видно, что получится. К этому же добавляются приставка и окончание. Любую ячейку
-    /// «Новое имя» можно поправить руками — правило такую строку больше не трогает.
+    /// Works like "Find and Replace" in Excel: type "DN" → "DIA" and every checked row shows the
+    /// result right away. A prefix and a suffix are added on top of that. Any "New name" cell can
+    /// be fixed by hand — the rule no longer touches such a row.
     ///
-    /// Справа — буфер имён: часто повторяющиеся куски имён сохраняются в профиле пользователя
-    /// и подставляются в поля одним щелчком.
+    /// On the right — the name buffer: name fragments that repeat often are saved to the user's
+    /// profile and pasted into the fields with one click.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class RenameNestedWindow : Window
     {
-        private const string WindowTitle = "Переименовать вложенные";
+        private const string WindowTitle = "Rename Nested";
 
-        /// <summary>Знаки, которые Revit в именах не принимает.</summary>
+        /// <summary>Characters Revit will not accept in names.</summary>
         private static readonly char[] Forbidden = { '\\', ':', '{', '}', '[', ']', '|', ';', '<', '>', '?', '`', '~' };
 
         private readonly IReadOnlyList<NestedFamilyRow> _all;
@@ -56,7 +56,7 @@ namespace VladTools.UI
         private bool _refreshing;
         private bool _syncingSelectAll;
 
-        /// <summary>Строки, которые пользователь подтвердил к переименованию.</summary>
+        /// <summary>The rows the user confirmed for renaming.</summary>
         public IReadOnlyList<NestedFamilyRow> Selected { get; private set; } = new List<NestedFamilyRow>();
 
         public RenameNestedWindow(IReadOnlyList<NestedFamilyRow> rows)
@@ -72,12 +72,12 @@ namespace VladTools.UI
             SnapsToDevicePixels = true;
 
             _scopeBox = new ComboBox { Width = 230, VerticalAlignment = VerticalAlignment.Center };
-            _scopeBox.Items.Add("Вложенные семейства");
-            _scopeBox.Items.Add("Типоразмеры вложенных");
-            _scopeBox.Items.Add("Семейства и типоразмеры");
+            _scopeBox.Items.Add("Nested families");
+            _scopeBox.Items.Add("Types of the nested families");
+            _scopeBox.Items.Add("Families and types");
             _scopeBox.SelectedIndex = 0;
-            _scopeBox.ToolTip = "Переименовывается только то, что показано в таблице.\n" +
-                                "При смене списка новые имена сбрасываются к текущим.";
+            _scopeBox.ToolTip = "Only what is shown in the table gets renamed.\n" +
+                                "Switching the list resets the new names to the current ones.";
             _scopeBox.SelectionChanged += (s, e) => RebuildVisible();
 
             _findBox = RuleBox(160);
@@ -87,7 +87,7 @@ namespace VladTools.UI
 
             _caseBox = new CheckBox
             {
-                Content = "Учитывать регистр",
+                Content = "Match case",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(4, 0, 0, 0)
             };
@@ -99,7 +99,7 @@ namespace VladTools.UI
                 IsChecked = true,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Отметить или снять все строки"
+                ToolTip = "Check or clear every row"
             };
             _selectAll.Checked += (s, e) => SetAllSelected(true);
             _selectAll.Unchecked += (s, e) => SetAllSelected(false);
@@ -112,14 +112,14 @@ namespace VladTools.UI
             _bufferBox = new TextBox
             {
                 Padding = new Thickness(3, 2, 3, 2),
-                ToolTip = "Значение для кнопки «Сохранить». Пустое поле — берётся текст из того поля правила, где стоял курсор."
+                ToolTip = "The value for the \"Save\" button. An empty field takes the text from whichever rule field the cursor was in."
             };
 
             _summary = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
 
             _renameButton = new Button
             {
-                Content = "Переименовать",
+                Content = "Rename",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -129,7 +129,7 @@ namespace VladTools.UI
 
             var closeButton = new Button
             {
-                Content = "Закрыть",
+                Content = "Close",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -149,7 +149,7 @@ namespace VladTools.UI
             RebuildVisible();
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private TextBox RuleBox(double width)
         {
@@ -164,7 +164,7 @@ namespace VladTools.UI
 
             box.TextChanged += (s, e) => Refresh();
 
-            // Буфер подставляет значение в то поле, где пользователь был последним.
+            // The buffer pastes into whichever field the user was in last.
             box.GotKeyboardFocus += (s, e) => _lastField = box;
 
             return box;
@@ -173,17 +173,17 @@ namespace VladTools.UI
         private UIElement BuildLayout(Button closeButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // правило
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица + буфер
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // rule
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table + buffer
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock { TextWrapping = TextWrapping.Wrap };
-            hint.Inlines.Add(new Run("Переименование вложенных семейств пакетом: «Найти» и «Заменить на» " +
-                                     "работают по всем отмеченным строкам, результат сразу виден в столбце «Новое имя»."));
+            hint.Inlines.Add(new Run("Batch-renaming nested families: \"Find\" and \"Replace with\" work on every " +
+                                     "checked row, and the result shows right away in the \"New name\" column."));
             hint.Inlines.Add(new LineBreak());
-            hint.Inlines.Add(new Run("Ячейку «Новое имя» можно исправить руками — такую строку правило больше не меняет. " +
-                                     "Открытое (родительское) семейство не затрагивается.")
+            hint.Inlines.Add(new Run("The \"New name\" cell can be fixed by hand — the rule stops touching that row. " +
+                                     "The open (host) family is left untouched.")
             {
                 Foreground = SystemColors.GrayTextBrush
             });
@@ -232,27 +232,27 @@ namespace VladTools.UI
             var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
 
             var first = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
-            first.Children.Add(Label("Показывать:"));
+            first.Children.Add(Label("Show:"));
             first.Children.Add(_scopeBox);
-            first.Children.Add(Label("Найти:", 12));
+            first.Children.Add(Label("Find:", 12));
             first.Children.Add(_findBox);
-            first.Children.Add(Label("Заменить на:"));
+            first.Children.Add(Label("Replace with:"));
             first.Children.Add(_replaceBox);
             first.Children.Add(_caseBox);
             panel.Children.Add(first);
 
             var second = new StackPanel { Orientation = Orientation.Horizontal };
-            second.Children.Add(Label("Добавить в начало:"));
+            second.Children.Add(Label("Prepend:"));
             second.Children.Add(_prefixBox);
-            second.Children.Add(Label("Добавить в конец:"));
+            second.Children.Add(Label("Append:"));
             second.Children.Add(_suffixBox);
 
             var reset = new Button
             {
-                Content = "Сбросить",
+                Content = "Reset",
                 MinWidth = 100,
                 Padding = new Thickness(10, 3, 10, 3),
-                ToolTip = "Очищает правило и возвращает все новые имена к текущим."
+                ToolTip = "Clears the rule and returns every new name to the current one."
             };
             reset.Click += OnReset;
             second.Children.Add(reset);
@@ -275,14 +275,14 @@ namespace VladTools.UI
         private UIElement BuildBufferPanel()
         {
             var panel = new Grid { Margin = new Thickness(12, 0, 0, 0) };
-            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // заголовок
-            panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // список
-            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // поле
-            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // сохранить/удалить
-            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подстановка
-            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // heading
+            panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // list
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // field
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // save/remove
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // paste targets
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
 
-            var header = new TextBlock { Text = "Буфер имён", FontWeight = FontWeights.Bold };
+            var header = new TextBlock { Text = "Name buffer", FontWeight = FontWeights.Bold };
             Grid.SetRow(header, 0);
             panel.Children.Add(header);
 
@@ -292,16 +292,16 @@ namespace VladTools.UI
             Grid.SetRow(_bufferBox, 2);
             panel.Children.Add(_bufferBox);
 
-            var save = BufferButton("Сохранить", "Кладёт значение в буфер — он живёт в профиле Windows и открывается в следующем семействе.", OnBufferSave);
-            var remove = BufferButton("Удалить", "Убирает выбранное значение из буфера.", OnBufferRemove);
+            var save = BufferButton("Save", "Puts the value into the buffer — it lives in the Windows profile and opens with the next family.", OnBufferSave);
+            var remove = BufferButton("Remove", "Removes the selected value from the buffer.", OnBufferRemove);
             var keep = Pair(save, remove);
             Grid.SetRow(keep, 3);
             panel.Children.Add(keep);
 
-            var toFind = BufferButton("→ Найти", "Подставить в поле «Найти».", (s, e) => PasteBuffer(_findBox));
-            var toReplace = BufferButton("→ Заменить", "Подставить в поле «Заменить на».", (s, e) => PasteBuffer(_replaceBox));
-            var toPrefix = BufferButton("→ В начало", "Подставить в поле «Добавить в начало».", (s, e) => PasteBuffer(_prefixBox));
-            var toSuffix = BufferButton("→ В конец", "Подставить в поле «Добавить в конец».", (s, e) => PasteBuffer(_suffixBox));
+            var toFind = BufferButton("→ Find", "Paste into the \"Find\" field.", (s, e) => PasteBuffer(_findBox));
+            var toReplace = BufferButton("→ Replace", "Paste into the \"Replace with\" field.", (s, e) => PasteBuffer(_replaceBox));
+            var toPrefix = BufferButton("→ Prepend", "Paste into the \"Prepend\" field.", (s, e) => PasteBuffer(_prefixBox));
+            var toSuffix = BufferButton("→ Append", "Paste into the \"Append\" field.", (s, e) => PasteBuffer(_suffixBox));
 
             var pasteRows = new StackPanel();
             pasteRows.Children.Add(Pair(toFind, toReplace));
@@ -311,7 +311,7 @@ namespace VladTools.UI
 
             var hint = new TextBlock
             {
-                Text = "Двойной щелчок по значению вставляет его в поле, где стоял курсор.",
+                Text = "A double click on a value pastes it into whichever field the cursor was in.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = SystemColors.GrayTextBrush,
                 Margin = new Thickness(0, 6, 0, 0)
@@ -336,7 +336,7 @@ namespace VladTools.UI
             return button;
         }
 
-        /// <summary>Две кнопки в ряд одинаковой ширины.</summary>
+        /// <summary>Two buttons in a row, equal width.</summary>
         private static UIElement Pair(UIElement left, UIElement right)
         {
             var grid = new Grid();
@@ -378,16 +378,16 @@ namespace VladTools.UI
                 CellTemplate = BuildCheckBoxTemplate()
             });
 
-            grid.Columns.Add(TextColumn("Что это", "KindText", new DataGridLength(88)));
-            grid.Columns.Add(TextColumn("Внутри семейства", "OwnerName", new DataGridLength(120)));
+            grid.Columns.Add(TextColumn("Kind", "KindText", new DataGridLength(88)));
+            grid.Columns.Add(TextColumn("Inside family", "OwnerName", new DataGridLength(120)));
 
-            var currentName = TextColumn("Текущее имя", "CurrentName", new DataGridLength(1, DataGridLengthUnitType.Star));
+            var currentName = TextColumn("Current name", "CurrentName", new DataGridLength(1, DataGridLengthUnitType.Star));
             currentName.MinWidth = 150;
             grid.Columns.Add(currentName);
 
             var newName = new DataGridTextColumn
             {
-                Header = "Новое имя",
+                Header = "New name",
                 Width = new DataGridLength(1.2, DataGridLengthUnitType.Star),
                 MinWidth = 150,
                 Binding = new Binding("NewName") { Mode = BindingMode.TwoWay },
@@ -396,13 +396,13 @@ namespace VladTools.UI
             };
             grid.Columns.Add(newName);
 
-            grid.Columns.Add(TextColumn("Экз.", "InstancesText", new DataGridLength(46)));
+            grid.Columns.Add(TextColumn("Inst.", "InstancesText", new DataGridLength(46)));
 
-            var status = TextColumn("Статус", "StatusText", new DataGridLength(150));
+            var status = TextColumn("Status", "StatusText", new DataGridLength(150));
             status.ElementStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, new Binding("StatusBrush")));
             grid.Columns.Add(status);
 
-            // Пробел переключает галочки у выделенных строк — попадать в маленький квадрат необязательно.
+            // The space bar toggles the check marks of the selected rows — hitting the small square is not the only way.
             grid.PreviewKeyDown += OnGridKeyDown;
 
             return grid;
@@ -424,7 +424,7 @@ namespace VladTools.UI
             };
         }
 
-        /// <summary>Галочка в ячейке: со своим шаблоном она срабатывает с первого щелчка.</summary>
+        /// <summary>A check box in a cell: with its own template it reacts to the first click.</summary>
         private static DataTemplate BuildCheckBoxTemplate()
         {
             var checkBox = new FrameworkElementFactory(typeof(CheckBox));
@@ -452,7 +452,7 @@ namespace VladTools.UI
             return style;
         }
 
-        // ───────────────────────────── правило ─────────────────────────────
+        // ───────────────────────────── the rule ─────────────────────────────
 
         private StringComparison Comparison
         {
@@ -460,8 +460,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Что показано в таблице, то и переименовывается. Строки других видов
-        /// возвращаются к своим именам — иначе правило меняло бы то, чего не видно.
+        /// Whatever is shown in the table is what gets renamed. Rows of other kinds are returned
+        /// to their current names — otherwise the rule would be changing what is not visible.
         /// </summary>
         private void RebuildVisible()
         {
@@ -491,7 +491,7 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Заново считает новые имена по правилу, проверяет их и обновляет нижнюю подпись.</summary>
+        /// <summary>Recomputes the new names from the rule, validates them and updates the caption at the bottom.</summary>
         private void Refresh()
         {
             if (_refreshing)
@@ -518,7 +518,7 @@ namespace VladTools.UI
             UpdateSummary();
         }
 
-        /// <summary>Правило целиком: сначала замена внутри имени, потом приставка и окончание.</summary>
+        /// <summary>The whole rule: first the replacement inside the name, then the prefix and the suffix.</summary>
         private string Apply(string name)
         {
             var find = _findBox.Text ?? string.Empty;
@@ -529,7 +529,7 @@ namespace VladTools.UI
             return (_prefixBox.Text ?? string.Empty) + result + (_suffixBox.Text ?? string.Empty);
         }
 
-        /// <summary>Замена всех вхождений: у string.Replace в net48 нет перегрузки со сравнением.</summary>
+        /// <summary>Replaces every occurrence: string.Replace on net48 has no overload with a comparison.</summary>
         private static string ReplaceAll(string source, string find, string replacement, StringComparison comparison)
         {
             var builder = new StringBuilder();
@@ -549,9 +549,9 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Проверка новых имён: пустое, с запрещёнными знаками или совпадающее с чужим именем
-        /// Revit не примет. Занятость считается по всем строкам, а не только по отмеченным:
-        /// имя, которое сейчас носит непереименовываемый объект, тоже занято.
+        /// Validating the new names: empty, with forbidden characters, or matching someone else's
+        /// name will not be accepted by Revit. Occupancy is checked across every row, not only the
+        /// checked ones: a name currently held by an object that is not being renamed is taken too.
         /// </summary>
         private void Validate()
         {
@@ -567,29 +567,29 @@ namespace VladTools.UI
 
                 if (name.Length == 0)
                 {
-                    row.SetStatus(RenameStatus.Error, "Пустое имя");
+                    row.SetStatus(RenameStatus.Error, "Empty name");
                     continue;
                 }
 
                 var forbidden = Forbidden.Where(character => name.IndexOf(character) >= 0).ToArray();
                 if (forbidden.Length > 0)
                 {
-                    row.SetStatus(RenameStatus.Error, "Revit не примет знаки: " + string.Join(" ", forbidden));
+                    row.SetStatus(RenameStatus.Error, "Revit will not accept the characters: " + string.Join(" ", forbidden));
                     continue;
                 }
 
                 var same = string.Equals(name, row.CurrentName, StringComparison.Ordinal);
                 row.SetStatus(
                     same ? RenameStatus.Unchanged : RenameStatus.Ready,
-                    same ? "Без изменений" : "Будет переименовано");
+                    same ? "Unchanged" : "Will be renamed");
             }
 
             MarkDuplicates();
         }
 
         /// <summary>
-        /// Ищет совпадения имён. Типоразмеры сравниваются внутри своего семейства,
-        /// семейства — между собой; регистр Revit при проверке занятости не различает.
+        /// Looks for matching names. Types are compared within their own family, families among
+        /// themselves; Revit does not distinguish case when checking whether a name is taken.
         /// </summary>
         private void MarkDuplicates()
         {
@@ -605,17 +605,17 @@ namespace VladTools.UI
             foreach (var row in _all.Where(row => row.Status == RenameStatus.Ready).ToList())
             {
                 if (taken[NameKey(row)] > 1)
-                    row.SetStatus(RenameStatus.Error, "Имя уже занято");
+                    row.SetStatus(RenameStatus.Error, "Name already taken");
             }
         }
 
-        /// <summary>Имя, которое строка будет носить после применения, вместе с областью уникальности.</summary>
+        /// <summary>The name a row will carry once applied, together with the scope it must be unique in.</summary>
         private static string NameKey(NestedFamilyRow row)
         {
             var name = row.Status == RenameStatus.Ready ? row.TrimmedNewName : row.CurrentName;
             var scope = row.Kind == NestedKind.Family ? string.Empty : row.OwnerName;
 
-            return row.KindText + " " + scope + " " + name;
+            return row.KindText + " " + scope + " " + name;
         }
 
         private void UpdateSummary()
@@ -625,11 +625,11 @@ namespace VladTools.UI
             var broken = selected.Count(row => row.Status == RenameStatus.Error);
 
             _summary.Foreground = broken > 0 ? Brushes.Firebrick : SystemColors.GrayTextBrush;
-            _summary.Text = "В списке: " + _visible.Count + ". Отмечено: " + selected.Count +
-                            ". Будет переименовано: " + ready +
-                            (broken > 0 ? ". С ошибками: " + broken + "." : ".");
+            _summary.Text = "In the list: " + _visible.Count + ". Checked: " + selected.Count +
+                            ". Will be renamed: " + ready +
+                            (broken > 0 ? ". With errors: " + broken + "." : ".");
 
-            _renameButton.Content = ready > 0 ? "Переименовать (" + ready + ")" : "Переименовать";
+            _renameButton.Content = ready > 0 ? "Rename (" + ready + ")" : "Rename";
             _renameButton.IsEnabled = ready > 0;
 
             _syncingSelectAll = true;
@@ -639,15 +639,15 @@ namespace VladTools.UI
             _syncingSelectAll = false;
         }
 
-        // ───────────────────────────── буфер имён ─────────────────────────────
+        // ───────────────────────────── the name buffer ─────────────────────────────
 
-        /// <summary>Кладёт выбранное значение буфера в поле — туда, где стоял курсор.</summary>
+        /// <summary>Puts the selected buffer value into a field — wherever the cursor was.</summary>
         private void PasteBuffer(TextBox target)
         {
             var value = _bufferList.SelectedItem as string;
             if (value == null)
             {
-                MessageBox.Show(this, "Выберите значение в буфере имён.", WindowTitle,
+                MessageBox.Show(this, "Select a value in the name buffer.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -665,13 +665,13 @@ namespace VladTools.UI
         {
             var value = (_bufferBox.Text ?? string.Empty).Trim();
 
-            // Пустое поле — значит сохраняем то, что человек только что набрал в правиле.
+            // An empty field means saving whatever was just typed into the rule.
             if (value.Length == 0 && _lastField != null)
                 value = (_lastField.Text ?? string.Empty).Trim();
 
             if (value.Length == 0)
             {
-                MessageBox.Show(this, "Впишите значение в поле под списком — оно и уйдёт в буфер.",
+                MessageBox.Show(this, "Type a value into the field under the list — that is what goes into the buffer.",
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -688,7 +688,7 @@ namespace VladTools.UI
             var value = _bufferList.SelectedItem as string;
             if (value == null)
             {
-                MessageBox.Show(this, "Выберите значение, которое нужно убрать из буфера.", WindowTitle,
+                MessageBox.Show(this, "Select the value you want to remove from the buffer.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -696,7 +696,7 @@ namespace VladTools.UI
             _buffer.Remove(value);
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnRowChanged(object sender, PropertyChangedEventArgs e)
         {
@@ -722,7 +722,7 @@ namespace VladTools.UI
 
         private void OnGridKeyDown(object sender, KeyEventArgs e)
         {
-            // В режиме правки ячейки пробел — обычный пробел в имени.
+            // While editing a cell, the space bar is just a space in the name.
             if (e.Key != Key.Space || IsEditing())
                 return;
 
@@ -771,7 +771,7 @@ namespace VladTools.UI
             var ready = _visible.Where(row => row.WillRename).ToList();
             if (ready.Count == 0)
             {
-                MessageBox.Show(this, "Нет ни одной строки с новым именем.", WindowTitle,
+                MessageBox.Show(this, "No row has a new name.", WindowTitle,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -781,7 +781,7 @@ namespace VladTools.UI
             {
                 var answer = MessageBox.Show(
                     this,
-                    Problems(broken) + "\n\nПереименовать остальные (" + ready.Count + ")?",
+                    Problems(broken) + "\n\nRename the rest (" + ready.Count + ")?",
                     WindowTitle,
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning,
@@ -793,8 +793,8 @@ namespace VladTools.UI
 
             var confirm = MessageBox.Show(
                 this,
-                "Переименовать " + ready.Count + " шт.?\n\n" + Preview(ready) +
-                "\n\nДействие отменяется только через «Отменить» (Ctrl+Z) в Revit.",
+                "Rename " + ready.Count + " item(s)?\n\n" + Preview(ready) +
+                "\n\nThis can only be undone through \"Undo\" (Ctrl+Z) in Revit.",
                 WindowTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
@@ -812,8 +812,8 @@ namespace VladTools.UI
             const int limit = 10;
             var shown = string.Join("\n", broken.Take(limit).Select(row => "• " + row.CurrentName + " — " + row.StatusText));
 
-            var text = "Не получится переименовать: " + broken.Count + "\n\n" + shown;
-            return broken.Count > limit ? text + "\n… и ещё " + (broken.Count - limit) : text;
+            var text = "Cannot be renamed: " + broken.Count + "\n\n" + shown;
+            return broken.Count > limit ? text + "\n… and " + (broken.Count - limit) + " more" : text;
         }
 
         private static string Preview(IReadOnlyList<NestedFamilyRow> rows)
@@ -822,11 +822,11 @@ namespace VladTools.UI
             var shown = string.Join("\n", rows.Take(limit).Select(row => "• " + row.CurrentName + "  →  " + row.TrimmedNewName));
 
             return rows.Count > limit
-                ? shown + "\n… и ещё " + (rows.Count - limit)
+                ? shown + "\n… and " + (rows.Count - limit) + " more"
                 : shown;
         }
 
-        /// <summary>Буфер сохраняется при любом закрытии окна — он живёт отдельно от семейства.</summary>
+        /// <summary>The buffer is saved whenever the window closes — it lives independently of the family.</summary>
         protected override void OnClosing(CancelEventArgs e)
         {
             base.OnClosing(e);
@@ -838,7 +838,7 @@ namespace VladTools.UI
             catch (Exception exception)
             {
                 MessageBox.Show(this,
-                    "Буфер имён не удалось сохранить:\n" + exception.Message + "\n\nФайл: " + NameBuffer.FilePath,
+                    "Could not save the name buffer:\n" + exception.Message + "\n\nFile: " + NameBuffer.FilePath,
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }

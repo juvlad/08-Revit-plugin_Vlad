@@ -7,11 +7,11 @@ using VladTools.UI;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Сама открытая модель как подсказка: как она названа и в какой папке лежит.
+    /// The open model itself as a hint: what it is called and which folder it lies in.
     ///
-    /// Нужна «Комплекту по корпусу» и только ему: номер корпуса берётся из имени открытой
-    /// модели, а папки разделов ищутся рядом с ней. Всё может оказаться пустым — проект
-    /// бывает ни разу не сохранён, — и это не поломка: тогда корпус и папку задаёт человек.
+    /// Needed by the "Building Kit" and by nothing else: the building number comes from the open
+    /// model's name, and the discipline folders are looked for next to it. Everything may turn out
+    /// empty — a project may never have been saved — and that is not a breakage: then the user supplies the building and the folder.
     /// </summary>
     internal sealed class HostModel
     {
@@ -22,32 +22,32 @@ namespace VladTools.Infrastructure
             Name = name ?? string.Empty;
         }
 
-        /// <summary>Описание самой модели — по нему её отличают от предложенных связей.</summary>
+        /// <summary>The description of the model itself — it is what tells it apart from the offered links.</summary>
         public LinkEntry Entry { get; }
 
-        /// <summary>Папка, в которой модель лежит; у несохранённого проекта — null.</summary>
+        /// <summary>The folder the model lies in; null for a project that was never saved.</summary>
         public ModelFolder Folder { get; }
 
-        /// <summary>Имя модели с расширением или без — так, как его отдал Revit.</summary>
+        /// <summary>The model name with or without an extension — exactly as Revit reported it.</summary>
         public string Name { get; }
 
-        /// <summary>Ключ самой модели: предлагать связаться с самим собой Revit всё равно не даст.</summary>
+        /// <summary>The key of the model itself: Revit will not allow linking to oneself anyway.</summary>
         public string Key => Entry == null ? string.Empty : Entry.Key;
     }
 
     /// <summary>
-    /// Всё, что нужно знать про связи открытого проекта и его рабочие наборы: что уже стоит,
-    /// куда можно положить новую связь, как перевести описание модели в путь Revit.
+    /// Everything worth knowing about the open project's links and worksets: what is already there,
+    /// where a new link can be put, and how to turn a model description into a Revit path.
     ///
-    /// Вынесено из <c>LinkManagerCommand</c>, когда то же самое понадобилось кнопке
-    /// «Базовый файл»: обе команды заводят связи, и обеим нужен один и тот же перевод
-    /// «строка набора → <c>WorksetId</c>» и «запись набора → <c>ModelPath</c>».
+    /// Extracted from <c>LinkManagerCommand</c> once the "Base File" button needed the same thing:
+    /// both commands create links, and both need the same translation from a "workset name" to a
+    /// <c>WorksetId</c> and from a set entry to a <c>ModelPath</c>.
     /// </summary>
     internal static class LinkCatalog
     {
         /// <summary>
-        /// Связи, уже стоящие в проекте. Вложенные не берутся: они приезжают вместе
-        /// со своим носителем, и грузить их отдельно нельзя.
+        /// The links already in the project. Nested ones are left out: they arrive together with their
+        /// host, and cannot be loaded separately.
         /// </summary>
         public static IReadOnlyList<LinkRow> Existing(Document doc)
         {
@@ -65,8 +65,8 @@ namespace VladTools.Infrastructure
                 if (entry == null)
                     continue;
 
-                // Набор показываем тот, в котором связь лежит сейчас: пользователь должен видеть,
-                // что менять, а не выбирать вслепую. Смотрим по экземпляру — именно он стоит в модели.
+                // We show the workset the link is in right now: the user has to see what to change
+                // rather than choose blindly. We look at the instance — that is what stands in the model.
                 entry.Workset = WorksetName(doc, Instances(doc, type.Id).FirstOrDefault() ?? (Element)type);
 
                 rows.Add(new LinkRow(entry, type.Id));
@@ -76,9 +76,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Где лежит и как называется сам открытый проект. У совмещённого берётся путь
-        /// центральной модели, а не локальной копии: папки разделов стоят рядом с центральной,
-        /// а локальная лежит у пользователя на диске и к делу отношения не имеет.
+        /// Where the open project lies and what it is called. For a workshared one the central model
+        /// path is taken rather than the local copy's: the discipline folders sit next to the central
+        /// model, while the local one lives on the user's disk and has nothing to do with it.
         /// </summary>
         public static HostModel Host(Document doc)
         {
@@ -113,14 +113,14 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Ничего не выяснили — окно просто спросит корпус и папку у человека.
+                // Nothing was worked out — the window will simply ask the user for the building and the folder.
                 return new HostModel(null, null, doc.Title);
             }
         }
 
         /// <summary>
-        /// Облачная модель: пары GUID хватает, чтобы её опознать, а папку отдаёт
-        /// <c>GetCloudFolderId</c> — тем же идентификатором, каким её знает Data Management.
+        /// A cloud model: the pair of GUIDs is enough to identify it, and the folder comes from
+        /// <c>GetCloudFolderId</c> — the very id Data Management knows it by.
         /// </summary>
         private static HostModel CloudHost(Document doc)
         {
@@ -138,13 +138,13 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Папку Revit отдаёт не всегда; корпус из имени это не отменяет.
+                // Revit does not always report the folder; that does not cancel the building from the name.
             }
 
             return new HostModel(entry, folder, doc.Title);
         }
 
-        /// <summary>Путь центральной модели, а при её отсутствии — путь самого файла.</summary>
+        /// <summary>The central model path, or the file's own path when there is none.</summary>
         private static string VisiblePath(Document doc)
         {
             if (doc.IsWorkshared)
@@ -157,14 +157,14 @@ namespace VladTools.Infrastructure
                 }
                 catch (Exception)
                 {
-                    // Не совмещённая с центральной или отсоединённая — остаётся путь файла.
+                    // Not workshared with a central model, or detached — the file path is what is left.
                 }
             }
 
             return doc.PathName ?? string.Empty;
         }
 
-        /// <summary>Экземпляры связи данного типа — их в проекте может быть несколько.</summary>
+        /// <summary>The instances of a given link type — a project may hold several.</summary>
         public static List<RevitLinkInstance> Instances(Document doc, ElementId typeId)
         {
             return new FilteredElementCollector(doc)
@@ -175,8 +175,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Рабочие наборы открытого проекта — те, куда можно положить связь.
-        /// Проект не совмещённый — наборов нет вовсе, и окно прячет весь столбец.
+        /// The open project's worksets — the ones a link can be put into.
+        /// A non-workshared project has no worksets at all, and the window hides the whole column.
         /// </summary>
         public static IReadOnlyList<string> HostWorksets(Document doc)
         {
@@ -191,7 +191,7 @@ namespace VladTools.Infrastructure
                 .ToList();
         }
 
-        /// <summary>Имя набора, в котором лежит элемент; в несовмещённом проекте — пустая строка.</summary>
+        /// <summary>The name of the workset holding the element; an empty string in a non-workshared project.</summary>
         public static string WorksetName(Document doc, Element element)
         {
             if (element == null || !doc.IsWorkshared)
@@ -208,7 +208,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Имена наборов проекта в их идентификаторы — по имени окно и выбирает.</summary>
+        /// <summary>Project workset names to their ids — the window picks by name.</summary>
         public static Dictionary<string, WorksetId> WorksetIds(Document doc)
         {
             var map = new Dictionary<string, WorksetId>(StringComparer.CurrentCultureIgnoreCase);
@@ -223,8 +223,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Кладёт элемент в рабочий набор проекта. Отказ не должен срывать загрузку: связь уже
-        /// создана и работает, просто лежит не там, — поэтому он уходит строкой в отчёт.
+        /// Puts an element into a project workset. A failure must not derail the load: the link is
+        /// already created and working, it just lies in the wrong place — so it goes into the report as a line.
         /// </summary>
         public static bool Place(Element element, WorksetId workset, List<string> failures, string what)
         {
@@ -236,7 +236,7 @@ namespace VladTools.Infrastructure
                 var parameter = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
                 if (parameter == null || parameter.IsReadOnly)
                 {
-                    failures.Add(what + " — рабочий набор сменить нельзя: параметр недоступен");
+                    failures.Add(what + " — the workset cannot be changed: the parameter is unavailable");
                     return false;
                 }
 
@@ -245,14 +245,14 @@ namespace VladTools.Infrastructure
             }
             catch (Exception exception)
             {
-                failures.Add(what + " — рабочий набор сменить не удалось: " + Short(exception.Message));
+                failures.Add(what + " — the workset could not be changed: " + Short(exception.Message));
                 return false;
             }
         }
 
         /// <summary>
-        /// Откуда приехала связь. Облачную узнаём по самому пути: у него есть регион
-        /// и пара GUID, и больше ничего — обычного пути у неё не существует.
+        /// Where a link came from. A cloud one is recognised by its path alone: it has a region and a
+        /// pair of GUIDs and nothing more — an ordinary path does not exist for it.
         /// </summary>
         public static LinkEntry Describe(Document doc, RevitLinkType type)
         {
@@ -278,14 +278,14 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Путь недоступен — связь просто не попадёт в список; это не повод не открывать окно.
+                // The path is unavailable — the link simply will not make the list; no reason not to open the window.
                 return null;
             }
         }
 
         /// <summary>
-        /// Путь к модели. У облачной модели обычного пути нет вовсе: она адресуется
-        /// регионом и парой GUID, и это единственный способ до неё добраться.
+        /// The path to the model. A cloud model has no ordinary path at all: it is addressed by a region
+        /// and a pair of GUIDs, and that is the only way to reach it.
         /// </summary>
         public static ModelPath ToModelPath(LinkEntry entry)
         {
@@ -296,7 +296,7 @@ namespace VladTools.Infrastructure
             Guid model;
 
             if (!Guid.TryParse(entry.ProjectGuid, out project) || !Guid.TryParse(entry.ModelGuid, out model))
-                throw new InvalidOperationException("GUID облачной модели записан неверно.");
+                throw new InvalidOperationException("The cloud model GUID is written incorrectly.");
 
             return ModelPathUtils.ConvertCloudGUIDsToCloudPath(entry.Region, project, model);
         }
@@ -316,32 +316,32 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Код отказа Revit словами: сам по себе он пользователю ничего не говорит.</summary>
+        /// <summary>A Revit failure code in words: on its own it tells the user nothing.</summary>
         public static string Describe(LinkLoadResultType result)
         {
             switch (result)
             {
                 case LinkLoadResultType.LinkNotFound:
-                    return "файл не найден";
+                    return "file not found";
                 case LinkLoadResultType.LinkNotOpenable:
-                    return "файл не открывается: повреждён или занят";
+                    return "the file will not open: corrupt or in use";
                 case LinkLoadResultType.LinkOpenAsHost:
-                    return "этот файл уже открыт как проект";
+                    return "this file is already open as a project";
                 case LinkLoadResultType.SameModelAsHost:
                 case LinkLoadResultType.SameCentralModelAsHost:
-                    return "это сам открытый проект";
+                    return "this is the open project itself";
                 case LinkLoadResultType.LinkExists:
-                    return "такая связь в проекте уже есть";
+                    return "such a link is already in the project";
                 case LinkLoadResultType.ExternalServerMissing:
-                    return "сервер недоступен";
+                    return "the server is unreachable";
                 case LinkLoadResultType.LinkNotLoadedOtherError:
-                    return "Revit не смог загрузить связь";
+                    return "Revit could not load the link";
                 default:
-                    return "загрузка не удалась (" + result + ")";
+                    return "the load failed (" + result + ")";
             }
         }
 
-        /// <summary>Сообщения Revit бывают в несколько абзацев — в списке нужна одна строка.</summary>
+        /// <summary>Revit messages sometimes run to several paragraphs — a list needs a single line.</summary>
         public static string Short(string message)
         {
             var text = (message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();

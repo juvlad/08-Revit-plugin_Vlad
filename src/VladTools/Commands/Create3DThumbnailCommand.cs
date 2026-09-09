@@ -8,19 +8,19 @@ using Autodesk.Revit.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Создаёт в открытом семействе 3D-вид «3д миниатюра» и настраивает его:
-    /// аннотации выключены, соединители скрыты, реалистичная графика, высокая детализация.
-    /// Повторный запуск не плодит виды — настройки применяются к существующему.
+    /// Creates a "3D Thumbnail" 3D view in the open family and sets it up: annotations off,
+    /// connectors hidden, realistic graphics, fine detail level.
+    /// Running it again does not breed views — the settings are applied to the existing one.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class Create3DThumbnailCommand : IExternalCommand
     {
-        public const string ViewName = "3д миниатюра";
+        public const string ViewName = "3D Thumbnail";
 
-        private const string DialogTitle = "3д миниатюра";
+        private const string DialogTitle = "3D Thumbnail";
 
-        /// <summary>Категории соединителей, которые надо скрыть на виде.</summary>
+        /// <summary>The connector categories that have to be hidden on the view.</summary>
         private static readonly BuiltInCategory[] ConnectorCategories =
         {
             BuiltInCategory.OST_ConnectorElem,
@@ -34,7 +34,7 @@ namespace VladTools.Commands
             var uidoc = commandData?.Application?.ActiveUIDocument;
             if (uidoc == null)
             {
-                message = "Нет активного документа.";
+                message = "There is no active document.";
                 return Result.Cancelled;
             }
 
@@ -42,8 +42,8 @@ namespace VladTools.Commands
             if (!doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в редакторе семейств.\n" +
-                    "Откройте семейство (.rfa) и повторите.");
+                    "The command works only in the family editor.\n" +
+                    "Open a family (.rfa) and try again.");
                 return Result.Cancelled;
             }
 
@@ -53,7 +53,7 @@ namespace VladTools.Commands
             {
                 View3D view;
 
-                using (var transaction = new Transaction(doc, "Создать «" + ViewName + "»"))
+                using (var transaction = new Transaction(doc, "Create \"" + ViewName + "\""))
                 {
                     transaction.Start();
 
@@ -64,7 +64,7 @@ namespace VladTools.Commands
                         if (viewTypeId == ElementId.InvalidElementId)
                         {
                             transaction.RollBack();
-                            message = "В этом семействе нет типа 3D-вида (ViewFamilyType), создать вид невозможно.";
+                            message = "This family has no 3D view type (ViewFamilyType), the view cannot be created.";
                             return Result.Failed;
                         }
 
@@ -82,7 +82,7 @@ namespace VladTools.Commands
                 if (warnings.Count > 0)
                 {
                     TaskDialog.Show(DialogTitle,
-                        "Вид «" + view.Name + "» готов, но часть настроек применить не удалось:\n\n• " +
+                        "The \"" + view.Name + "\" view is ready, but some settings could not be applied:\n\n• " +
                         string.Join("\n• ", warnings));
                 }
 
@@ -95,27 +95,27 @@ namespace VladTools.Commands
             }
         }
 
-        /// <summary>Применяет все требуемые настройки вида. Каждая — независимо от остальных.</summary>
+        /// <summary>Applies every required view setting. Each one independently of the rest.</summary>
         private static void ApplySettings(View3D view, List<string> warnings)
         {
-            Try(() => view.AreAnnotationCategoriesHidden = true, "выключить аннотации", warnings);
-            Try(() => HideConnectors(view, warnings), "скрыть соединители", warnings);
-            Try(() => view.DisplayStyle = DisplayStyle.Realistic, "включить реалистичную графику", warnings);
-            Try(() => view.DetailLevel = ViewDetailLevel.Fine, "выставить высокую детализацию", warnings);
+            Try(() => view.AreAnnotationCategoriesHidden = true, "turn annotations off", warnings);
+            Try(() => HideConnectors(view, warnings), "hide the connectors", warnings);
+            Try(() => view.DisplayStyle = DisplayStyle.Realistic, "turn on realistic graphics", warnings);
+            Try(() => view.DetailLevel = ViewDetailLevel.Fine, "set the fine detail level", warnings);
         }
 
         /// <summary>
-        /// Скрывает соединители двумя способами сразу: категориями V/G и поэлементно.
-        /// Категории в семействе может не быть в Settings.Categories, поэтому обращаемся
-        /// к ней напрямую по ElementId, а не через Category.GetCategory (тот возвращает null).
+        /// Hides the connectors in two ways at once: by V/G categories and element by element.
+        /// A category may be missing from Settings.Categories inside a family, so we address it
+        /// directly by ElementId rather than through Category.GetCategory (which returns null).
         /// </summary>
         private static void HideConnectors(View3D view, List<string> warnings)
         {
             var problems = new List<string>();
             var hidSomething = HideConnectorCategories(view, problems);
 
-            // Фильтруем в памяти: OfClass(typeof(ConnectorElement)) поддерживается не всегда,
-            // а документ семейства маленький, так что перебор безопаснее.
+            // Filtering in memory: OfClass(typeof(ConnectorElement)) is not always supported, and a
+            // family document is small, so walking the whole thing is safer.
             var connectors = new FilteredElementCollector(view.Document)
                 .WhereElementIsNotElementType()
                 .OfType<ConnectorElement>()
@@ -125,11 +125,11 @@ namespace VladTools.Commands
             if (HideConnectorElements(view, connectors, problems))
                 hidSomething = true;
 
-            // Молчим, только если скрывать было нечего или всё получилось.
+            // We stay silent only if there was nothing to hide or everything worked.
             if (hidSomething || connectors.Count == 0)
                 return;
 
-            warnings.Add("не удалось скрыть соединители (" + connectors.Count + " шт.): " +
+            warnings.Add("could not hide the connectors (" + connectors.Count + "): " +
                          string.Join("; ", problems));
         }
 
@@ -149,7 +149,7 @@ namespace VladTools.Commands
                 }
                 catch (Exception exception)
                 {
-                    problems.Add("категория " + builtInCategory + " — " + exception.Message);
+                    problems.Add("category " + builtInCategory + " — " + exception.Message);
                 }
             }
 
@@ -171,7 +171,7 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                problems.Add("скрытие элементов — " + exception.Message);
+                problems.Add("hiding the elements — " + exception.Message);
                 return false;
             }
         }
@@ -197,8 +197,8 @@ namespace VladTools.Commands
 
         private static void Rename(View3D view, string name, List<string> warnings)
         {
-            // Имя может быть занято видом другого типа (план, разрез) — тогда оставляем имя по умолчанию.
-            Try(() => view.Name = name, "переименовать вид в «" + name + "»", warnings);
+            // The name may be taken by a view of another kind (a plan, a section) — then we keep the default name.
+            Try(() => view.Name = name, "rename the view to \"" + name + "\"", warnings);
         }
 
         private static void ActivateView(UIDocument uidoc, View3D view, List<string> warnings)
@@ -206,7 +206,7 @@ namespace VladTools.Commands
             if (uidoc.ActiveView != null && uidoc.ActiveView.Id == view.Id)
                 return;
 
-            Try(() => uidoc.ActiveView = view, "открыть вид", warnings);
+            Try(() => uidoc.ActiveView = view, "open the view", warnings);
         }
 
         private static void Try(Action action, string what, List<string> warnings)
@@ -217,7 +217,7 @@ namespace VladTools.Commands
             }
             catch (Exception exception)
             {
-                warnings.Add("не удалось " + what + " (" + exception.Message + ")");
+                warnings.Add("could not " + what + " (" + exception.Message + ")");
             }
         }
     }

@@ -10,23 +10,23 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Задаёт формулы параметрам открытого (родительского) семейства по сохранённому списку
-    /// «параметр — формула». Список общий для всех семейств: один раз собрал — дальше он
-    /// подставляется сам, и все формулы применяются одним пакетом.
-    /// Вложенные семейства не трогает — только сам открытый документ.
+    /// Assigns formulas to the parameters of the open (host) family from the saved
+    /// "parameter — formula" list. The list is shared by every family: put it together once and it
+    /// is offered by itself from then on, and all the formulas are applied as a single batch.
+    /// It does not touch nested families — only the open document itself.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class AddFormulasCommand : IExternalCommand
     {
-        private const string DialogTitle = "Добавить формулы";
+        private const string DialogTitle = "Add Formulas";
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             var uidoc = commandData?.Application?.ActiveUIDocument;
             if (uidoc == null)
             {
-                message = "Нет активного документа.";
+                message = "There is no active document.";
                 return Result.Cancelled;
             }
 
@@ -34,8 +34,8 @@ namespace VladTools.Commands
             if (!doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в редакторе семейств.\n" +
-                    "Откройте семейство (.rfa) и повторите.");
+                    "The command works only in the family editor.\n" +
+                    "Open a family (.rfa) and try again.");
                 return Result.Cancelled;
             }
 
@@ -52,7 +52,7 @@ namespace VladTools.Commands
                 var applied = new List<string>();
                 var failures = new List<string>();
 
-                using (var transaction = new Transaction(doc, "Добавить формулы к параметрам"))
+                using (var transaction = new Transaction(doc, "Add formulas to parameters"))
                 {
                     transaction.Start();
 
@@ -75,8 +75,8 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Снимок всех параметров семейства для окна: по нему проверяется и сам параметр из строки,
-        /// и имена внутри формулы. Берутся не только общие параметры — формула может ссылаться на любой.
+        /// A snapshot of every family parameter for the window: it is what validates both the parameter
+        /// named in a row and the names inside the formula. Not only shared parameters are taken — a formula may refer to any of them.
         /// </summary>
         private static List<FamilyParameterInfo> Describe(FamilyManager manager)
         {
@@ -98,13 +98,13 @@ namespace VladTools.Commands
             }
             catch (Exception)
             {
-                return true; // Не смогли спросить — не запрещаем, пусть решает сам Revit при записи.
+                return true; // We could not ask — so we do not forbid it; let Revit decide when writing.
             }
         }
 
         /// <summary>
-        /// Пишет формулы одну за другой в общей транзакции. Отказ по одной строке
-        /// (например, круговая ссылка) не отменяет остальные — он попадает в итоговый отчёт.
+        /// Writes the formulas one after another in a shared transaction. A failure on one row
+        /// (a circular reference, say) does not cancel the rest — it goes into the final report.
         /// </summary>
         private static void Apply(
             FamilyManager manager,
@@ -119,7 +119,7 @@ namespace VladTools.Commands
 
                 if (parameter == null)
                 {
-                    failures.Add(name + " — параметр не найден");
+                    failures.Add(name + " — parameter not found");
                     continue;
                 }
 
@@ -147,17 +147,17 @@ namespace VladTools.Commands
         private static void Report(IReadOnlyList<string> applied, IReadOnlyList<string> failures)
         {
             var text = applied.Count > 0
-                ? "Формул задано: " + applied.Count + ".\n• " + string.Join("\n• ", applied)
-                : "Ни одна формула не задана.";
+                ? "Formulas assigned: " + applied.Count + ".\n• " + string.Join("\n• ", applied)
+                : "No formula was assigned.";
 
             if (failures.Count > 0)
             {
                 const int limit = 15;
-                text += "\n\nНе удалось задать (" + failures.Count + "):\n• " +
+                text += "\n\nCould not be assigned (" + failures.Count + "):\n• " +
                         string.Join("\n• ", failures.Take(limit));
 
                 if (failures.Count > limit)
-                    text += "\n… и ещё " + (failures.Count - limit);
+                    text += "\n… and " + (failures.Count - limit) + " more";
             }
 
             TaskDialog.Show(DialogTitle, text);

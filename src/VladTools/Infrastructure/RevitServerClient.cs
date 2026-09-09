@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Строка содержимого папки Revit Server: вложенная папка или модель.</summary>
+    /// <summary>An entry in the contents of a Revit Server folder: a nested folder or a model.</summary>
     internal sealed class ServerEntry
     {
         public ServerEntry(string name, string folderPath, bool isFolder)
@@ -16,44 +16,44 @@ namespace VladTools.Infrastructure
 
         public string Name { get; }
 
-        /// <summary>Путь папки, в которой лежит запись, в виде «|Проекты|Стадия Р».</summary>
+        /// <summary>The path of the folder holding the entry, in the "|Projects|Stage D" form.</summary>
         public string FolderPath { get; }
 
         public bool IsFolder { get; }
 
-        /// <summary>Путь самой записи в том же виде — им спрашивают содержимое вложенной папки.</summary>
+        /// <summary>The path of the entry itself in the same form — used to ask for a nested folder's contents.</summary>
         public string Path => FolderPath == RevitServerClient.RootFolder
             ? RevitServerClient.RootFolder + Name
             : FolderPath + "|" + Name;
     }
 
     /// <summary>
-    /// Просмотр Revit Server. В Revit API папки сервера не листаются вовсе — путь RSN можно
-    /// только отдать на загрузку целиком. Зато у самого Revit Server есть служба
-    /// RevitServerAdminRESTService&lt;год&gt;, отвечающая обычным JSON по HTTP: ею и пользуемся,
-    /// как это делает диалог «Открыть» самого Revit.
+    /// Browsing Revit Server. The Revit API does not list server folders at all — an RSN path can only
+    /// be handed over for loading as a whole. Revit Server itself, however, has a
+    /// RevitServerAdminRESTService&lt;year&gt; service that answers with plain JSON over HTTP: that is
+    /// what we use, exactly as Revit's own "Open" dialog does.
     ///
-    /// Служба разбирает пути со своим разделителем — вертикальной чертой: корень «|»,
-    /// вложенная папка «|Проекты|Стадия Р». Для связи же нужен путь другого вида —
-    /// RSN://сервер/Проекты/Стадия Р/модель.rvt; перевод между ними — <see cref="RsnPath"/>.
+    /// The service parses paths with a separator of its own — the vertical bar: the root is "|", a
+    /// nested folder "|Projects|Stage D". A link, though, needs a path of a different shape —
+    /// RSN://server/Projects/Stage D/model.rvt; <see cref="RsnPath"/> translates between them.
     ///
-    /// Служба требует три заголовка: кто спрашивает, с какой машины и идентификатор операции.
-    /// Без них она отвечает отказом, содержимого запроса не разбирая.
+    /// The service demands three headers: who is asking, from which machine, and an operation id.
+    /// Without them it refuses without even parsing the request.
     /// </summary>
     internal static class RevitServerClient
     {
-        /// <summary>Корневая папка сервера в том виде, в каком её понимает служба.</summary>
+        /// <summary>The server root folder in the form the service understands.</summary>
         public const string RootFolder = "|";
 
         /// <summary>
-        /// Версия службы совпадает с версией Revit: её имя включает год
-        /// (RevitServerAdminRESTService2024), и на чужой год сервер отвечает 404.
-        /// Значение выставляет <see cref="App.OnStartup"/> по версии запущенного Revit —
-        /// здесь только запасное, на случай если это почему-то не произошло.
+        /// The service version matches the Revit version: its name includes the year
+        /// (RevitServerAdminRESTService2024), and the server answers 404 for the wrong year.
+        /// <see cref="App.OnStartup"/> sets the value from the version of the running Revit —
+        /// what is here is only the fallback, in case that did not happen for some reason.
         /// </summary>
         public static string ServiceVersion { get; set; } = "2022";
 
-        /// <summary>Убирает «RSN://», слэши и пробелы — пользователь вводит имя сервера как придётся.</summary>
+        /// <summary>Strips "RSN://", slashes and spaces — the user types the server name however they please.</summary>
         public static string NormalizeServer(string server)
         {
             var name = (server ?? string.Empty).Trim();
@@ -64,7 +64,7 @@ namespace VladTools.Infrastructure
             return name.Trim('/', '\\', ' ');
         }
 
-        /// <summary>Путь для связи: RSN://сервер/папка/модель.rvt.</summary>
+        /// <summary>The path for a link: RSN://server/folder/model.rvt.</summary>
         public static string RsnPath(string server, string folderPath, string modelName)
         {
             var folder = (folderPath ?? RootFolder).Replace('|', '/').Trim('/');
@@ -74,10 +74,10 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Разбирает путь связи <c>RSN://сервер/VSC/3.0_AR/модель.rvt</c> на части: имя сервера,
-        /// путь папки в том виде, в каком его понимает служба (<c>|VSC|3.0_AR</c>), и имя модели.
-        /// Обратное к <see cref="RsnPath"/>: по пути уже стоящей связи или самого открытого проекта
-        /// надо уметь вернуться к папке, в которой он лежит.
+        /// Splits a link path <c>RSN://server/VSC/3.0_AR/model.rvt</c> into parts: the server name, the
+        /// folder path in the form the service understands (<c>|VSC|3.0_AR</c>), and the model name.
+        /// The inverse of <see cref="RsnPath"/>: given the path of an existing link or of the open
+        /// project itself, we have to be able to get back to the folder holding it.
         /// </summary>
         public static bool TryParse(string rsnPath, out string server, out string folderPath, out string modelName)
         {
@@ -100,7 +100,7 @@ namespace VladTools.Infrastructure
             server = parts[0];
             modelName = parts.Count > 1 ? parts[parts.Count - 1] : string.Empty;
 
-            // Между сервером и моделью — папки; их и склеиваем разделителем службы.
+            // Between the server and the model are the folders; those we join with the service separator.
             var folders = parts.Skip(1).Take(Math.Max(0, parts.Count - 2)).ToList();
             folderPath = folders.Count == 0 ? RootFolder : RootFolder + string.Join("|", folders);
 
@@ -108,9 +108,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Разбирает путь **папки** — <c>RSN://сервер/VSC/3.0_AR</c> — на имя сервера и путь
-        /// в виде службы. Отдельно от <see cref="TryParse"/>: там последний кусок пути считается
-        /// моделью, здесь он такая же папка, как остальные.
+        /// Splits a **folder** path — <c>RSN://server/VSC/3.0_AR</c> — into the server name and the path
+        /// in service form. Separate from <see cref="TryParse"/>: there the last piece of the path counts
+        /// as the model, here it is a folder like all the others.
         /// </summary>
         public static bool TryParseFolder(string rsnPath, out string server, out string folderPath)
         {
@@ -135,7 +135,7 @@ namespace VladTools.Infrastructure
             return true;
         }
 
-        /// <summary>Папка, в которой лежит эта: <c>|VSC|3.0_AR</c> → <c>|VSC</c>. Выше корня — null.</summary>
+        /// <summary>The folder holding this one: <c>|VSC|3.0_AR</c> → <c>|VSC</c>. Above the root — null.</summary>
         public static string ParentFolder(string folderPath)
         {
             var path = (folderPath ?? RootFolder).Trim();
@@ -147,7 +147,7 @@ namespace VladTools.Infrastructure
             return cut <= 0 ? RootFolder : path.Substring(0, cut);
         }
 
-        /// <summary>Имя самой папки без пути: <c>|VSC|3.0_AR</c> → <c>3.0_AR</c>; у корня — пусто.</summary>
+        /// <summary>The folder's own name without the path: <c>|VSC|3.0_AR</c> → <c>3.0_AR</c>; empty at the root.</summary>
         public static string FolderName(string folderPath)
         {
             var path = (folderPath ?? RootFolder).Trim();
@@ -156,8 +156,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Содержимое папки сервера: сначала вложенные папки, потом модели.
-        /// Сервер недоступен или ответил отказом — исключение с готовым к показу текстом.
+        /// The contents of a server folder: nested folders first, then models.
+        /// If the server is unreachable or refuses, an exception with ready-to-show text is raised.
         /// </summary>
         public static IReadOnlyList<ServerEntry> Contents(string server, string folderPath)
         {
@@ -174,7 +174,7 @@ namespace VladTools.Infrastructure
                 .Where(name => name.Length > 0)
                 .Select(name => new ServerEntry(name, path, true));
 
-            // Модели сервера лежат в Models; Files — вспомогательные файлы, связывать нечего.
+            // Server models live under Models; Files holds auxiliary files, nothing to link there.
             var models = Json.Items(body, "Models")
                 .Select(item => Json.Str(item, "Name"))
                 .Where(name => name.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))

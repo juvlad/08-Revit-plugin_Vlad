@@ -8,16 +8,16 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Узел дерева в окне просмотра моделей: либо папка, которую можно раскрыть,
-    /// либо модель с галочкой.
+    /// A tree node in the model browser window: either a folder that can be expanded, or a model
+    /// with a check box.
     ///
-    /// Одно дерево обслуживает и Revit Server, и BIM360: устроены они одинаково —
-    /// вложенные списки, которые дорого читать целиком и потому читаются по мере раскрытия.
-    /// Чем именно заполнять детей, узел не знает: это дело того, кто его создал.
+    /// One tree serves both Revit Server and BIM360: they are built the same way — nested lists that
+    /// are expensive to read whole and are therefore read as the nodes are expanded.
+    /// The node does not know what to fill its children with: that is up to whoever created it.
     ///
-    /// Свойства для оформления (шрифт, цвет, видимость галочки) лежат прямо здесь:
-    /// разметка в проекте собирается кодом, привязка к готовому свойству короче
-    /// и понятнее, чем преобразователь значений на каждый случай.
+    /// The presentation properties (font, colour, check box visibility) live right here: the markup in
+    /// this project is built in code, and binding to a ready-made property is shorter and clearer than
+    /// a value converter for every case.
     /// </summary>
     internal sealed class BrowseNode : INotifyPropertyChanged
     {
@@ -32,19 +32,19 @@ namespace VladTools.UI
             Context = context;
         }
 
-        /// <summary>Папка, содержимое которой подгружается при раскрытии.</summary>
+        /// <summary>A folder whose contents are loaded when it is expanded.</summary>
         public static BrowseNode Folder(string name, object context)
         {
             var node = new BrowseNode(name, false, null, context);
 
-            // Пустышка нужна, чтобы у папки появился треугольник раскрытия:
-            // без единого ребёнка WPF считает узел листом и раскрыть его не даст.
+            // The placeholder is what gives the folder its expander triangle: without a single child
+            // WPF treats the node as a leaf and will not let it be expanded.
             node.Children.Add(new BrowseNode("…", false, null, null) { IsPlaceholder = true });
 
             return node;
         }
 
-        /// <summary>Модель с галочкой. <paramref name="entry"/> — то, что уйдёт в таблицу связей.</summary>
+        /// <summary>A model with a check box. <paramref name="entry"/> is what will go into the link table.</summary>
         public static BrowseNode Model(LinkEntry entry, string note, bool isCheckable)
         {
             return new BrowseNode(entry.Name, true, entry, null)
@@ -54,7 +54,7 @@ namespace VladTools.UI
             };
         }
 
-        /// <summary>Строка вместо содержимого: «пусто» или причина отказа.</summary>
+        /// <summary>A line instead of contents: "empty" or the reason for the failure.</summary>
         public static BrowseNode Message(string text, bool isError)
         {
             return new BrowseNode(text, false, null, null) { IsPlaceholder = true, IsError = isError };
@@ -66,23 +66,23 @@ namespace VladTools.UI
 
         public bool IsModel { get; }
 
-        /// <summary>Что за модель — заполнено только у листьев дерева.</summary>
+        /// <summary>Which model this is — filled in only on the leaves of the tree.</summary>
         public LinkEntry Entry { get; }
 
-        /// <summary>Всё, что нужно знать тому, кто будет раскрывать эту папку: сервер, проект, идентификатор.</summary>
+        /// <summary>Everything whoever expands this folder needs to know: the server, the project, the id.</summary>
         public object Context { get; }
 
         public ObservableCollection<BrowseNode> Children { get; } = new ObservableCollection<BrowseNode>();
 
-        /// <summary>Служебная строка: пустышка под треугольник, «пусто» или ошибка.</summary>
+        /// <summary>A service row: the expander placeholder, "empty", or an error.</summary>
         public bool IsPlaceholder { get; private set; }
 
         public bool IsError { get; private set; }
 
-        /// <summary>Содержимое уже прочитано — второй раз к службе не ходим.</summary>
+        /// <summary>The contents have already been read — we do not go to the service a second time.</summary>
         public bool IsLoaded { get; set; }
 
-        /// <summary>Галочку можно поставить: у уже связанной модели — нельзя.</summary>
+        /// <summary>The check box can be ticked: on a model that is already linked it cannot.</summary>
         public bool IsCheckable { get; private set; } = true;
 
         public bool IsSelected
@@ -98,7 +98,7 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Серая приписка справа от имени: «уже в проекте», регион, число моделей.</summary>
+        /// <summary>The grey note to the right of the name: "already in the project", the region, the model count.</summary>
         public string Note
         {
             get { return _note ?? string.Empty; }
@@ -109,7 +109,7 @@ namespace VladTools.UI
             }
         }
 
-        // ───────────────────────────── оформление ─────────────────────────────
+        // ───────────────────────────── presentation ─────────────────────────────
 
         public Visibility CheckBoxVisibility => IsModel ? Visibility.Visible : Visibility.Collapsed;
 
@@ -126,7 +126,7 @@ namespace VladTools.UI
             }
         }
 
-        /// <summary>Все отмеченные модели этого узла и всех вложенных.</summary>
+        /// <summary>Every checked model of this node and of all nested ones.</summary>
         public IEnumerable<BrowseNode> CheckedModels()
         {
             if (IsModel && IsSelected)

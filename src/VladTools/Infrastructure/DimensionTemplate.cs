@@ -9,50 +9,50 @@ using VladTools.UI;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>Одна нитка внутри сохранённого шаблона: вид, смещение и тип размера по имени.</summary>
+    /// <summary>One chain inside a saved template: the kind, the offset and the dimension type by name.</summary>
     internal sealed class DimensionTemplateChain
     {
         public DimensionChainKind Kind { get; set; }
         public double OffsetMm { get; set; }
 
-        /// <summary>Имя, а не Id — шаблон должен переноситься между проектами, где Id у типов свои.</summary>
+        /// <summary>A name, not an id — a template has to travel between projects, where types have ids of their own.</summary>
         public string DimensionTypeName { get; set; } = string.Empty;
     }
 
     /// <summary>
-    /// Шаблон авторазмеров: по какой линии идёт граница помещения, куда смотрят нитки
-    /// и сам список ниток. Ровно то, что показывает окно «Авторазмеры» и что можно сохранить
-    /// кнопкой «Сохранить шаблон» — а можно и не сохранять, шаблон нужен только для переноса
-    /// набора ниток между проектами.
+    /// An auto-dimension template: which line the room boundary runs along, which way the chains face,
+    /// and the list of chains itself. Exactly what the "Auto Dimensions" window shows and what can be
+    /// saved with the "Save template" button — or not saved at all: a template is only needed to carry
+    /// a set of chains between projects.
     /// </summary>
     internal sealed class DimensionTemplate
     {
         public SpatialElementBoundaryLocation Boundary { get; set; } = SpatialElementBoundaryLocation.CoreBoundary;
 
-        /// <summary>Нитки ставятся наружу помещения, а не внутрь (по умолчанию — внутрь).</summary>
+        /// <summary>The chains are placed outside the room rather than inside (inside by default).</summary>
         public bool Outward { get; set; }
 
         /// <summary>
-        /// Крайние засечки нитки берутся с дальней грани примыкающей стены, а не с ближней —
-        /// первым и последним звеном нитки становится толщина этой стены («120 | 3775 | 120»).
-        /// По умолчанию включено: так устроена каждая нитка кладочного плана. Шаблоны, записанные
-        /// до появления этого поля, читаются с тем же значением — строки в файле просто нет.
+        /// The end ticks of the chain are taken from the far face of the adjoining wall rather than the
+        /// near one — the first and last link of the chain becomes that wall's thickness ("120 | 3775 | 120").
+        /// On by default: that is how every chain on a masonry plan is built. Templates written before
+        /// this field existed read with the same value — the line is simply absent from the file.
         /// </summary>
         public bool IncludeAdjacentWallThickness { get; set; } = true;
 
-        /// <summary>Подписи звеньев, которым не хватает места между засечками, выносятся на полку.</summary>
+        /// <summary>The labels of links that do not fit between their ticks are pulled out onto a leader.</summary>
         public bool MoveSmallText { get; set; } = true;
 
         public List<DimensionTemplateChain> Chains { get; } = new List<DimensionTemplateChain>();
     }
 
     /// <summary>
-    /// Хранилище шаблонов авторазмеров: `%AppData%\VladTools\autodim\&lt;имя&gt;.txt`.
+    /// The store of auto-dimension templates: `%AppData%\VladTools\autodim\&lt;name&gt;.txt`.
     ///
-    /// Отдельная папка, не `dimensions\` — та занята кэшем проверки семейств на метки размеров
-    /// (см. <see cref="DimensionLabelCache"/>); смешивать разные по смыслу файлы нельзя.
-    /// Формат — строка на сущность, поля через вертикальную черту, как у наборов связей
-    /// (<see cref="LinkSetLibrary"/>): черты не бывает ни в имени типа размера, ни в номере.
+    /// A separate folder, not `dimensions\` — that one holds the cache of the family scan for dimension
+    /// labels (see <see cref="DimensionLabelCache"/>); files that mean different things must not be mixed.
+    /// The format is one line per entity, fields separated by a vertical bar, as in link sets
+    /// (<see cref="LinkSetLibrary"/>): a bar occurs neither in a dimension type name nor in a number.
     /// </summary>
     internal static class DimensionTemplateLibrary
     {
@@ -60,15 +60,15 @@ namespace VladTools.Infrastructure
 
         private static readonly string[] FileHeader =
         {
-            "# Шаблон авторазмеров VladTools — кнопка «Авто размеры» (панель «Проект»).",
-            "# ГРАНИЦА  | Finish | Center | CoreBoundary | CoreCenter — по какой линии идёт граница помещения.",
-            "# СТОРОНА  | Внутрь | Наружу — куда смотрят нитки.",
-            "# ТОЛЩИНА  | Да | Нет — захватывать ли крайними засечками толщину примыкающих стен.",
-            "# ПОДПИСИ  | Полка | Наместе — выносить ли на полку подписи, которым не хватает места.",
-            "# НИТКА    | номер | смещение_мм | вид нитки | имя типа размера",
-            "#   вид нитки — одно из: Overall, OpeningEdges, OpeningCenters, Partitions, WallFaces, Combined",
-            "# Номер нитки — только для удобства чтения файла глазами, при загрузке не используется:",
-            "# порядок ниток — это порядок строк НИТКА. Файл можно править вручную."
+            "# VladTools auto-dimension template — the \"Auto Dimensions\" button (the Project panel).",
+            "# BOUNDARY  | Finish | Center | CoreBoundary | CoreCenter — which line the room boundary runs along.",
+            "# SIDE      | Inward | Outward — which way the chains face.",
+            "# THICKNESS | Yes | No — whether the end ticks pick up the thickness of the adjoining walls.",
+            "# LABELS    | Leader | Inline — whether labels that do not fit are pulled out onto a leader.",
+            "# CHAIN     | number | offset_mm | chain kind | dimension type name",
+            "#   chain kind is one of: Overall, OpeningEdges, OpeningCenters, Partitions, WallFaces, Combined",
+            "# The chain number is only there to make the file easier to read by eye; it is not used on load:",
+            "# the chain order is the order of the CHAIN lines. The file can be edited by hand."
         };
 
         /// <summary>%AppData%\VladTools\autodim</summary>
@@ -81,7 +81,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Имена сохранённых шаблонов по алфавиту. Имена с подчёркивания — служебные, в список не входят.</summary>
+        /// <summary>The names of the saved templates in alphabetical order. Names starting with an underscore are internal and are left out.</summary>
         public static IReadOnlyList<string> Names()
         {
             try
@@ -101,7 +101,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Читает шаблон. Файла нет или он испорчен — пустой шаблон: сломать этим кнопку нельзя.</summary>
+        /// <summary>Reads a template. No file or a corrupt one yields an empty template: that cannot break the button.</summary>
         public static DimensionTemplate Load(string templateName)
         {
             var template = new DimensionTemplate();
@@ -123,18 +123,18 @@ namespace VladTools.Infrastructure
             return template;
         }
 
-        /// <summary>Перезаписывает шаблон целиком.</summary>
+        /// <summary>Rewrites the whole template.</summary>
         public static void Save(string templateName, DimensionTemplate template)
         {
             var file = FilePathFor(templateName);
             if (file == null)
-                throw new ArgumentException("Имя шаблона пустое или состоит из недопустимых знаков.");
+                throw new ArgumentException("The template name is empty or consists only of forbidden characters.");
 
             var lines = new List<string>(FileHeader) { string.Empty };
-            lines.Add(Field("ГРАНИЦА", template.Boundary.ToString()));
-            lines.Add(Field("СТОРОНА", template.Outward ? "Наружу" : "Внутрь"));
-            lines.Add(Field("ТОЛЩИНА", template.IncludeAdjacentWallThickness ? "Да" : "Нет"));
-            lines.Add(Field("ПОДПИСИ", template.MoveSmallText ? "Полка" : "Наместе"));
+            lines.Add(Field("BOUNDARY", template.Boundary.ToString()));
+            lines.Add(Field("SIDE", template.Outward ? "Outward" : "Inward"));
+            lines.Add(Field("THICKNESS", template.IncludeAdjacentWallThickness ? "Yes" : "No"));
+            lines.Add(Field("LABELS", template.MoveSmallText ? "Leader" : "Inline"));
             lines.Add(string.Empty);
 
             var number = 1;
@@ -142,7 +142,7 @@ namespace VladTools.Infrastructure
             {
                 lines.Add(string.Join(" " + Separator + " ", new[]
                 {
-                    "НИТКА",
+                    "CHAIN",
                     number.ToString(CultureInfo.InvariantCulture),
                     chain.OffsetMm.ToString(CultureInfo.InvariantCulture),
                     chain.Kind.ToString(),
@@ -153,7 +153,7 @@ namespace VladTools.Infrastructure
 
             Directory.CreateDirectory(FolderPath);
 
-            // BOM — чтобы кириллица открывалась в «Блокноте» как надо.
+            // The BOM keeps non-Latin names readable when the file is opened in Notepad.
             File.WriteAllLines(file, lines, new UTF8Encoding(true));
         }
 
@@ -164,7 +164,7 @@ namespace VladTools.Infrastructure
                 File.Delete(file);
         }
 
-        /// <summary>Путь к файлу шаблона; имя пустое или из одних недопустимых знаков — null.</summary>
+        /// <summary>The path to the template file; null if the name is empty or made only of forbidden characters.</summary>
         public static string FilePathFor(string templateName)
         {
             var name = (templateName ?? string.Empty).Trim();
@@ -189,26 +189,39 @@ namespace VladTools.Infrastructure
             if (parts.Length < 2)
                 return;
 
+            // The Russian keys and values are what this format used before the add-in was translated.
+            // They are still accepted so that templates already saved in the autodim folder keep
+            // working; only the English form is ever written back.
             switch (parts[0].ToUpperInvariant())
             {
+                case "BOUNDARY":
                 case "ГРАНИЦА":
                     SpatialElementBoundaryLocation boundary;
                     if (Enum.TryParse(parts[1], true, out boundary))
                         template.Boundary = boundary;
                     break;
 
+                case "SIDE":
                 case "СТОРОНА":
-                    template.Outward = string.Equals(parts[1], "Наружу", StringComparison.OrdinalIgnoreCase);
+                    template.Outward = string.Equals(parts[1], "Outward", StringComparison.OrdinalIgnoreCase)
+                                       || string.Equals(parts[1], "Наружу", StringComparison.OrdinalIgnoreCase);
                     break;
 
+                case "THICKNESS":
                 case "ТОЛЩИНА":
-                    template.IncludeAdjacentWallThickness = !string.Equals(parts[1], "Нет", StringComparison.OrdinalIgnoreCase);
+                    template.IncludeAdjacentWallThickness =
+                        !string.Equals(parts[1], "No", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(parts[1], "Нет", StringComparison.OrdinalIgnoreCase);
                     break;
 
+                case "LABELS":
                 case "ПОДПИСИ":
-                    template.MoveSmallText = !string.Equals(parts[1], "Наместе", StringComparison.OrdinalIgnoreCase);
+                    template.MoveSmallText =
+                        !string.Equals(parts[1], "Inline", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(parts[1], "Наместе", StringComparison.OrdinalIgnoreCase);
                     break;
 
+                case "CHAIN":
                 case "НИТКА":
                     var chain = ParseChain(parts);
                     if (chain != null)
@@ -219,7 +232,7 @@ namespace VladTools.Infrastructure
 
         private static DimensionTemplateChain ParseChain(string[] parts)
         {
-            // НИТКА | номер | смещение | вид | имя типа — номер не используется, но должен быть на месте.
+            // CHAIN | number | offset | kind | type name — the number is unused but must be present.
             if (parts.Length < 4)
                 return null;
 
@@ -246,13 +259,13 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
-    /// Настройки окна «Авторазмеры», которые переживают закрытие Revit: последний использованный
-    /// шаблон, граница и направление. Перезаписываются при любом закрытии окна — как настройки
-    /// «Link Manager» (<see cref="LinkPreferences"/>), в отличие от самих шаблонов, которые
-    /// сохраняются только по кнопке.
+    /// The "Auto Dimensions" window settings that survive closing Revit: the last template used, the
+    /// boundary and the direction. Rewritten whenever the window closes — like the "Link Manager"
+    /// settings (<see cref="LinkPreferences"/>), unlike the templates themselves, which are saved only
+    /// by pressing the button.
     ///
-    /// Файл: `%AppData%\VladTools\autodim\_settings.txt`. Имя «_settings» занято этим файлом —
-    /// `DimensionTemplateLibrary.Names()` пропускает всё, что начинается с подчёркивания.
+    /// File: `%AppData%\VladTools\autodim\_settings.txt`. The name "_settings" is taken by this file —
+    /// `DimensionTemplateLibrary.Names()` skips everything starting with an underscore.
     /// </summary>
     internal sealed class AutoDimensionPreferences
     {
@@ -261,10 +274,10 @@ namespace VladTools.Infrastructure
         public bool Outward { get; set; }
         public bool RemovePrevious { get; set; } = true;
 
-        /// <summary>См. <see cref="DimensionTemplate.IncludeAdjacentWallThickness"/> — по умолчанию включено.</summary>
+        /// <summary>See <see cref="DimensionTemplate.IncludeAdjacentWallThickness"/> — on by default.</summary>
         public bool IncludeAdjacentThickness { get; set; } = true;
 
-        /// <summary>См. <see cref="DimensionTemplate.MoveSmallText"/> — по умолчанию включено.</summary>
+        /// <summary>See <see cref="DimensionTemplate.MoveSmallText"/> — on by default.</summary>
         public bool MoveSmallText { get; set; } = true;
 
         public static string FilePath => Path.Combine(DimensionTemplateLibrary.FolderPath, "_settings.txt");
@@ -283,7 +296,7 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Испорченный файл настроек — не повод не открывать окно.
+                // A corrupt settings file is no reason not to open the window.
             }
 
             return preferences;
@@ -295,8 +308,8 @@ namespace VladTools.Infrastructure
             {
                 var lines = new List<string>
                 {
-                    "# Настройки окна «Авторазмеры» — панель «Проект».",
-                    "# Файл перезаписывается при каждом закрытии окна.",
+                    "# \"Auto Dimensions\" window settings — the Project panel.",
+                    "# The file is rewritten every time the window closes.",
                     string.Empty,
                     Line("TEMPLATE", LastTemplate),
                     Line("BOUNDARY", Boundary.ToString()),
@@ -308,12 +321,12 @@ namespace VladTools.Infrastructure
 
                 Directory.CreateDirectory(DimensionTemplateLibrary.FolderPath);
 
-                // BOM — чтобы кириллица открывалась в «Блокноте» как надо.
+                // The BOM keeps non-Latin names readable when the file is opened in Notepad.
                 File.WriteAllLines(FilePath, lines, new UTF8Encoding(true));
             }
             catch (Exception)
             {
-                // Настройки, не данные — отказ записи не должен мешать работе кнопки.
+                // Settings, not data — a write failure must not get in the way of the button.
             }
         }
 

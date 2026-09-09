@@ -10,23 +10,23 @@ using VladTools.UI;
 namespace VladTools.Commands
 {
     /// <summary>
-    /// Удаляет из открытого (родительского) семейства общие параметры, имена которых
-    /// подходят под правило: «начинаются с …» или «содержат …».
-    /// Сначала показывает список всех общих параметров и то, что попадёт под правило.
-    /// Вложенные семейства не трогает — только сам открытый документ.
+    /// Deletes from the open (host) family the shared parameters whose names match the rule:
+    /// "starts with …" or "contains …".
+    /// It first shows the list of every shared parameter and what the rule will catch.
+    /// It does not touch nested families — only the open document itself.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class DeleteSharedParametersCommand : IExternalCommand
     {
-        private const string DialogTitle = "Удалить параметры";
+        private const string DialogTitle = "Delete Parameters";
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             var uidoc = commandData?.Application?.ActiveUIDocument;
             if (uidoc == null)
             {
-                message = "Нет активного документа.";
+                message = "There is no active document.";
                 return Result.Cancelled;
             }
 
@@ -34,8 +34,8 @@ namespace VladTools.Commands
             if (!doc.IsFamilyDocument)
             {
                 TaskDialog.Show(DialogTitle,
-                    "Команда работает только в редакторе семейств.\n" +
-                    "Откройте семейство (.rfa) и повторите.");
+                    "The command works only in the family editor.\n" +
+                    "Open a family (.rfa) and try again.");
                 return Result.Cancelled;
             }
 
@@ -46,7 +46,7 @@ namespace VladTools.Commands
 
                 if (rows.Count == 0)
                 {
-                    TaskDialog.Show(DialogTitle, "В этом семействе нет общих параметров.");
+                    TaskDialog.Show(DialogTitle, "This family has no shared parameters.");
                     return Result.Cancelled;
                 }
 
@@ -59,7 +59,7 @@ namespace VladTools.Commands
                 var deleted = new List<string>();
                 var failures = new List<string>();
 
-                using (var transaction = new Transaction(doc, "Удалить общие параметры"))
+                using (var transaction = new Transaction(doc, "Delete shared parameters"))
                 {
                     transaction.Start();
 
@@ -99,18 +99,18 @@ namespace VladTools.Commands
 
             return new SharedParameterRow(
                 parameter,
-                definition?.Name ?? "(без имени)",
+                definition?.Name ?? "(unnamed)",
                 GuidText(parameter),
-                parameter.IsInstance ? "Экземпляр" : "Тип",
+                parameter.IsInstance ? "Instance" : "Type",
                 GroupName(definition),
                 dimensionLabels.Contains(parameter.Id));
         }
 
         /// <summary>
-        /// Параметры, которые стоят метками на размерах: удалить такой — значит снять метку
-        /// и сломать параметрику. Метка есть только у размера в документе семейства
-        /// и достаётся единственным способом — <c>Dimension.FamilyLabel</c>, который
-        /// у неразмечаемого размера бросает исключение вместо null.
+        /// The parameters that label dimensions: deleting one means dropping the label and breaking
+        /// the parametrics. A label exists only on a dimension inside a family document and can be
+        /// obtained in exactly one way — <c>Dimension.FamilyLabel</c>, whose getter throws instead of
+        /// returning null on a dimension that cannot be labelled.
         /// </summary>
         private static HashSet<ElementId> CollectDimensionLabels(Document doc)
         {
@@ -126,7 +126,7 @@ namespace VladTools.Commands
                 }
                 catch (Exception)
                 {
-                    // Размер, который пометить нельзя, метки и не несёт.
+                    // A dimension that cannot be labelled carries no label either.
                 }
             }
 
@@ -150,9 +150,9 @@ namespace VladTools.Commands
             if (definition == null)
                 return string.Empty;
 
-            // GetGroupTypeId вместо ParameterGroup: в Revit 2025 и сам BuiltInParameterGroup,
-            // и Definition.ParameterGroup убраны совсем. Новая пара есть уже в 2022,
-            // поэтому код остаётся общим для всех трёх лет.
+            // GetGroupTypeId instead of ParameterGroup: in Revit 2025 both BuiltInParameterGroup
+            // itself and Definition.ParameterGroup are gone entirely. The new pair already exists in
+            // 2022, so the code stays shared across all three years.
             ForgeTypeId group;
             try
             {
@@ -163,7 +163,7 @@ namespace VladTools.Commands
                 return string.Empty;
             }
 
-            // У параметра без группы ForgeTypeId пустой, а GetLabelForGroup на таком бросает.
+            // A parameter with no group has an empty ForgeTypeId, and GetLabelForGroup throws on it.
             if (group == null || string.IsNullOrEmpty(group.TypeId))
                 return string.Empty;
 
@@ -178,9 +178,9 @@ namespace VladTools.Commands
         }
 
         /// <summary>
-        /// Удаляет параметры в несколько проходов: параметр, на который ссылается формула
-        /// другого параметра, не удаляется, пока жив этот другой. Повторяем, пока есть прогресс,
-        /// и только после этого записываем оставшиеся ошибки.
+        /// Deletes the parameters in several passes: a parameter referenced by another parameter's
+        /// formula cannot be deleted while that other one is alive. We repeat while there is progress,
+        /// and only then record the errors that are left.
         /// </summary>
         private static void Remove(
             FamilyManager manager,
@@ -209,7 +209,7 @@ namespace VladTools.Commands
                     }
                 }
 
-                // Ни один параметр не удалось удалить за проход — дальше ничего не изменится.
+                // Not a single parameter was deleted in a whole pass — nothing will change from here on.
                 if (stuck.Count == pending.Count)
                 {
                     failures.AddRange(stuck.Select(row => row.Name + " — " + lastErrors[row.Name]));
@@ -223,17 +223,17 @@ namespace VladTools.Commands
         private static void Report(IReadOnlyList<string> deleted, IReadOnlyList<string> failures)
         {
             var text = deleted.Count > 0
-                ? "Удалено параметров: " + deleted.Count + "."
-                : "Ни один параметр не удалён.";
+                ? "Parameters deleted: " + deleted.Count + "."
+                : "No parameter was deleted.";
 
             if (failures.Count > 0)
             {
                 const int limit = 15;
-                text += "\n\nНе удалось удалить (" + failures.Count + "):\n• " +
+                text += "\n\nCould not be deleted (" + failures.Count + "):\n• " +
                         string.Join("\n• ", failures.Take(limit));
 
                 if (failures.Count > limit)
-                    text += "\n… и ещё " + (failures.Count - limit);
+                    text += "\n… and " + (failures.Count - limit) + " more";
             }
 
             TaskDialog.Show(DialogTitle, text);

@@ -5,25 +5,25 @@ using System.Linq;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Подбор рабочего набора проекта по имени модели связи.
+    /// Guessing the project workset from the name of a link model.
     ///
-    /// Модели смежников почти всегда названы по одному принципу: где-то в имени стоит код
-    /// раздела проектирования — <c>OV</c>, <c>VK</c>, <c>AR</c>, <c>KR</c>, — а рядом может быть
-    /// суффикс версии Revit (<c>_R22</c>). В проекте под каждый раздел заведён свой набор для
-    /// связей: <c>01_Link_OV</c>, <c>01_Связи_OV</c>. Значит, набор можно предложить сам:
-    /// вытащить код из имени модели и найти набор, где этот код стоит отдельным словом.
+    /// Consultants' models are almost always named on the same principle: somewhere in the name sits a
+    /// discipline code — <c>OV</c>, <c>VK</c>, <c>AR</c>, <c>KR</c> — with a Revit version suffix
+    /// (<c>_R22</c>) possibly next to it. The project has a link workset for each discipline:
+    /// <c>01_Link_OV</c>, <c>01_Связи_OV</c>. So the workset can suggest itself: pull the code out of
+    /// the model name and find the workset where that code stands as a separate word.
     ///
-    /// Разбор — эвристика того же уровня, что <see cref="FormulaParser"/>: не парсер имени,
-    /// а набор простых правил. Код ищется **по списку известных**, а не «последним токеном»:
-    /// в конце имени может оказаться что угодно (номер корпуса, дата, инициалы), а список
-    /// отсекает лишнее. Список правится в <c>links\_settings.txt</c> (ключ <c>DISCIPLINE</c>).
+    /// The parsing is a heuristic of the same level as <see cref="FormulaParser"/>: not a name parser
+    /// but a set of simple rules. The code is looked for **against a list of known ones** rather than
+    /// as "the last token": anything at all may sit at the end of a name (a building number, a date,
+    /// initials), and the list cuts the rest away. The list is edited in <c>links\_settings.txt</c> (the <c>DISCIPLINE</c> key).
     /// </summary>
     internal static class DisciplineCatalog
     {
         /// <summary>
-        /// Коды разделов по умолчанию — латиницей, как их обычно пишут в именах файлов
-        /// (русские марки в транслите плюс несколько англоязычных). Список не исчерпывающий:
-        /// он для того и вынесен в настройки, чтобы дописать свой код без пересборки.
+        /// The default discipline codes, in Latin letters as they are usually written in file names
+        /// (transliterated Russian discipline marks plus a few English ones). The list is not
+        /// exhaustive: that is exactly why it lives in the settings, so a code can be added without a rebuild.
         /// </summary>
         public static readonly IReadOnlyList<string> Defaults = new[]
         {
@@ -38,11 +38,11 @@ namespace VladTools.Infrastructure
         };
 
         /// <summary>
-        /// Разделы, которые обычно грузят связями в каждую модель проекта: АР, КР, электрика,
-        /// пожарные системы, отопление-вентиляция, водоснабжение. Это не подмножество
-        /// <see cref="Defaults"/> «по смыслу», а отдельный список: там — все коды, какие
-        /// встречаются в именах файлов, здесь — те, чьи модели нужны в работе.
-        /// Правится в <c>links\_settings.txt</c> (строки <c>KIT</c>).
+        /// The disciplines usually linked into every project model: architecture, structure, electrics,
+        /// fire systems, heating and ventilation, water supply. This is not a subset of
+        /// <see cref="Defaults"/> "by meaning" but a separate list: there are all the codes that occur
+        /// in file names, here are the ones whose models are actually needed at work.
+        /// Edited in <c>links\_settings.txt</c> (the <c>KIT</c> lines).
         /// </summary>
         public static readonly IReadOnlyList<string> KitDefaults = new[]
         {
@@ -50,10 +50,10 @@ namespace VladTools.Infrastructure
         };
 
         /// <summary>
-        /// Код раздела из имени модели или пустая строка. Имя дробится на токены по всем
-        /// не-буквенно-цифровым знакам (так <c>_R22</c>, точки, дефисы и пробелы уходят сами),
-        /// и берётся последний токен, совпавший с кодом из списка, — он ближе к концу имени,
-        /// где раздел и ставят.
+        /// The discipline code from a model name, or an empty string. The name is split into tokens at
+        /// every non-alphanumeric character (so <c>_R22</c>, dots, hyphens and spaces fall away by
+        /// themselves), and the last token matching a code from the list is taken — it is closer to the
+        /// end of the name, which is where the discipline is put.
         /// </summary>
         public static string Detect(string modelName, IEnumerable<string> codes)
         {
@@ -70,10 +70,10 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Имена наборов проекта, в которых код стоит отдельным словом: <c>01_Link_OV</c>,
-        /// <c>01_Связи_OV</c>, <c>Связь OV</c> — да, а <c>Provod</c> — нет. Сравнение по токенам,
-        /// тем же, что у <see cref="Detect"/>, поэтому регистр не важен, а <c>OV</c> внутри
-        /// другого слова не цепляется.
+        /// Project workset names in which the code stands as a separate word: <c>01_Link_OV</c>,
+        /// <c>01_Связи_OV</c>, <c>Link OV</c> — yes; <c>Provod</c> — no. The comparison is by tokens,
+        /// the same ones <see cref="Detect"/> uses, so case does not matter and an <c>OV</c> inside
+        /// another word is not picked up.
         /// </summary>
         public static IReadOnlyList<string> MatchingWorksets(string code, IEnumerable<string> worksetNames)
         {
@@ -86,16 +86,16 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Имя, разобранное на буквенно-цифровые куски: <c>MK3-VSC-B01-AR_R22</c> →
-        /// <c>MK3</c>, <c>VSC</c>, <c>B01</c>, <c>AR</c>, <c>R22</c>. Один разбор на всех:
-        /// им ищется и код раздела, и номер корпуса, и совпадение имени набора.
+        /// A name split into alphanumeric pieces: <c>MK3-VSC-B01-AR_R22</c> →
+        /// <c>MK3</c>, <c>VSC</c>, <c>B01</c>, <c>AR</c>, <c>R22</c>. One split serves everything: it
+        /// finds the discipline code, the building number and the workset name match alike.
         /// </summary>
         public static IReadOnlyList<string> Tokens(string text)
         {
             return Split(text).ToList();
         }
 
-        /// <summary>Имя содержит этот кусок отдельным словом: <c>B01</c> в <c>MK3-VSC-B01-AR</c> — да, в <c>B012</c> — нет.</summary>
+        /// <summary>The name contains this piece as a separate word: <c>B01</c> in <c>MK3-VSC-B01-AR</c> — yes, in <c>B012</c> — no.</summary>
         public static bool HasToken(string text, string token)
         {
             if (string.IsNullOrWhiteSpace(token))
@@ -107,9 +107,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// В проекте вообще заведены наборы под разделы или нет. Нужно, чтобы отличить
-        /// «набора для этого раздела не хватает» от «здесь так не делят»: во втором случае
-        /// приписка про каждый ненайденный набор была бы шумом на всю таблицу.
+        /// Whether the project has per-discipline worksets at all. Needed to tell "the workset for this
+        /// discipline is missing" from "they do not split them that way here": in the second case a note
+        /// on every workset that was not found would be noise across the whole table.
         /// </summary>
         public static bool HasDisciplineWorksets(IEnumerable<string> worksetNames, IEnumerable<string> codes)
         {
@@ -122,23 +122,23 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Когда под код подходит несколько наборов, выбирает из них по двум правилам подряд.
+        /// When several worksets match the code, this picks between them by two rules in turn.
         ///
-        /// **Первое — по имени самой модели.** Наборы бывают разведены не только по разделам,
-        /// но и по корпусам: «01_Link_AR_B01», «01_Link_AR_B03». Тогда нужный узнаётся сам —
-        /// в его имени стоит тот же корпус, что и в имени модели («MK3-VSC-B03-AR» → B03).
-        /// Правило общее, а не про корпуса: выигрывает набор, у которого больше общих слов
-        /// с именем модели.
+        /// **The first — by the model name itself.** Worksets are sometimes split not only by discipline
+        /// but by building too: "01_Link_AR_B01", "01_Link_AR_B03". Then the right one identifies itself —
+        /// its name carries the same building as the model name ("MK3-VSC-B03-AR" → B03).
+        /// The rule is general rather than about buildings: the workset with the most words in common
+        /// with the model name wins.
         ///
-        /// **Второе — по тому, как названы наборы остальных разделов.** Раз в проекте есть
-        /// «01_Link_ES», «01_Link_OV» и «01_Link_VK», то из «01_Link_AR» и «05_AR_Фасады»
-        /// нужен первый. Считается без списков образцов: у имени берётся «облик» — само имя
-        /// с вырезанным кодом («01_Link_ES» → «01_Link_·»), — и выигрывает кандидат, чей
-        /// облик носят наборы наибольшего числа **других** разделов.
+        /// **The second — by how the other disciplines' worksets are named.** If the project has
+        /// "01_Link_ES", "01_Link_OV" and "01_Link_VK", then out of "01_Link_AR" and "05_AR_Elevations"
+        /// the first is wanted. It is computed without sample lists: a name's "shape" is taken — the name
+        /// with the code cut out ("01_Link_ES" → "01_Link_·") — and the winner is the candidate whose
+        /// shape is worn by the worksets of the greatest number of **other** disciplines.
         ///
-        /// Ни то ни другое не разделило кандидатов — null: гадать нельзя, выбор за человеком.
+        /// If neither rule separates the candidates — null: guessing is not allowed, the choice is the user's.
         /// </summary>
-        /// <param name="modelName">Имя модели связи — по нему работает первое правило.</param>
+        /// <param name="modelName">The link model name — the first rule works from it.</param>
         public static string Preferred(
             string code,
             IReadOnlyList<string> candidates,
@@ -183,14 +183,14 @@ namespace VladTools.Infrastructure
                 if (shape == null || !shapes.TryGetValue(shape, out owners))
                     return 0;
 
-                // Себя не считаем: интересно, сколько **чужих** разделов названо так же.
+                // We do not count ourselves: what matters is how many **other** disciplines are named the same way.
                 return owners.Count(owner => !string.Equals(owner, code, StringComparison.OrdinalIgnoreCase));
             });
         }
 
         /// <summary>
-        /// Кандидат с наибольшим счётом; ноль или ничья — null. Ничья тут не досадная мелочь,
-        /// а единственный честный ответ: два одинаково подходящих набора значит «выбирает человек».
+        /// The candidate with the highest score; zero or a tie yields null. A tie here is not an annoying
+        /// detail but the only honest answer: two equally suitable worksets mean "the user chooses".
         /// </summary>
         private static string Best(IReadOnlyList<string> candidates, Func<string, int> score)
         {
@@ -218,8 +218,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Сколько слов имени набора, кроме самого кода раздела, встречается в имени модели.
-        /// Так «01_Link_AR_B03» обгоняет «01_Link_AR_B01» на модели «MK3-VSC-B03-AR».
+        /// How many words of the workset name, apart from the discipline code itself, occur in the model
+        /// name. That is how "01_Link_AR_B03" beats "01_Link_AR_B01" on the model "MK3-VSC-B03-AR".
         /// </summary>
         private static int Shared(string worksetName, string code, string modelName)
         {
@@ -233,7 +233,7 @@ namespace VladTools.Infrastructure
                 .Count(words.Contains);
         }
 
-        /// <summary>Имя набора с вырезанным кодом: «01_Link_ES» + ES → «01_Link_·». Кода нет — null.</summary>
+        /// <summary>The workset name with the code cut out: "01_Link_ES" + ES → "01_Link_·". No code — null.</summary>
         private static string Shape(string name, string code)
         {
             var text = name ?? string.Empty;

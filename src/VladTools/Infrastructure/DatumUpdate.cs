@@ -3,36 +3,36 @@ using Autodesk.Revit.DB;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Готовая правка одной оси или одного уровня: что именно сделать, чтобы элемент проекта
-    /// сошёлся с координационным файлом.
+    /// A ready-made edit for a single grid or level: exactly what to do so that the project element
+    /// matches the coordination file.
     ///
-    /// Считается при сравнении, применяется командой в транзакции — по той же схеме, что
-    /// в «Авторазмерах»: сперва все чтения, потом все записи. Здесь у этого есть вторая
-    /// причина: между открытием окна и нажатием «Принять» пользователь смотрит на числа,
-    /// и применяться должно ровно то, что он видел.
+    /// It is computed while comparing and applied by the command inside a transaction — the same
+    /// scheme as in "Auto Dimensions": all reads first, all writes afterwards. Here there is a second
+    /// reason for it: between opening the window and pressing "Apply" the user looks at the numbers,
+    /// and exactly what they saw must be what gets applied.
     /// </summary>
     internal sealed class DatumUpdate
     {
-        /// <summary>Элемент проекта, который правим.</summary>
+        /// <summary>The project element being edited.</summary>
         public ElementId HostId { get; set; }
 
-        /// <summary>Поворот оси вокруг вертикали, радианы; 0 — поворачивать не нужно.</summary>
+        /// <summary>Rotation of the grid about the vertical axis, in radians; 0 — no rotation needed.</summary>
         public double Angle { get; set; }
 
         /// <summary>
-        /// Точка, вокруг которой поворачивать, — середина оси до правки. Отсюда же считается
-        /// перенос: после поворота вокруг неё ось идёт через эту точку в нужном направлении,
-        /// и остаётся сдвинуть её поперёк себя.
+        /// The point to rotate about — the midpoint of the grid before the edit. The translation is
+        /// measured from it as well: after rotating about that point the grid runs through it in the
+        /// right direction, and all that is left is to shift it sideways.
         /// </summary>
         public XYZ Center { get; set; }
 
-        /// <summary>Перенос оси в плане после поворота; null — переносить не нужно.</summary>
+        /// <summary>Translation of the grid in plan after the rotation; null — no translation needed.</summary>
         public XYZ Translation { get; set; }
 
-        /// <summary>Новая отметка уровня во внутренних единицах; NaN — уровень не трогаем.</summary>
+        /// <summary>The new level elevation in internal units; NaN — leave the level alone.</summary>
         public double Elevation { get; set; } = double.NaN;
 
-        /// <summary>Новое имя; null — не переименовывать.</summary>
+        /// <summary>The new name; null — do not rename.</summary>
         public string NewName { get; set; }
     }
 }

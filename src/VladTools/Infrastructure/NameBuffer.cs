@@ -7,21 +7,21 @@ using System.Text;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Буфер имён: куски имён, которые пользователь вбивает снова и снова
-    /// («(ФТ)-ФЛ_ГОСТ 33259-2015», «ДУ» и т.п.).
+    /// The name buffer: the fragments of names the user types over and over
+    /// ("(FT)-FL_GOST 33259-2015", "DN" and the like).
     ///
-    /// Лежит в профиле Windows рядом со списком формул и переживает закрытие Revit —
-    /// один раз сохранил, дальше подставляешь в каждом семействе.
-    /// Формат файла: одна строка — одно значение. Строка с решётки — комментарий.
+    /// It lives in the Windows profile next to the formula list and survives closing Revit —
+    /// save it once, then paste it into every family.
+    /// File format: one line — one value. A line starting with a hash is a comment.
     /// </summary>
     internal static class NameBuffer
     {
         private static readonly string[] FileHeader =
         {
-            "# Буфер имён VladTools — кнопка «Переименовать вложенные».",
-            "# Одна строка — одно сохранённое значение, его можно подставить в поле окна.",
-            "# Строка, начатая с решётки, считается комментарием.",
-            "# Файл можно править вручную — он перечитывается при каждом открытии окна."
+            "# VladTools name buffer — the \"Rename Nested\" button.",
+            "# One line — one saved value, ready to be pasted into the window field.",
+            "# A line starting with a hash is treated as a comment.",
+            "# The file can be edited by hand — it is re-read every time the window opens."
         };
 
         /// <summary>%AppData%\VladTools\names.txt</summary>
@@ -35,8 +35,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Читает буфер. Файла ещё нет или он испорчен — буфер просто пустой:
-        /// сломать этим кнопку нельзя.
+        /// Reads the buffer. If the file does not exist yet or is corrupt, the buffer is simply
+        /// empty: that cannot break the button.
         /// </summary>
         public static IReadOnlyList<string> Load()
         {
@@ -57,7 +57,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Перезаписывает файл целиком.</summary>
+        /// <summary>Rewrites the whole file.</summary>
         public static void Save(IEnumerable<string> values)
         {
             var lines = new List<string>(FileHeader) { string.Empty };
@@ -71,7 +71,7 @@ namespace VladTools.Infrastructure
             if (!string.IsNullOrEmpty(folder))
                 Directory.CreateDirectory(folder);
 
-            // BOM — чтобы кириллица открывалась в «Блокноте» как надо.
+            // The BOM keeps non-Latin names readable when the file is opened in Notepad.
             File.WriteAllLines(FilePath, lines, new UTF8Encoding(true));
         }
     }

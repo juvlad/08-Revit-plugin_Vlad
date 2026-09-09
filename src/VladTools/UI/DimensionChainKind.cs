@@ -1,35 +1,35 @@
 namespace VladTools.UI
 {
     /// <summary>
-    /// Каталог видов ниток авторазмеров — фиксированный перечень того, что может засекать
-    /// одна нитка размеров вдоль стороны помещения. Разбор образца (см. <c>DimensionSampleReader</c>)
-    /// подбирает для каждого образцового размера один из этих видов; ошибка подбора не страшна —
-    /// строка в окне правится руками.
+    /// The catalogue of auto-dimension chain kinds — a fixed list of what a single dimension chain
+    /// along a room side can pick up. Sample parsing (see <c>DimensionSampleReader</c>) matches every
+    /// sample dimension to one of these kinds; a wrong match is not a problem — the row in the window
+    /// can be edited by hand.
     ///
-    /// Порядок значений — это порядок в выпадающем списке окна.
+    /// The order of the values is the order in the window drop-down.
     /// </summary>
     internal enum DimensionChainKind
     {
-        /// <summary>Только два крайних угла стороны — общий габарит.</summary>
+        /// <summary>The two end corners of the side only — the overall size.</summary>
         Overall,
 
-        /// <summary>Углы стороны + грани откосов проёмов (двери, окна).</summary>
+        /// <summary>The side corners plus the jamb faces of the openings (doors, windows).</summary>
         OpeningEdges,
 
-        /// <summary>Углы стороны + оси проёмов (середины между откосами).</summary>
+        /// <summary>The side corners plus the opening centre lines (midway between the jambs).</summary>
         OpeningCenters,
 
-        /// <summary>Углы стороны + обе грани перегородок, примыкающих к стороне изнутри помещения.</summary>
+        /// <summary>The side corners plus both faces of the partitions meeting the side from inside the room.</summary>
         Partitions,
 
-        /// <summary>Углы + стыки стен внутри стороны (для ступенчатых стен, собранных из нескольких).</summary>
+        /// <summary>The corners plus the wall joints inside the side (for stepped walls built from several walls).</summary>
         WallFaces,
 
-        /// <summary>Объединение проёмов, осей проёмов и перегородок на одной нитке.</summary>
+        /// <summary>Openings, opening centres and partitions merged into one chain.</summary>
         Combined
     }
 
-    /// <summary>Текст для выпадающего списка и отчётов — окно про Revit API не знает, поэтому текст здесь.</summary>
+    /// <summary>Text for the drop-down and the reports — the window knows nothing about the Revit API, so the text lives here.</summary>
     internal static class DimensionChainKindText
     {
         public static string Caption(DimensionChainKind kind)
@@ -37,17 +37,17 @@ namespace VladTools.UI
             switch (kind)
             {
                 case DimensionChainKind.Overall:
-                    return "Габарит";
+                    return "Overall";
                 case DimensionChainKind.OpeningEdges:
-                    return "Проёмы";
+                    return "Openings";
                 case DimensionChainKind.OpeningCenters:
-                    return "Оси проёмов";
+                    return "Opening centres";
                 case DimensionChainKind.Partitions:
-                    return "Перегородки";
+                    return "Partitions";
                 case DimensionChainKind.WallFaces:
-                    return "Грани стен";
+                    return "Wall faces";
                 case DimensionChainKind.Combined:
-                    return "Всё вместе";
+                    return "All combined";
                 default:
                     return kind.ToString();
             }

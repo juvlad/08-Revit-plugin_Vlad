@@ -1,70 +1,71 @@
-# План: кнопка «Авторазмеры» (аналог Auto Dim Lines из KS Plugin)
+# Plan: the "Auto Dimensions" button (a counterpart to Auto Dim Lines from KS Plugin)
 
-Документ — задание для исполнителя (модель Sonnet). Работать строго по этапам: каждый этап
-заканчивается сборкой и **ручной проверкой в Revit**, тестового проекта в репозитории нет.
-Не начинать следующий этап, пока предыдущий не проверен в Revit.
+A document — a task for the executor (the Sonnet model). Work strictly stage by stage: every stage
+ends with a build and a **manual check in Revit**, there is no test project in the repository.
+Do not start the next stage until the previous one has been checked in Revit.
 
-Все соглашения проекта из [CLAUDE.md](CLAUDE.md) действуют без исключений: русский текст и комментарии,
-WPF без XAML, окна не знают про Revit API, одна транзакция на пачку, ошибки — в список и в `TaskDialog`,
-никаких `#if` (собираться должно под 2022, 2024 и 2025 из одного исходника).
-
----
-
-## 1. Что делает кнопка
-
-Панель «Проект», кнопка **«Авто размеры»**, команда `AutoDimensionCommand`.
-
-Пользователь один раз расставил руками несколько ниток размеров вдоль одной стены одного помещения
-(в демонстрации KS Plugin — шесть). Дальше он выделяет помещения, жмёт кнопку — и по каждой стороне
-каждого выделенного помещения появляются такие же нитки: то же смещение от стены, тот же тип размера,
-тот же состав засечек (габарит / проёмы / оси проёмов / примыкающие перегородки).
-
-Типовая работа — кладочный план АР: размеры ставятся к граням несущего слоя, внутрь помещения,
-в несколько ниток.
-
-### Ключевое архитектурное решение (принято, не пересматривать без причины)
-
-Образец **не копируется буквально по ссылкам** — ссылки образца привязаны к конкретным стенам
-и в другом помещении бессмысленны. Вместо этого заводится **каталог видов ниток** (фиксированный
-перечень «что засекать»), а разбор образца — это подбор: для каждого образцового размера определяется
-его вид нитки, смещение от стены и тип размера. Результат разбора показывается в окне таблицей
-и правится руками.
-
-Отсюда прямое следствие: разбор образца — **эвристика, а не парсер**, ровно в том же статусе, что
-`FormulaParser`. Ошибка подбора не ломает работу: строка в таблице правится вручную. Это и есть
-страховка, и её нельзя убирать — окно должно оставаться редактируемым.
-
-Второе следствие: даже без образца кнопка полезна — нитки собираются в окне руками и сохраняются
-шаблоном.
+Every project convention from [CLAUDE.md](CLAUDE.md) applies without exception: user-visible text
+and comments, WPF without XAML, windows that know nothing about the Revit API, one transaction per
+batch, errors gathered into a list and shown in a `TaskDialog`, no `#if` at all (it must build for
+2022, 2024 and 2025 from one source tree).
 
 ---
 
-## 2. Каталог видов ниток (`DimensionChainKind`)
+## 1. What the button does
 
-| Значение | Текст в окне | Что засекает |
+Project panel, the **"Auto Dimensions"** button, the `AutoDimensionCommand` command.
+
+The user once placed a few dimension chains by hand along one wall of one room (six, in the KS
+Plugin demo). From there they select rooms and press the button — and the same chains appear along
+every side of every selected room: the same offset from the wall, the same dimension type, the
+same set of ticks (overall / openings / opening centres / adjoining partitions).
+
+The routine job is an architectural masonry plan: dimensions run to the core layer faces, into the
+room, as several chains.
+
+### The key architectural decision (settled — do not revisit without a reason)
+
+The sample is **not copied literally by its references** — a sample's references are tied to
+specific walls and are meaningless in another room. Instead a **catalogue of chain kinds** is set
+up (a fixed list of "what to pick up"), and parsing the sample is a guess: for every sample
+dimension, its chain kind, its offset from the wall and its dimension type are worked out. The
+parsed result is shown in the window as a table and can be edited by hand.
+
+A direct consequence follows: parsing a sample is a **heuristic, not a parser**, in exactly the
+same status as `FormulaParser`. A wrong guess does not break anything: the row in the table is
+fixed by hand. That is the safety net, and it must not be removed — the window has to stay editable.
+
+A second consequence: the button is useful even without a sample — chains can be assembled by hand
+in the window and saved as a template.
+
+---
+
+## 2. The catalogue of chain kinds (`DimensionChainKind`)
+
+| Value | Text in the window | What it picks up |
 | --- | --- | --- |
-| `Overall` | Габарит | только два крайних угла стороны |
-| `OpeningEdges` | Проёмы | углы стороны + грани откосов проёмов (двери, окна) |
-| `OpeningCenters` | Оси проёмов | углы стороны + оси проёмов |
-| `Partitions` | Перегородки | углы стороны + обе грани перегородок, примыкающих к стороне изнутри помещения |
-| `WallFaces` | Грани стен | углы + стыки стен стороны (для ступенчатых стен) |
-| `Combined` | Всё вместе | объединение `OpeningEdges` + `OpeningCenters` + `Partitions` на одной нитке |
+| `Overall` | Overall | only the two end corners of the side |
+| `OpeningEdges` | Openings | the side corners + the jamb faces of the openings (doors, windows) |
+| `OpeningCenters` | Opening centres | the side corners + opening centre lines |
+| `Partitions` | Partitions | the side corners + both faces of the partitions meeting the side from inside the room |
+| `WallFaces` | Wall faces | the corners + the wall joints of the side (for stepped walls) |
+| `Combined` | All combined | `OpeningEdges` + `OpeningCenters` + `Partitions` merged into one chain |
 
-Порядок значений в перечислении = порядок в выпадающем списке окна.
+The order of the enum values is the order in the window's drop-down.
 
-Нитка (`DimensionChain`) = `Kind` + `OffsetMm` (смещение линии размера от грани стены) +
-`DimensionTypeName` (имя типа размера, **не** `ElementId` — шаблон должен переноситься между проектами)
-+ `IsEnabled`.
+A chain (`DimensionChain`) = `Kind` + `OffsetMm` (the dimension line's offset from the wall face) +
+`DimensionTypeName` (the dimension type's name, **not** an `ElementId` — a template has to travel
+between projects) + `IsEnabled`.
 
 ---
 
-## 3. Проверенные API (рефлексия по `RevitAPI.dll` Revit 2022 — всё есть, `#if` не нужен)
+## 3. Verified APIs (reflection over Revit 2022's `RevitAPI.dll` — everything exists, no `#if` needed)
 
 - `SpatialElement.GetBoundarySegments(SpatialElementBoundaryOptions)` → `IList<IList<BoundarySegment>>`
 - `SpatialElementBoundaryLocation`: `Finish`, `Center`, `CoreBoundary`, `CoreCenter`
 - `BoundarySegment.GetCurve()`, `BoundarySegment.ElementId`
 - `Room.IsPointInRoom(XYZ)`
-- `HostObject.FindInserts(bool, bool, bool, bool)` (у `Wall` — унаследован)
+- `HostObject.FindInserts(bool, bool, bool, bool)` (inherited on `Wall`)
 - `HostObjectUtils.GetSideFaces(HostObject, ShellLayerType)` → `IList<Reference>`
 - `FamilyInstance.GetReferences(FamilyInstanceReferenceType)`, `FamilyInstance.GetReferenceType(Reference)`
 - `FamilyInstanceReferenceType`: `Left`, `Right`, `CenterLeftRight`, …
@@ -72,246 +73,259 @@ WPF без XAML, окна не знают про Revit API, одна транз�
 - `Dimension`: `Curve`, `References`, `AreReferencesAvailable`, `DimensionType`, `View`, `NumberOfSegments`
 - `Options`: `ComputeReferences`, `IncludeNonVisibleObjects`, `View`, `DetailLevel`
 - `Reference`: `ElementId`, `ElementReferenceType`, `ConvertToStableRepresentation`, `EqualTo`
-- `Autodesk.Revit.DB.ExtensibleStorage.Schema` (метка «размер создан командой»)
+- `Autodesk.Revit.DB.ExtensibleStorage.Schema` (the "this dimension was created by the button" mark)
 
 ---
 
-## 4. Новые файлы
+## 4. New files
 
 ```
-Commands/AutoDimensionCommand.cs          команда: выборка, вызов окна, транзакция, отчёт
-UI/DimensionChainKind.cs                  перечень видов ниток (таблица выше)
-UI/DimensionChainRow.cs                   строка таблицы ниток (INotifyPropertyChanged)
-UI/DimensionTypeInfo.cs                   снимок типа размера для окна: Id (long) + имя
-UI/AutoDimensionWindow.cs                 окно WPF кодом; про Revit API не знает
-Infrastructure/RoomSide.cs                сторона помещения: направление, внутренняя нормаль, стены, отрезки
-Infrastructure/RoomSideBuilder.cs         BoundarySegments → список сторон
-Infrastructure/DimensionReferenceCollector.cs   сторона + вид нитки → ReferenceArray
-Infrastructure/DimensionSampleReader.cs   образцовые размеры → шаблон (эвристика)
-Infrastructure/DimensionTemplate.cs       модель шаблона + чтение/запись %AppData%\VladTools\autodim\
-Infrastructure/AutoDimensionMarker.cs     ExtensibleStorage: метка созданных размеров
-Resources/autodim_16.png, autodim_32.png  иконка
+Commands/AutoDimensionCommand.cs          the command: selection, calling the window, the transaction, the report
+UI/DimensionChainKind.cs                  the catalogue of chain kinds (the table above)
+UI/DimensionChainRow.cs                   a row of the chain table (INotifyPropertyChanged)
+UI/DimensionTypeInfo.cs                   a snapshot of a dimension type for the window: Id (long) + name
+UI/AutoDimensionWindow.cs                 a WPF window built in code; knows nothing about the Revit API
+Infrastructure/RoomSide.cs                a room side: direction, inward normal, walls, segments
+Infrastructure/RoomSideBuilder.cs         BoundarySegments → a list of sides
+Infrastructure/DimensionReferenceCollector.cs   a side + a chain kind → a ReferenceArray
+Infrastructure/DimensionSampleReader.cs   sample dimensions → a template (a heuristic)
+Infrastructure/DimensionTemplate.cs       the template model + reading/writing %AppData%\VladTools\autodim\
+Infrastructure/AutoDimensionMarker.cs     ExtensibleStorage: the mark on created dimensions
+Resources/autodim_16.png, autodim_32.png  the icon
 ```
 
-Правится: `App.cs` (регистрация кнопки), `CLAUDE.md`, `README.md`.
+To edit: `App.cs` (registering the button), `CLAUDE.md`, `README.md`.
 
 ---
 
-## Этап 0. Разведка в живом Revit (обязателен, до кода)
+## Stage 0. Investigation inside a live Revit (mandatory, before any code)
 
-Всё остальное держится на четырёх допущениях. Проверять их **на реальном кладочном плане**, а не на
-предположениях. Разведочный код писать во временной команде (или черновиком прямо
-в `AutoDimensionCommand`), результат выводить `TaskDialog`.
+Everything else rests on four assumptions. Verify them **on a real masonry plan**, not on guesses.
+Write the investigation code as a temporary command (or a draft right inside
+`AutoDimensionCommand`), print the result with `TaskDialog`.
 
-1. **Грани откосов берутся из геометрии стены одним проходом.**
+1. **Jamb faces come from the wall geometry in a single pass.**
    `wall.get_Geometry(new Options { ComputeReferences = true, DetailLevel = ViewDetailLevel.Fine })`
-   → `Solid` → `PlanarFace`, у которых нормаль параллельна направлению стены. Ожидается: это торцы
-   стены **и** откосы всех проёмов разом. Проверить, что таких граней столько, сколько ожидается,
-   и что `NewDimension` с ними проходит.
-2. **`NewDimension` принимает эти ссылки на плане.** Собрать `ReferenceArray` из двух таких граней,
-   поставить размер на активном плане. Если не проходит — пробовать те же ссылки, полученные
-   с `Options.View = активный план`.
-3. **`FamilyInstance.GetReferences(Left/Right/CenterLeftRight)` не пуст** для дверей и окон проекта.
-   **Ожидаемая ловушка:** у многих семейств эти плоскости не заданы, список пустой. Тогда `OpeningEdges`
-   строится только по граням из п. 1, а `OpeningCenters` невозможен вовсе (ссылки на середину между
-   двумя гранями не существует) — строка такой нитки в окне гасится с пояснением, а не молча даёт
-   кривой размер.
-4. **Ориентация петли границы.** Проверить, что `XYZ.BasisZ.CrossProduct(direction)` даёт нормаль
-   внутрь помещения. **Не полагаться на это**: направление проверять через
-   `room.IsPointInRoom(середина стороны + нормаль * 10 мм)` и при отрицательном ответе разворачивать.
+   → `Solid` → the `PlanarFace`s whose normal is parallel to the wall's direction. Expected: these
+   are the wall's own ends **and** the jambs of every opening at once. Confirm there are as many
+   such faces as expected, and that `NewDimension` accepts them.
+2. **`NewDimension` accepts these references on a plan.** Gather a `ReferenceArray` from two such
+   faces, place a dimension on the active plan. If it does not go through, try the same references
+   obtained with `Options.View` set to the active plan.
+3. **`FamilyInstance.GetReferences(Left/Right/CenterLeftRight)` is not empty** for the project's
+   doors and windows. **Expected trap:** many families do not publish these planes, and the list is
+   empty. Then `OpeningEdges` is built only from the faces in point 1, and `OpeningCenters` is
+   impossible at all (a reference to the midpoint between two faces does not exist) — such a
+   chain's row in the window is disabled with an explanation, rather than silently producing a
+   distorted dimension.
+4. **The boundary loop's orientation.** Confirm that `XYZ.BasisZ.CrossProduct(direction)` gives the
+   normal pointing into the room. **Do not rely on this**: check the direction through
+   `room.IsPointInRoom(side midpoint + normal * 10 mm)` and flip it on a negative answer.
 
-**Приёмка этапа:** в `TaskDialog` выведено, сколько граней найдено на стене, есть ли `Left/Right`
-у проёмов, и один размер реально поставлен на плане. Черновой код после этого удаляется.
+**Stage acceptance:** the `TaskDialog` reports how many faces were found on the wall, whether
+openings have `Left`/`Right`, and one dimension was actually placed on the plan. The draft code is
+deleted afterwards.
 
-Если п. 1 или п. 2 не подтвердились — **остановиться и доложить**, дальнейший план в этой части
-надо переделывать, а не обходить.
-
----
-
-## Этап 1. Ядро: одна нитка «Габарит» по одному помещению
-
-- `AutoDimensionCommand` по шаблону из CLAUDE.md («Как устроена команда»): атрибуты, проверка
-  `!doc.IsFamilyDocument`, проверка что активный вид — `ViewPlan` (иначе `TaskDialog`: «Команда работает
-  на планах этажей; перейдите на план и повторите» + `Result.Cancelled`).
-- Помещения: `uidoc.Selection.GetElementIds()` → отбор `Room`. Пусто → `TaskDialog` с предложением
-  взять все помещения активного вида (`FilteredElementCollector(doc, view.Id).OfCategory(OST_Rooms)`).
-- `RoomSideBuilder`: петли `GetBoundarySegments` → стороны. Слияние соседних отрезков в одну сторону
-  по двум условиям: сонаправленность (`direction.DotProduct(next) > 1 - 1e-6`) и коллинеарность
-  (расстояние от начала следующего до прямой предыдущего < 1 мм). Замыкание петли учитывать —
-  последний отрезок может сливаться с первым.
-- Ссылки для `Overall`: торцевые грани стороны — крайняя левая и крайняя правая по оси стороны
-  из геометрического прохода (этап 0, п. 1).
-- Линия размера: `Line.CreateBound(o + n*offset, o + n*offset + d*length)`, `offset` пока константой
-  (например 300 мм), `length` — длина стороны плюс запас с обоих концов. Z — от кривой границы.
-- Одна транзакция на всю пачку, `WarningSuppressor`, на каждое помещение свой `try/catch`,
-  отчёт `TaskDialog` (успехи + не более 15 ошибок).
-
-**Приёмка:** на прямоугольном помещении появились четыре габаритных размера, Ctrl+Z убирает все разом.
+If point 1 or point 2 does not hold up — **stop and report**, the rest of this plan needs
+reworking, not working around.
 
 ---
 
-## Этап 2. Сбор ссылок: `DimensionReferenceCollector`
+## Stage 1. The core: one "Overall" chain on one room
 
-Полная реализация каталога ниток. Вход: `RoomSide`, `DimensionChainKind`, документ. Выход: `ReferenceArray`.
+- `AutoDimensionCommand` follows the pattern from CLAUDE.md ("How a command is built"): attributes,
+  the `!doc.IsFamilyDocument` check, checking the active view is a `ViewPlan` (otherwise a
+  `TaskDialog`: "The command works on floor plans; switch to a floor plan and try again" +
+  `Result.Cancelled`).
+- Rooms: `uidoc.Selection.GetElementIds()` → filtered to `Room`. Empty → a `TaskDialog` offering to
+  take every room on the active view (`FilteredElementCollector(doc, view.Id).OfCategory(OST_Rooms)`).
+- `RoomSideBuilder`: `GetBoundarySegments` loops → sides. Neighbouring segments merge into one side
+  under two conditions: pointing the same way (`direction.DotProduct(next) > 1 - 1e-6`) and
+  collinearity (the distance from the next segment's start to the previous one's line < 1 mm).
+  Account for the loop wrapping around — the last segment may merge with the first.
+- References for `Overall`: the side's end faces — the leftmost and rightmost along the side's
+  axis, from the geometry pass (stage 0, point 1).
+- The dimension line: `Line.CreateBound(o + n*offset, o + n*offset + d*length)`, `offset` as a
+  constant for now (300 mm, say), `length` — the side's length plus a margin at both ends. Z from
+  the boundary curve.
+- One transaction for the whole batch, a `WarningSuppressor`, each room in its own `try`/`catch`,
+  a `TaskDialog` report (successes + no more than 15 failures).
 
-- Общий приём: точки интереса проецируются на ось стороны (`t = (p - o) · d`), сортируются по `t`,
-  дублирующиеся ближе 1 мм отбрасываются. `ReferenceArray` собирается в этом порядке.
-- `OpeningEdges`: грани из геометрии стен стороны, нормаль которых параллельна `d` (этап 0, п. 1).
-- `OpeningCenters`: `fi.GetReferences(CenterLeftRight)` по вставкам `wall.FindInserts(true, false, true, true)`,
-  отобранным по категориям «Двери» и «Окна». Пусто → нитка недоступна (см. этап 0, п. 3).
-- `Partitions`: перегородки — это отрезки границы помещения, чьё направление перпендикулярно `d`
-  и которые примыкают к текущей стороне. Их грани берутся `HostObjectUtils.GetSideFaces` и отбираются
-  по близости к точке примыкания.
-- `WallFaces`: стыки соседних стен внутри стороны (когда сторона составлена из нескольких стен).
-- `Combined`: объединение трёх наборов с той же дедупликацией по `t`.
-- Меньше двух ссылок → нитка на этой стороне пропускается, причина уходит в отчёт
-  («Помещение 105, восточная сторона: нитка "Оси проёмов" — засекать нечего»).
-
-**Кэш:** геометрия стены читается один раз за запуск и складывается в словарь по `ElementId`.
-На модели в сотни помещений без этого команда встанет.
-
-**Приёмка:** на помещении с двумя дверями, окном и примыкающей перегородкой каждая нитка ставится
-по отдельности и засекает ровно то, что заявлено.
-
----
-
-## Этап 3. Окно `AutoDimensionWindow`
-
-WPF кодом, по образцу `CleanupWindow` (структура попроще) и `LinkManagerWindow` (таблица со строками).
-
-- Таблица ниток: `галочка | № | Вид нитки (ComboBox) | Смещение, мм | Тип размера (ComboBox) | Состояние`.
-  Кнопки «Добавить нитку» / «Удалить нитку». Смещение — только положительное число, иначе строка
-  подсвечивается и в «Состоянии» пишется причина.
-- «Граница помещения»: `Finish` / `CoreBoundary` / `Center`. **По умолчанию `CoreBoundary`** — кладочный
-  план размеряется по граням несущего слоя.
-- «Ставить размеры»: внутрь помещения (по умолчанию) / наружу.
-- Шапка: сколько помещений выбрано.
-- Кнопки: «Взять образец…», «Загрузить шаблон», «Сохранить шаблон», «Расставить», «Закрыть».
-- Окно про Revit API не знает: типы размеров приходят массивом `DimensionTypeInfo` (`long Id` + имя),
-  результат отдаётся свойством `Selected` (список `DimensionChainRow` + выбранные настройки).
-
-**Ловушка, из-за которой этап отдельный:** `Selection.PickObject` **нельзя** звать при открытом
-модальном окне. Поэтому «Взять образец…» не берёт образец сам, а закрывает окно с признаком
-`WantsSample = true`; команда делает `PickObjects`, разбирает образец и **открывает окно заново**
-уже заполненным. Тот же приём — если понадобится «Выбрать помещения…». Долгую работу окно получает
-лямбдой ровно как `DeleteProjectParametersWindow` — `Func<…>` от команды.
-
-**Приёмка:** нитки настраиваются руками, «Расставить» отрабатывает по всем выбранным помещениям,
-отчёт показывает число поставленных размеров и пропуски.
+**Acceptance:** four overall dimensions appear on a rectangular room, Ctrl+Z removes all of them at once.
 
 ---
 
-## Этап 4. Разбор образца: `DimensionSampleReader`
+## Stage 2. Collecting references: `DimensionReferenceCollector`
 
-Вход: список выбранных `Dimension` + документ. Выход: `DimensionTemplate`.
+The full implementation of the chain catalogue. Input: `RoomSide`, `DimensionChainKind`, the
+document. Output: a `ReferenceArray`.
 
-Для каждого образцового размера:
+- The shared trick: points of interest are projected onto the side's axis (`t = (p - o) · d`),
+  sorted by `t`, duplicates closer than 1 mm are dropped. The `ReferenceArray` is built in this order.
+- `OpeningEdges`: faces from the side's wall geometry whose normal is parallel to `d` (stage 0, point 1).
+- `OpeningCenters`: `fi.GetReferences(CenterLeftRight)` over inserts from
+  `wall.FindInserts(true, false, true, true)`, filtered to the "Doors" and "Windows" categories.
+  Empty → the chain is unavailable (see stage 0, point 3).
+- `Partitions`: partitions are boundary segments of the room whose direction is perpendicular to
+  `d` and which meet the current side. Their faces come from `HostObjectUtils.GetSideFaces` and are
+  filtered by proximity to the meeting point.
+- `WallFaces`: joints between neighbouring walls inside the side (when the side is made of several walls).
+- `Combined`: the union of the three sets with the same `t`-based deduplication.
+- Fewer than two references → the chain is skipped on that side, and the reason goes into the
+  report ("Room 105, east side: the 'Opening centres' chain has nothing to pick up").
 
-1. `AreReferencesAvailable == false` → пропуск с причиной (ссылки размера потеряны).
-2. `dim.Curve as Line` → направление `d` и точка. Не `Line` (радиальный, угловой) → пропуск.
-3. Найти помещение и сторону: взять помещение, которому принадлежат стены из ссылок размера,
-   и выбрать в нём сторону, параллельную `d` и ближайшую к линии размера.
-4. `OffsetMm` = знаковое расстояние от прямой стороны до линии размера вдоль внутренней нормали.
-   Отрицательное → нитка снаружи; это допустимо и запоминается флагом.
-5. Вид нитки — по составу `dim.References`:
-   - ровно две ссылки, обе на стены самой стороны → `Overall`;
-   - есть ссылки, у которых `fi.GetReferenceType(ref) == CenterLeftRight` → `OpeningCenters`;
-   - ссылок на грани стен стороны больше двух → `OpeningEdges`;
-   - есть ссылки на стены, перпендикулярные `d` → `Partitions`;
-   - смешанный состав → `Combined`.
-6. `dim.DimensionType.Name` → имя типа нитки.
+**Cache:** wall geometry is read once per run and stacked into a dictionary keyed by `ElementId`.
+Without it, the command would grind to a halt on a model with hundreds of rooms.
 
-Нитки сортируются по `OffsetMm` — это и есть их номера 1..N. Совпавшие по виду и смещению (одна нитка,
-снятая с нескольких стен) склеиваются в одну.
-
-Результат кладётся в окно; в «Состоянии» каждой строки пишется, из какого размера она получена
-(«из размера 3925 мм»). Определить не удалось — строка всё равно появляется, с видом `Combined`
-и пометкой «вид нитки определён приблизительно, проверьте».
-
-**Приёмка:** сценарий из демонстрации целиком — поставить шесть ниток руками по одной стене,
-нажать кнопку, выбрать эти шесть размеров, увидеть в окне шесть строк с верными смещениями,
-выбрать все помещения этажа, «Расставить», получить тот же набор ниток по всем стенам.
+**Acceptance:** on a room with two doors, a window and an adjoining partition, every chain is
+placed separately and picks up exactly what it is meant to.
 
 ---
 
-## Этап 5. Хранение шаблонов
+## Stage 3. The `AutoDimensionWindow` window
 
-Папка `%AppData%\VladTools\autodim\`. **Не `dimensions\`** — та занята `DimensionLabelCache`
-(проверка семейств на метки размеров), смешивать нельзя.
+WPF built in code, following the pattern of `CleanupWindow` (simpler structure) and
+`LinkManagerWindow` (a table of rows).
 
-`autodim\<имя шаблона>.txt`, UTF-8 с BOM, поля через вертикальную черту, `#` — комментарий:
+- The chain table: `check box | № | Chain kind (ComboBox) | Offset, mm | Dimension type (ComboBox) | State`.
+  "Add chain" / "Remove chain" buttons. The offset must be a positive number, otherwise the row is
+  highlighted and "State" gives the reason.
+- "Room boundary": `Finish` / `CoreBoundary` / `Center`. **`CoreBoundary` by default** — a masonry
+  plan is dimensioned to the core layer faces.
+- "Place dimensions": into the room (by default) / outward.
+- The header: how many rooms are selected.
+- Buttons: "Take a sample…", "Load template", "Save template", "Place", "Close".
+- The window knows nothing about the Revit API: dimension types arrive as an array of
+  `DimensionTypeInfo` (`long Id` + name), the result is handed back through a `Selected` property
+  (a list of `DimensionChainRow` + the chosen settings).
+
+**The trap that makes this stage a separate one:** `Selection.PickObject` **cannot** be called
+while a modal window is open. So "Take a sample…" does not take the sample itself — it closes the
+window with `WantsSample = true`; the command does `PickObjects`, parses the sample and **reopens
+the window**, already filled in. The same trick would apply to a future "Select rooms…", if needed.
+The window gets long-running work as a lambda, exactly like `DeleteProjectParametersWindow` —
+a `Func<…>` from the command.
+
+**Acceptance:** chains can be set up by hand, "Place" runs across every selected room, the report
+shows the number of dimensions placed and what was skipped.
+
+---
+
+## Stage 4. Parsing a sample: `DimensionSampleReader`
+
+Input: a list of selected `Dimension`s + the document. Output: a `DimensionTemplate`.
+
+For every sample dimension:
+
+1. `AreReferencesAvailable == false` → skip with a reason (the dimension's references are lost).
+2. `dim.Curve as Line` → the direction `d` and a point. Not a `Line` (radial, angular) → skip.
+3. Find the room and the side: take the room the walls in the dimension's references belong to,
+   and pick the side within it that is parallel to `d` and closest to the dimension line.
+4. `OffsetMm` = the signed distance from the straight side to the dimension line along the inward
+   normal. Negative → the chain is outside; that is allowed and remembered as a flag.
+5. The chain kind — from the makeup of `dim.References`:
+   - exactly two references, both to the side's own walls → `Overall`;
+   - references exist where `fi.GetReferenceType(ref) == CenterLeftRight` → `OpeningCenters`;
+   - more than two references to the side's wall faces → `OpeningEdges`;
+   - references exist to walls perpendicular to `d` → `Partitions`;
+   - a mixed makeup → `Combined`.
+6. `dim.DimensionType.Name` → the chain's type name.
+
+Chains are sorted by `OffsetMm` — that gives their numbers, 1..N. Ones matching in kind and offset
+(one chain picked up from several walls) are merged into one.
+
+The result goes into the window; each row's "State" says which sample dimension it came from
+("from the 3925 mm dimension"). If it could not be worked out, the row still appears, with kind
+`Combined` and a "the chain kind was guessed approximately, please check" note.
+
+**Acceptance:** the whole demo scenario — place six chains by hand along one wall, press the
+button, select those six dimensions, see six rows in the window with the right offsets, select
+every room on the storey, "Place", get the same set of chains along every wall.
+
+---
+
+## Stage 5. Storing templates
+
+Folder `%AppData%\VladTools\autodim\`. **Not `dimensions\`** — that one is taken by
+`DimensionLabelCache` (the family scan for dimension labels), the two must not be mixed.
+
+`autodim\<template name>.txt`, UTF-8 with a BOM, fields separated by a vertical bar, `#` is a comment:
 
 ```
-# Шаблон авторазмеров VladTools
-ГРАНИЦА | CoreBoundary
-СТОРОНА | Внутрь
-НИТКА | 1 | 120  | OpeningEdges   | Линейный - 2.5мм Arial
-НИТКА | 2 | 300  | OpeningCenters | Линейный - 2.5мм Arial
-НИТКА | 3 | 480  | Overall        | Линейный - 3мм Arial
+# VladTools auto-dimension template
+BOUNDARY | CoreBoundary
+SIDE | Inward
+CHAIN | 1 | 120  | OpeningEdges   | Linear - 2.5mm Arial
+CHAIN | 2 | 300  | OpeningCenters | Linear - 2.5mm Arial
+CHAIN | 3 | 480  | Overall        | Linear - 3mm Arial
 ```
 
-`autodim\_settings.txt` — настройки окна (`КЛЮЧ = значение`): последний шаблон, граница, направление.
-Перезаписывается при **любом** закрытии окна, как `formulas.txt` и `links\_settings.txt`.
-Сами шаблоны — только по кнопке «Сохранить шаблон». Имена, начинающиеся с подчёркивания,
-из списка шаблонов исключаются (правило уже есть в `LinkSetLibrary`).
+`autodim\_settings.txt` — the window's settings (`KEY = value`): the last template, the boundary,
+the direction. Rewritten on **any** closing of the window, like `formulas.txt` and
+`links\_settings.txt`. The templates themselves — only through the "Save template" button. Names
+starting with an underscore are excluded from the template list (the rule already exists in
+`LinkSetLibrary`).
 
-Битый или пустой файл — молча пустой список, без исключений (как `NameBuffer`).
+A corrupt or empty file — silently an empty list, no exceptions (like `NameBuffer`).
 
-**Приёмка:** шаблон сохраняется, подставляется в другом проекте; тип размера с другим именем
-даёт в «Состоянии» «Тип размера … не найден, будет использован текущий по умолчанию».
-
----
-
-## Этап 6. Повторный запуск
-
-Без метки повторный запуск удваивает размеры — это первое, что заметит пользователь.
-
-- `AutoDimensionMarker`: схема `ExtensibleStorage` (свой GUID константой, `VendorId` — `VLADTOOLS`,
-  доступ `Public/Public`), поля `RoomUniqueId` (string) и `ChainIndex` (int). Ставится на каждый
-  созданный `Dimension` в той же транзакции.
-- Перед расстановкой: собрать в активном виде все `Dimension` с этой схемой, чьё `RoomUniqueId`
-  попадает в обрабатываемые помещения, и удалить (`doc.Delete`) — в той же транзакции, до создания.
-- В окне галочка «Удалять ранее расставленные этой кнопкой» (по умолчанию включена). Снята — старые
-  остаются, и в отчёте про это пишется явно.
-- Размеры, поставленные пользователем руками, метки не имеют и не трогаются никогда.
-
-**Приёмка:** два запуска подряд дают тот же результат, что один; ручные размеры на месте.
+**Acceptance:** a template saves and offers itself in another project; a dimension type with a
+different name gives "Dimension type … was not found, the current default will be used" in "State".
 
 ---
 
-## Этап 7. Отделка и документация
+## Stage 6. Running it again
 
-- Иконка `autodim_16.png` / `autodim_32.png` в `Resources/` как `EmbeddedResource`.
-  Без файлов сборка пройдёт, кнопка останется без картинки (`Icons.Load` вернёт `null`) —
-  но оставлять так не нужно.
-- Регистрация в `App.cs` на панели «Проект», восьмой кнопкой, с `tooltip` и `longDescription`
-  в том же стиле, что у соседей.
-- **`CLAUDE.md`** — правится в той же сессии, до отчёта о работе (это правило самого файла):
-  «Что это» (число кнопок на панели «Проект»), «Кнопки и команды» (строка таблицы),
-  «Карта кода» (все новые файлы), «Ключевые решения» (каталог ниток вместо копирования ссылок;
-  разбор образца — эвристика; `PickObject` при модальном окне; кэш геометрии стен; метка
-  `ExtensibleStorage`), «Хранение настроек пользователя» (папка `autodim\` и её отличие от `dimensions\`).
-- **`README.md`** — пользовательское описание кнопки и сценарий «поставил образец → выделил помещения →
-  расставил».
-- Сборка `.\build.ps1` под все три года без ошибок и без новых предупреждений.
+Without a mark, running it again doubles the dimensions — the first thing a user would notice.
 
----
+- `AutoDimensionMarker`: an `ExtensibleStorage` schema (its own GUID as a constant, `VendorId` —
+  `VLADTOOLS`, `Public`/`Public` access), fields `RoomUniqueId` (string) and `ChainIndex` (int).
+  Set on every created `Dimension` inside the same transaction.
+- Before placing: gather every `Dimension` with this schema on the active view whose `RoomUniqueId`
+  falls among the rooms being processed, and delete them (`doc.Delete`) — in the same transaction,
+  before creating anything.
+- A "Remove what this button placed before" box in the window (on by default). Unchecked — the old
+  ones stay, and the report says so explicitly.
+- Dimensions the user placed by hand carry no mark and are never touched.
 
-## Ограничения версии 1 (записать в README и не пытаться закрыть по ходу)
-
-- Только планы этажей, только помещения открытого проекта (не связей).
-- Перегородки засекаются те, что видны в петле границы помещения; перегородка, примыкающая
-  к стене снаружи помещения, в нитку не попадёт.
-- Криволинейные стены пропускаются с сообщением: сторона строится только по прямым отрезкам.
-- Наклонные (не ортогональные) стены поддерживаются — привязки к осям X/Y нет нигде, всё считается
-  через направление стороны.
-- Размеры не проверяются на наложение текста: сближенные засечки Revit отрисует как есть.
+**Acceptance:** two runs in a row give the same result as one; hand-placed dimensions stay in place.
 
 ---
 
-## Порядок работы исполнителя
+## Stage 7. Polish and documentation
 
-1. Этап 0 — и **доложить результат разведки до написания остального кода**.
-2. Этапы 1→7 по очереди, после каждого — `.\build.ps1 -RevitVersion 2022` и проверка в Revit.
-3. Revit держит `VladTools.dll`: перед сборкой Revit закрыть, иначе установится старая DLL молча.
-4. Коммит — по завершении этапа, одним изменением на этап.
+- The `autodim_16.png` / `autodim_32.png` icon in `Resources/` as an `EmbeddedResource`. Without
+  the files the build still succeeds, the button is just left with no picture (`Icons.Load` returns
+  `null`) — but it should not be left that way.
+- Registration in `App.cs` on the "Project" panel, as the eighth button, with a `tooltip` and a
+  `longDescription` in the same style as its neighbours.
+- **`CLAUDE.md`** — edited in the same session, before reporting the work as done (the file's own
+  rule): "What this is" (the button count on the "Project" panel), "Buttons and commands" (a table
+  row), "Code map" (every new file), "Key decisions" (a chain catalogue instead of copying
+  references; parsing a sample is a heuristic; `PickObject` while a modal window is open; the
+  wall-geometry cache; the `ExtensibleStorage` mark), "Storing user settings" (the `autodim\`
+  folder and how it differs from `dimensions\`).
+- **`README.md`** — the user-facing description of the button and the "place a sample → select
+  rooms → place" scenario.
+- `.\build.ps1` builds for all three years with no errors and no new warnings.
+
+---
+
+## Version 1 limitations (write these into README, do not try to close them along the way)
+
+- Floor plans only, only rooms of the open project (not of links).
+- Only the partitions visible in the room boundary loop are picked up; a partition meeting a wall
+  from outside the room will not make it into a chain.
+- Curved walls are skipped with a message: a side is only built from straight segments.
+- Sloped (non-orthogonal) walls are supported — nothing anywhere is tied to the X/Y axes, everything
+  is computed from the side's own direction.
+- Dimensions are not checked for text overlap: Revit will draw closely spaced ticks as they are.
+
+---
+
+## Order of work for the executor
+
+1. Stage 0 — and **report the investigation results before writing the rest of the code**.
+2. Stages 1→7 in order, after each one — `.\build.ps1 -RevitVersion 2022` and a check in Revit.
+3. Revit holds `VladTools.dll` locked: close Revit before building, otherwise the old DLL gets
+   installed silently.
+4. Commit — once a stage is finished, one change per stage.

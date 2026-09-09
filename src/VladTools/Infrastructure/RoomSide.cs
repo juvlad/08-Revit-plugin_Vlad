@@ -4,11 +4,12 @@ using Autodesk.Revit.DB;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Одна прямая сторона границы помещения — итог слияния соседних отрезков одной петли
-    /// <c>GetBoundarySegments</c> в один прямолинейный участок (см. <see cref="RoomSideBuilder"/>).
+    /// One straight side of a room boundary — the result of merging neighbouring segments of a single
+    /// <c>GetBoundarySegments</c> loop into one straight stretch (see <see cref="RoomSideBuilder"/>).
     ///
-    /// Хранит только геометрию и список стен вдоль стороны; какие ссылки на этой стороне
-    /// собирать под нитку — знает <c>DimensionReferenceCollector</c>, сторона об этом не знает.
+    /// It stores only the geometry and the list of walls along the side; which references to collect
+    /// on that side for a chain is up to <c>DimensionReferenceCollector</c> — the side knows nothing
+    /// about that.
     /// </summary>
     internal sealed class RoomSide
     {
@@ -34,28 +35,28 @@ namespace VladTools.Infrastructure
             WallJointOffsets = wallJointOffsets ?? new List<double>();
         }
 
-        /// <summary>Начало стороны — крайняя точка по направлению <see cref="Direction"/>.</summary>
+        /// <summary>The start of the side — the end point in the <see cref="Direction"/> sense.</summary>
         public XYZ Start { get; }
 
-        /// <summary>Конец стороны.</summary>
+        /// <summary>The end of the side.</summary>
         public XYZ End { get; }
 
-        /// <summary>Единичный вектор вдоль стороны (в плане, Z = 0).</summary>
+        /// <summary>The unit vector along the side (in plan, Z = 0).</summary>
         public XYZ Direction { get; }
 
-        /// <summary>Единичная нормаль, указывающая внутрь помещения.</summary>
+        /// <summary>The unit normal pointing into the room.</summary>
         public XYZ InwardNormal { get; }
 
-        /// <summary>Стены (и другие элементы границы — двери в проёме без стены и т.п.) вдоль стороны, по порядку.</summary>
+        /// <summary>Walls (and other boundary elements — a door in an opening without a wall, etc.) along the side, in order.</summary>
         public IReadOnlyList<ElementId> WallIds { get; }
 
-        /// <summary>Сторона составлена из криволинейного отрезка — авторазмер её пропускает.</summary>
+        /// <summary>The side is made of a curved segment — auto-dimensioning skips it.</summary>
         public bool IsCurved { get; }
 
-        /// <summary>Номер петли границы (петель может быть несколько — помещение с отверстием).</summary>
+        /// <summary>The index of the boundary loop (there may be several — a room with a hole in it).</summary>
         public int LoopIndex { get; }
 
-        /// <summary>Порядковый номер стороны внутри своей петли — для отчёта («восточная сторона» и т.п.).</summary>
+        /// <summary>The index of the side inside its own loop — used in the report ("the east side" and so on).</summary>
         public int Index { get; }
 
         public double Length
@@ -63,24 +64,24 @@ namespace VladTools.Infrastructure
             get { return Start.DistanceTo(End); }
         }
 
-        /// <summary>Хотя бы одна настоящая стена (не разделитель помещений) на стороне — иначе снимать размер не с чего.</summary>
+        /// <summary>At least one real wall (not a room separator) on the side — otherwise there is nothing to dimension.</summary>
         public bool HasWall { get; set; }
 
         /// <summary>
-        /// Смещения (от <see cref="Start"/> вдоль <see cref="Direction"/>) точек стыка между разными
-        /// стенами внутри стороны — сторона может быть склеена из нескольких коллинеарных стен
-        /// (например, ступенчатая стена или два разных типа стены в одну линию). Используется
-        /// только нитью «Грани стен» — остальные виды нитки о стыках не спрашивают.
+        /// The offsets (from <see cref="Start"/> along <see cref="Direction"/>) of the joints between
+        /// different walls inside the side — a side can be glued together from several collinear walls
+        /// (a stepped wall, say, or two different wall types in one line). Used only by the "Wall faces"
+        /// chain — the other chain kinds never ask about joints.
         /// </summary>
         public IReadOnlyList<double> WallJointOffsets { get; }
 
-        /// <summary>Проекция точки на ось стороны (0 — начало, Length — конец).</summary>
+        /// <summary>The projection of a point onto the side axis (0 — the start, Length — the end).</summary>
         public double ProjectOnAxis(XYZ point)
         {
             return (point - Start).DotProduct(Direction);
         }
 
-        /// <summary>Знаковое расстояние точки от прямой стороны вдоль внутренней нормали (0 — на стороне, >0 — внутрь).</summary>
+        /// <summary>The signed distance from the side line along the inward normal (0 — on the side, &gt;0 — inwards).</summary>
         public double SignedOffset(XYZ point)
         {
             return (point - Start).DotProduct(InwardNormal);

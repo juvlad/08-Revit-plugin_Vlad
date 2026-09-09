@@ -7,17 +7,17 @@ using Autodesk.Revit.DB.ExtensibleStorage;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Метка «этот размер поставила кнопка "Авторазмеры"» — без неё повторный запуск
-    /// на тех же помещениях удваивал бы размеры, а размеры, поставленные пользователем
-    /// руками, метки не имеют и не трогаются никогда.
+    /// The mark "this dimension was placed by the Auto Dimensions button" — without it a second run
+    /// over the same rooms would double the dimensions, while dimensions the user placed by hand
+    /// carry no mark and are never touched.
     ///
-    /// Схема <c>ExtensibleStorage</c> хранит помещение (по <c>UniqueId</c> — переживает
-    /// перестроение модели, в отличие от <c>ElementId</c>) и номер нитки; по паре
-    /// «помещение + нитка» старый размер находится и удаляется перед тем, как встать новому.
+    /// The <c>ExtensibleStorage</c> schema stores the room (by <c>UniqueId</c> — it survives a model
+    /// rebuild, unlike <c>ElementId</c>) and the chain index; the "room + chain" pair is what finds
+    /// the old dimension so it can be deleted before the new one is placed.
     /// </summary>
     internal static class AutoDimensionMarker
     {
-        // Свой, зафиксированный раз и навсегда GUID — вторая сборка не должна завести другую схему.
+        // Our own GUID, fixed once and for all — a second build must not create a different schema.
         private static readonly Guid SchemaGuid = new Guid("6E2F9B0C-6C2E-4B7A-9E7A-6D9C2E3F4A11");
 
         private const string SchemaName = "VladToolsAutoDimension";
@@ -25,7 +25,7 @@ namespace VladTools.Infrastructure
         private const string RoomField = "RoomUniqueId";
         private const string ChainField = "ChainIndex";
 
-        /// <summary>Ставит метку на только что созданный размер. Вызывается внутри той же транзакции.</summary>
+        /// <summary>Marks a dimension that has just been created. Called inside the same transaction.</summary>
         public static void Mark(Dimension dimension, string roomUniqueId, int chainIndex)
         {
             var schema = GetOrCreateSchema();
@@ -36,8 +36,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Все размеры этой схемы на активном виде, чьё помещение входит в обрабатываемый набор.
-        /// Схемы ещё нет (кнопку никто не запускал) — пустой список, а не ошибка.
+        /// Every dimension of this schema on the active view whose room is part of the set being
+        /// processed. If the schema does not exist yet (nobody has run the button) the result is an
+        /// empty list, not an error.
         /// </summary>
         public static List<ElementId> FindMarked(Document doc, ElementId viewId, ISet<string> roomUniqueIds)
         {

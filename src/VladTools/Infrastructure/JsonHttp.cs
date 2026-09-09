@@ -8,17 +8,17 @@ using System.Text;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Разбор JSON: объект становится <c>Dictionary&lt;string, object&gt;</c>, массив —
-    /// <c>object[]</c>, строка — <c>string</c>, число — <c>double</c>.
+    /// JSON parsing: an object becomes a <c>Dictionary&lt;string, object&gt;</c>, an array an
+    /// <c>object[]</c>, a string a <c>string</c>, a number a <c>double</c>.
     ///
-    /// Разборщик свой, на полторы сотни строк. Готовый в .NET Framework есть
-    /// (<c>JavaScriptSerializer</c>), но он тянет за собой System.Web.Extensions,
-    /// а надстройка живёт в чужом процессе, где лишняя сборка — лишний способ
-    /// не загрузиться. Разбирать нужно чужие ответы «только на чтение», и этого хватает.
+    /// The parser is our own, about a hundred and fifty lines. A ready-made one does exist in the
+    /// .NET Framework (<c>JavaScriptSerializer</c>), but it drags System.Web.Extensions along, and the
+    /// add-in lives inside somebody else's process, where an extra assembly is one more way of failing
+    /// to load. What has to be parsed is somebody else's responses, read-only, and that is enough.
     ///
-    /// Ответы Autodesk и Revit Server большие и меняются от версии к версии, поэтому
-    /// правило одно: нет ключа или тип не тот — вернуть пусто, а не бросить исключение.
-    /// Читаются ровно нужные поля, всё остальное молча игнорируется.
+    /// The Autodesk and Revit Server responses are large and change from version to version, so there
+    /// is one rule: a missing key or a wrong type returns empty rather than throwing.
+    /// Exactly the fields that are needed get read, everything else is silently ignored.
     /// </summary>
     internal static class Json
     {
@@ -35,12 +35,12 @@ namespace VladTools.Infrastructure
             }
             catch (Exception)
             {
-                // Ответ не разобрался целиком — считаем, что данных нет.
+                // The response did not parse as a whole — we treat it as having no data.
                 return null;
             }
         }
 
-        /// <summary>Спуск по вложенным объектам: At(node, "attributes", "extension", "data").</summary>
+        /// <summary>Descending through nested objects: At(node, "attributes", "extension", "data").</summary>
         public static object At(object node, params string[] keys)
         {
             foreach (var key in keys)
@@ -53,14 +53,14 @@ namespace VladTools.Infrastructure
             return node;
         }
 
-        /// <summary>Строковое значение по пути; нет его — пустая строка.</summary>
+        /// <summary>The string value at a path; an empty string if there is none.</summary>
         public static string Str(object node, params string[] keys)
         {
             var value = At(node, keys);
             return value == null ? string.Empty : Convert.ToString(value, CultureInfo.InvariantCulture);
         }
 
-        /// <summary>Элементы массива по пути; не массив — пустая последовательность.</summary>
+        /// <summary>The array items at a path; an empty sequence if it is not an array.</summary>
         public static IEnumerable<object> Items(object node, params string[] keys)
         {
             var array = At(node, keys) as object[];
@@ -71,14 +71,14 @@ namespace VladTools.Infrastructure
                 yield return item;
         }
 
-        // ───────────────────────────── сам разбор ─────────────────────────────
+        // ───────────────────────────── the parsing itself ─────────────────────────────
 
         private static object ReadValue(string text, ref int position)
         {
             SkipSpace(text, ref position);
 
             if (position >= text.Length)
-                throw new FormatException("Ответ оборван.");
+                throw new FormatException("The response is truncated.");
 
             switch (text[position])
             {
@@ -127,14 +127,14 @@ namespace VladTools.Infrastructure
 
                 SkipSpace(text, ref position);
                 if (position >= text.Length || text[position] != ':')
-                    throw new FormatException("Ожидалось двоеточие.");
+                    throw new FormatException("A colon was expected.");
 
                 position++;
                 map[key] = ReadValue(text, ref position);
 
                 SkipSpace(text, ref position);
                 if (position >= text.Length)
-                    throw new FormatException("Объект не закрыт.");
+                    throw new FormatException("The object is not closed.");
 
                 if (text[position] == ',')
                 {
@@ -148,7 +148,7 @@ namespace VladTools.Infrastructure
                     return map;
                 }
 
-                throw new FormatException("Ожидалась запятая или закрывающая скобка.");
+                throw new FormatException("A comma or a closing bracket was expected.");
             }
         }
 
@@ -170,7 +170,7 @@ namespace VladTools.Infrastructure
 
                 SkipSpace(text, ref position);
                 if (position >= text.Length)
-                    throw new FormatException("Массив не закрыт.");
+                    throw new FormatException("The array is not closed.");
 
                 if (text[position] == ',')
                 {
@@ -184,14 +184,14 @@ namespace VladTools.Infrastructure
                     return items.ToArray();
                 }
 
-                throw new FormatException("Ожидалась запятая или закрывающая скобка.");
+                throw new FormatException("A comma or a closing bracket was expected.");
             }
         }
 
         private static string ReadString(string text, ref int position)
         {
             if (position >= text.Length || text[position] != '"')
-                throw new FormatException("Ожидалась строка.");
+                throw new FormatException("A string was expected.");
 
             position++;
             var builder = new StringBuilder();
@@ -226,7 +226,7 @@ namespace VladTools.Infrastructure
 
                     case 'u':
                         if (position + 4 > text.Length)
-                            throw new FormatException("Оборванный код символа.");
+                            throw new FormatException("A truncated character escape.");
 
                         builder.Append((char)int.Parse(text.Substring(position, 4), NumberStyles.HexNumber,
                             CultureInfo.InvariantCulture));
@@ -239,7 +239,7 @@ namespace VladTools.Infrastructure
                 }
             }
 
-            throw new FormatException("Строка не закрыта.");
+            throw new FormatException("The string is not closed.");
         }
 
         private static double ReadNumber(string text, ref int position)
@@ -250,7 +250,7 @@ namespace VladTools.Infrastructure
                 position++;
 
             if (position == start)
-                throw new FormatException("Ожидалось число.");
+                throw new FormatException("A number was expected.");
 
             return double.Parse(text.Substring(start, position - start), CultureInfo.InvariantCulture);
         }
@@ -259,7 +259,7 @@ namespace VladTools.Infrastructure
         {
             if (position + literal.Length > text.Length ||
                 string.CompareOrdinal(text, position, literal, 0, literal.Length) != 0)
-                throw new FormatException("Ожидалось «" + literal + "».");
+                throw new FormatException("\"" + literal + "\" was expected.");
 
             position += literal.Length;
         }
@@ -272,18 +272,18 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
-    /// GET по HTTP с заголовками и разбором JSON. Обе службы, из которых кнопка «Link Manager»
-    /// берёт списки моделей (Revit Server и Autodesk Platform Services), устроены одинаково:
-    /// GET, заголовки, JSON в ответе.
+    /// An HTTP GET with headers and JSON parsing. Both services the "Link Manager" button takes its
+    /// model lists from (Revit Server and Autodesk Platform Services) are built the same way:
+    /// a GET, some headers, JSON in the response.
     /// </summary>
     internal static class Http
     {
-        /// <summary>Сколько ждать ответа. Revit на это время замирает, дольше держать нельзя.</summary>
+        /// <summary>How long to wait for a response. Revit freezes for that long, so it must not be held longer.</summary>
         private const int TimeoutMilliseconds = 30000;
 
         /// <summary>
-        /// Запрашивает адрес и разбирает ответ как JSON.
-        /// Ошибка сети или код ответа не 2xx — исключение с текстом, который не стыдно показать.
+        /// Requests the address and parses the response as JSON.
+        /// A network error or a non-2xx status raises an exception with text fit to be shown.
         /// </summary>
         public static object GetJson(string url, IDictionary<string, string> headers)
         {
@@ -292,7 +292,7 @@ namespace VladTools.Infrastructure
 
         public static string GetString(string url, IDictionary<string, string> headers)
         {
-            // На net48 по умолчанию может быть выключен TLS 1.2, а Autodesk отвечает только по нему.
+            // On net48 TLS 1.2 may be off by default, and Autodesk answers over nothing else.
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
 
             var request = (HttpWebRequest)WebRequest.Create(url);
@@ -327,27 +327,27 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Код ответа сам по себе пользователю ничего не говорит, поэтому у частых случаев
-        /// есть свой текст: 401 — не вошёл в Autodesk, 403 — нет прав на проект,
-        /// 404 — не та версия службы Revit Server или папку убрали.
+        /// A status code on its own tells the user nothing, so the common cases get their own text:
+        /// 401 — not signed in to Autodesk, 403 — no rights to the project,
+        /// 404 — the wrong Revit Server service version, or the folder was removed.
         /// </summary>
         private static string Describe(WebException exception, string url)
         {
             var response = exception.Response as HttpWebResponse;
             if (response == null)
-                return "Не удалось связаться с " + Host(url) + ": " + exception.Message;
+                return "Could not reach " + Host(url) + ": " + exception.Message;
 
             switch ((int)response.StatusCode)
             {
                 case 401:
-                    return "Autodesk не принял сеанс Revit (401). Войдите в учётную запись Autodesk в Revit и повторите.";
+                    return "Autodesk did not accept the Revit session (401). Sign in to your Autodesk account in Revit and try again.";
                 case 403:
-                    return "Доступ запрещён (403): у учётной записи нет прав на этот проект или папку.";
+                    return "Access denied (403): the account has no rights to this project or folder.";
                 case 404:
-                    return "Адрес не найден (404): " + url + ".\n" +
-                           "Для Revit Server это обычно значит, что на сервере нет службы нужной версии.";
+                    return "Address not found (404): " + url + ".\n" +
+                           "For Revit Server this usually means the server has no service of the required version.";
                 default:
-                    return "Служба " + Host(url) + " ответила " + (int)response.StatusCode +
+                    return "The " + Host(url) + " service answered " + (int)response.StatusCode +
                            " (" + response.StatusDescription + ").";
             }
         }

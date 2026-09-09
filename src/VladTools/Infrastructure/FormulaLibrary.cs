@@ -7,7 +7,7 @@ using System.Text;
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// Одна сохранённая формула: имя параметра, сама формула и признак «отмечена галочкой».
+    /// One saved formula: the parameter name, the formula itself and whether it is checked.
     /// </summary>
     internal sealed class FormulaEntry
     {
@@ -26,11 +26,11 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
-    /// Список формул пользователя. Лежит в профиле Windows и переживает закрытие Revit —
-    /// поэтому один и тот же набор подставляется в каждое следующее семейство.
+    /// The user's formula list. It lives in the Windows profile and survives closing Revit — so the
+    /// same set is offered in every family that follows.
     ///
-    /// Формат файла: одна строка — одна формула, слева имя параметра, потом знак равенства, потом формула.
-    /// Строка, начатая с решётки, читается как снятая галочка (а если знака равенства в ней нет — как комментарий).
+    /// File format: one line — one formula, the parameter name on the left, then an equals sign, then the formula.
+    /// A line starting with a hash is read as an unchecked entry (and, if it has no equals sign, as a comment).
     /// </summary>
     internal static class FormulaLibrary
     {
@@ -38,13 +38,13 @@ namespace VladTools.Infrastructure
 
         private static readonly string[] FileHeader =
         {
-            "# Список формул VladTools — кнопка «Добавить формулы к общим параметрам».",
-            "# Одна строка — одна формула: имя параметра, знак равенства, формула.",
-            "# Решётка в начале строки означает снятую галочку в окне.",
-            "# Файл можно править вручную — он перечитывается при каждом открытии окна."
+            "# VladTools formula list — the \"Add Formulas\" button.",
+            "# One line — one formula: parameter name, equals sign, formula.",
+            "# A hash at the start of a line means the entry is unchecked in the window.",
+            "# The file can be edited by hand — it is re-read every time the window opens."
         };
 
-        /// <summary>Формулы, с которыми окно открывается в первый раз.</summary>
+        /// <summary>The formulas the window opens with the very first time.</summary>
         public static IReadOnlyList<FormulaEntry> Defaults =>
             new List<FormulaEntry>
             {
@@ -63,8 +63,8 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Читает список. Если файла ещё нет (первый запуск) — отдаёт формулы по умолчанию.
-        /// Испорченный файл не должен ломать кнопку, поэтому ошибка чтения тоже даёт список по умолчанию.
+        /// Reads the list. If the file does not exist yet (the first run) the defaults are returned.
+        /// A corrupt file must not break the button, so a read error also yields the default list.
         /// </summary>
         public static IReadOnlyList<FormulaEntry> Load()
         {
@@ -86,7 +86,7 @@ namespace VladTools.Infrastructure
             }
         }
 
-        /// <summary>Перезаписывает файл целиком. Пустые строки таблицы не сохраняются.</summary>
+        /// <summary>Rewrites the whole file. Empty table rows are not saved.</summary>
         public static void Save(IEnumerable<FormulaEntry> entries)
         {
             var lines = new List<string>(FileHeader) { string.Empty };
@@ -100,7 +100,7 @@ namespace VladTools.Infrastructure
             if (!string.IsNullOrEmpty(folder))
                 Directory.CreateDirectory(folder);
 
-            // BOM — чтобы кириллица открывалась в «Блокноте» как надо.
+            // The BOM keeps non-Latin names readable when the file is opened in Notepad.
             File.WriteAllLines(FilePath, lines, new UTF8Encoding(true));
         }
 
@@ -110,7 +110,7 @@ namespace VladTools.Infrastructure
             return entry.IsEnabled ? line : "# " + line;
         }
 
-        /// <summary>Разбирает строку файла. Возвращает null, если это комментарий или мусор.</summary>
+        /// <summary>Parses a file line. Returns null if it is a comment or garbage.</summary>
         private static FormulaEntry Parse(string line)
         {
             var text = (line ?? string.Empty).Trim();
@@ -124,7 +124,7 @@ namespace VladTools.Infrastructure
                 text = text.TrimStart('#').Trim();
             }
 
-            // Только первый знак равенства делит строку: дальше он может быть частью формулы, как в «if (1=1,…)».
+            // Only the first equals sign splits the line: later ones may belong to the formula, as in "if (1=1,…)".
             var separator = text.IndexOf(Separator);
             if (separator <= 0)
                 return null;

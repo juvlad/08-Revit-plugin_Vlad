@@ -1,31 +1,31 @@
 namespace VladTools.UI
 {
     /// <summary>
-    /// Что разошлось у элемента проекта с координационным файлом.
+    /// What differs between a project element and the coordination file.
     ///
-    /// Один элемент может дать две строки таблицы — отдельно про положение и отдельно про имя:
-    /// в «Просмотре координации» Revit это тоже два разных изменения, и принимать их порознь
-    /// пользователь должен уметь.
+    /// A single element may produce two table rows — one about position and one about the name:
+    /// in Revit's own "Coordination Review" these are also two separate changes, and the user must
+    /// be able to accept them separately.
     /// </summary>
     internal enum CoordinationChangeKind
     {
-        /// <summary>Ось сдвинута или повёрнута, у уровня другая отметка.</summary>
+        /// <summary>The grid is shifted or rotated, or the level has a different elevation.</summary>
         Position,
 
-        /// <summary>В координационном файле элемент назван иначе.</summary>
+        /// <summary>The element is named differently in the coordination file.</summary>
         Name,
 
-        /// <summary>За связью следят, а подходящего элемента в ней не нашлось.</summary>
+        /// <summary>Something monitors the link, but no matching element was found in it.</summary>
         Missing,
 
-        /// <summary>В координационном файле элемент есть, а в проекте за ним никто не следит.</summary>
+        /// <summary>The element exists in the coordination file, but nothing in the project monitors it.</summary>
         New,
 
-        /// <summary>Разница есть, но выразить её переносом и поворотом нельзя.</summary>
+        /// <summary>There is a difference, but it cannot be expressed as a move and a rotation.</summary>
         Unsupported
     }
 
-    /// <summary>Подписи и правила для <see cref="CoordinationChangeKind"/>.</summary>
+    /// <summary>Captions and rules for <see cref="CoordinationChangeKind"/>.</summary>
     internal static class CoordinationChangeKinds
     {
         public static string Label(CoordinationChangeKind kind)
@@ -33,23 +33,23 @@ namespace VladTools.UI
             switch (kind)
             {
                 case CoordinationChangeKind.Position:
-                    return "Положение";
+                    return "Position";
                 case CoordinationChangeKind.Name:
-                    return "Имя";
+                    return "Name";
                 case CoordinationChangeKind.Missing:
-                    return "Нет в координационном файле";
+                    return "Not in the coordination file";
                 case CoordinationChangeKind.New:
-                    return "Новый в координационном файле";
+                    return "New in the coordination file";
                 default:
-                    return "Применить нельзя";
+                    return "Cannot be applied";
             }
         }
 
         /// <summary>
-        /// Изменение кнопка умеет применить. Остальные виды идут в таблицу только показать:
-        /// удалять оси и уровни проекта кнопка не берётся (за уровнем уходит всё, что на нём
-        /// стоит), а завести мониторинг на новый элемент связи Revit API не позволяет вовсе —
-        /// это делается только руками, через «Копирование/Мониторинг».
+        /// The command is able to apply this change. The other kinds go into the table for display
+        /// only: the command will not delete project grids and levels (a level takes everything
+        /// standing on it with it), and the Revit API does not allow setting up monitoring on a new
+        /// link element at all — that is done by hand, through "Copy/Monitor".
         /// </summary>
         public static bool CanApply(CoordinationChangeKind kind)
         {

@@ -15,18 +15,18 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Окно «Добавить формулы к общим параметрам»: таблица «параметр — формула», которая
-    /// открывается уже заполненной сохранённым списком (в первый раз — формулами по умолчанию).
+    /// The "Add Formulas to Shared Parameters" window: a "parameter — formula" table that opens
+    /// already filled with the saved list (the first time, with the default formulas).
     ///
-    /// Каждая строка сразу проверяется по открытому семейству: есть ли такой параметр и есть ли
-    /// параметры, на которые ссылается формула. Кнопка «Применить» отдаёт команде все отмеченные
-    /// строки разом — это и есть пакетное применение.
+    /// Every row is validated right away against the open family: does the parameter exist, and
+    /// do the parameters the formula refers to. The "Apply" button hands the command every
+    /// checked row at once — that is the batch application.
     ///
-    /// Окно собрано кодом, без XAML — проект не включает WPF-сборку разметки.
+    /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
     internal sealed class AddFormulasWindow : Window
     {
-        private const string WindowTitle = "Добавить формулы к общим параметрам";
+        private const string WindowTitle = "Add Formulas to Shared Parameters";
 
         private readonly Dictionary<string, FamilyParameterInfo> _parameters;
         private readonly ObservableCollection<FormulaRule> _rules = new ObservableCollection<FormulaRule>();
@@ -38,12 +38,12 @@ namespace VladTools.UI
 
         private bool _syncingSelectAll;
 
-        /// <summary>Отмеченные строки, которые команда должна применить к семейству.</summary>
+        /// <summary>The checked rows the command should apply to the family.</summary>
         public IReadOnlyList<FormulaRule> Selected { get; private set; } = new List<FormulaRule>();
 
         public AddFormulasWindow(IEnumerable<FamilyParameterInfo> familyParameters)
         {
-            // Имена параметров в формулах Revit чувствительны к регистру — сравниваем так же.
+            // Parameter names in Revit formulas are case-sensitive — we compare the same way.
             _parameters = (familyParameters ?? Enumerable.Empty<FamilyParameterInfo>())
                 .Where(parameter => !string.IsNullOrEmpty(parameter.Name))
                 .GroupBy(parameter => parameter.Name, StringComparer.Ordinal)
@@ -62,7 +62,7 @@ namespace VladTools.UI
                 IsChecked = true,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Отметить или снять все формулы"
+                ToolTip = "Check or clear every formula"
             };
             _selectAll.Checked += (s, e) => SetAllEnabled(true);
             _selectAll.Unchecked += (s, e) => SetAllEnabled(false);
@@ -72,7 +72,7 @@ namespace VladTools.UI
 
             _applyButton = new Button
             {
-                Content = "Применить",
+                Content = "Apply",
                 MinWidth = 150,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -82,7 +82,7 @@ namespace VladTools.UI
 
             var closeButton = new Button
             {
-                Content = "Закрыть",
+                Content = "Close",
                 MinWidth = 110,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(8, 0, 0, 0),
@@ -98,20 +98,20 @@ namespace VladTools.UI
             Refresh();
         }
 
-        // ───────────────────────────── разметка ─────────────────────────────
+        // ───────────────────────────── layout ─────────────────────────────
 
         private UIElement BuildLayout(Button closeButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // подсказка
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // таблица
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // статус + кнопки
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock { TextWrapping = TextWrapping.Wrap };
-            hint.Inlines.Add(new Run("Формулы применяются к параметрам открытого семейства. " +
-                                     "Список сохраняется и подставляется в следующие семейства."));
+            hint.Inlines.Add(new Run("Formulas are applied to the parameters of the open family. " +
+                                     "The list is saved and offered in the next family."));
             hint.Inlines.Add(new LineBreak());
-            hint.Inlines.Add(new Run("Новая формула вписывается в пустую строку внизу таблицы. Файл списка: " + FormulaLibrary.FilePath)
+            hint.Inlines.Add(new Run("A new formula is typed into the blank row at the bottom of the table. List file: " + FormulaLibrary.FilePath)
             {
                 Foreground = SystemColors.GrayTextBrush
             });
@@ -128,7 +128,7 @@ namespace VladTools.UI
 
             var deleteButton = new Button
             {
-                Content = "Удалить строку",
+                Content = "Delete row",
                 MinWidth = 120,
                 Padding = new Thickness(10, 4, 10, 4),
                 Margin = new Thickness(0, 0, 12, 0)
@@ -181,7 +181,7 @@ namespace VladTools.UI
 
             grid.Columns.Add(new DataGridTextColumn
             {
-                Header = "Параметр",
+                Header = "Parameter",
                 Width = new DataGridLength(240),
                 Binding = new Binding("ParameterName"),
                 ElementStyle = CellStyle(null),
@@ -190,7 +190,7 @@ namespace VladTools.UI
 
             grid.Columns.Add(new DataGridTextColumn
             {
-                Header = "Формула",
+                Header = "Formula",
                 Width = new DataGridLength(1, DataGridLengthUnitType.Star),
                 Binding = new Binding("Formula"),
                 ElementStyle = CellStyle("Consolas"),
@@ -199,7 +199,7 @@ namespace VladTools.UI
 
             var status = new DataGridTextColumn
             {
-                Header = "Статус",
+                Header = "Status",
                 Width = new DataGridLength(260),
                 Binding = new Binding("StatusText"),
                 IsReadOnly = true,
@@ -213,7 +213,7 @@ namespace VladTools.UI
             return grid;
         }
 
-        /// <summary>Галочка в ячейке: со своим шаблоном она срабатывает с первого щелчка.</summary>
+        /// <summary>A check box in a cell: with its own template it reacts to the first click.</summary>
         private static DataTemplate BuildCheckBoxTemplate()
         {
             var checkBox = new FrameworkElementFactory(typeof(CheckBox));
@@ -249,9 +249,9 @@ namespace VladTools.UI
             return style;
         }
 
-        // ───────────────────────────── проверка ─────────────────────────────
+        // ───────────────────────────── validation ─────────────────────────────
 
-        /// <summary>Перепроверяет все строки и обновляет нижнюю подпись.</summary>
+        /// <summary>Re-validates every row and updates the caption at the bottom.</summary>
         private void Refresh()
         {
             foreach (var rule in _rules)
@@ -261,8 +261,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Проверка одной строки по открытому семейству: есть ли сам параметр и все ли имена
-        /// из формулы существуют. Ровно это пользователь видит в столбце «Статус».
+        /// Validates a single row against the open family: does the parameter itself exist, and
+        /// do every name in the formula exist. This is exactly what the user sees in the "Status" column.
         /// </summary>
         private void Validate(FormulaRule rule)
         {
@@ -275,14 +275,14 @@ namespace VladTools.UI
             var name = rule.TrimmedName;
             if (name.Length == 0)
             {
-                rule.SetStatus(FormulaStatus.Error, "Не указан параметр");
+                rule.SetStatus(FormulaStatus.Error, "No parameter given");
                 return;
             }
 
             var formula = rule.TrimmedFormula;
             if (formula.Length == 0)
             {
-                rule.SetStatus(FormulaStatus.Error, "Не указана формула");
+                rule.SetStatus(FormulaStatus.Error, "No formula given");
                 return;
             }
 
@@ -295,7 +295,7 @@ namespace VladTools.UI
 
             if (!parameter.CanAssignFormula)
             {
-                rule.SetStatus(FormulaStatus.Error, "Параметру " + name + " нельзя задать формулу");
+                rule.SetStatus(FormulaStatus.Error, "Parameter " + name + " cannot be given a formula");
                 return;
             }
 
@@ -308,19 +308,19 @@ namespace VladTools.UI
 
             rule.SetStatus(
                 parameter.HasFormula ? FormulaStatus.Replace : FormulaStatus.Ready,
-                parameter.HasFormula ? "Формула будет заменена" : "Готово к применению");
+                parameter.HasFormula ? "The formula will be replaced" : "Ready to apply");
         }
 
         private static string NotFound(string name)
         {
-            return "Параметр " + name + " не найден";
+            return "Parameter " + name + " not found";
         }
 
         private static string NotFound(IReadOnlyList<string> names)
         {
             return names.Count == 1
                 ? NotFound(names[0])
-                : "Параметры " + string.Join(", ", names) + " не найдены";
+                : "Parameters " + string.Join(", ", names) + " not found";
         }
 
         private void UpdateSummary()
@@ -331,11 +331,11 @@ namespace VladTools.UI
             var ready = marked.Count - broken;
 
             _summary.Foreground = broken > 0 ? Brushes.Firebrick : SystemColors.GrayTextBrush;
-            _summary.Text = "Формул в списке: " + filled.Count + ". Отмечено: " + marked.Count +
-                            ", из них готовы: " + ready +
-                            (broken > 0 ? ", с ошибками: " + broken + "." : ".");
+            _summary.Text = "Formulas in the list: " + filled.Count + ". Checked: " + marked.Count +
+                            ", of which ready: " + ready +
+                            (broken > 0 ? ", with errors: " + broken + "." : ".");
 
-            _applyButton.Content = ready > 0 ? "Применить (" + ready + ")" : "Применить";
+            _applyButton.Content = ready > 0 ? "Apply (" + ready + ")" : "Apply";
             _applyButton.IsEnabled = marked.Count > 0;
 
             _syncingSelectAll = true;
@@ -345,7 +345,7 @@ namespace VladTools.UI
             _syncingSelectAll = false;
         }
 
-        // ───────────────────────────── действия ─────────────────────────────
+        // ───────────────────────────── actions ─────────────────────────────
 
         private void OnRulesChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
@@ -395,7 +395,7 @@ namespace VladTools.UI
             var selected = _grid.SelectedItems.OfType<FormulaRule>().ToList();
             if (selected.Count == 0)
             {
-                MessageBox.Show(this, "Выберите в таблице строку, которую нужно убрать из списка.",
+                MessageBox.Show(this, "Select the row in the table you want to remove from the list.",
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -405,8 +405,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Отмеченные строки уходят команде одним пакетом. Строки с ошибкой не применяются:
-        /// про них показывается то же сообщение, что стоит в столбце «Статус».
+        /// The checked rows go to the command as a single batch. Rows with an error are not
+        /// applied: the same message shown in the "Status" column is shown about them.
         /// </summary>
         private void OnApply(object sender, RoutedEventArgs e)
         {
@@ -416,7 +416,7 @@ namespace VladTools.UI
             var marked = _rules.Where(rule => !rule.IsBlank && rule.IsEnabled).ToList();
             if (marked.Count == 0)
             {
-                MessageBox.Show(this, "Не отмечено ни одной формулы.", WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, "No formula is checked.", WindowTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -435,7 +435,7 @@ namespace VladTools.UI
 
                 var answer = MessageBox.Show(
                     this,
-                    text + "\n\nПрименить остальные формулы (" + ready.Count + ")?",
+                    text + "\n\nApply the remaining formulas (" + ready.Count + ")?",
                     WindowTitle,
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning,
@@ -449,17 +449,17 @@ namespace VladTools.UI
             DialogResult = true;
         }
 
-        /// <summary>Одна проблемная строка — короткое сообщение, несколько — список.</summary>
+        /// <summary>One problem row gets a short message, several get a list.</summary>
         private static string Problems(IReadOnlyList<FormulaRule> broken)
         {
             if (broken.Count == 1)
                 return broken[0].StatusText;
 
-            return "Не получится применить формул: " + broken.Count + "\n\n• " +
+            return "Formulas that cannot be applied: " + broken.Count + "\n\n• " +
                    string.Join("\n• ", broken.Select(rule => rule.TrimmedName + " — " + rule.StatusText));
         }
 
-        /// <summary>Список сохраняется при любом закрытии окна — он живёт отдельно от семейства.</summary>
+        /// <summary>The list is saved whenever the window closes — it lives independently of the family.</summary>
         protected override void OnClosing(CancelEventArgs e)
         {
             base.OnClosing(e);
@@ -475,7 +475,7 @@ namespace VladTools.UI
             catch (Exception exception)
             {
                 MessageBox.Show(this,
-                    "Список формул не удалось сохранить:\n" + exception.Message + "\n\nФайл: " + FormulaLibrary.FilePath,
+                    "Could not save the formula list:\n" + exception.Message + "\n\nFile: " + FormulaLibrary.FilePath,
                     WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }

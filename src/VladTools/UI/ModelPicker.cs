@@ -9,28 +9,28 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// Выбор моделей Revit из всех четырёх источников: файл с диска, Revit Server,
-    /// просмотр BIM360 и ввод пары GUID вручную.
+    /// Picking Revit models from all four sources: a file on disk, Revit Server, browsing
+    /// BIM360, and typing in a pair of GUIDs by hand.
     ///
-    /// Вынесено из окна «Link Manager», когда те же четыре кнопки понадобились окну
-    /// «Базовый файл». Код не принадлежит ни одному из них: он про то, где взять модель,
-    /// а не про то, что с ней делать дальше.
+    /// Extracted from the "Link Manager" window once the "Base File" window needed the same
+    /// four buttons. The code belongs to neither: it is about where to get a model from, not
+    /// about what to do with it next.
     ///
-    /// Теми же деревьями выбирается и папка — для «Комплекта по корпусу». Дорога вниз
-    /// одна и та же, поэтому оба режима собираются одним кодом: различается только то,
-    /// что уходит наружу.
+    /// The same trees are used to pick a folder too — for the "Building Kit". The way down is
+    /// the same either way, so both modes are built from one piece of code: only what leaves
+    /// at the end differs.
     /// </summary>
     internal static class ModelPicker
     {
         private static readonly LinkEntry[] Nothing = new LinkEntry[0];
 
-        /// <summary>Обычные файлы .rvt: диск или сетевая папка.</summary>
+        /// <summary>Ordinary .rvt files: a disk or a network folder.</summary>
         public static IReadOnlyList<LinkEntry> Files(Window owner, bool multiple)
         {
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Title = multiple ? "Выберите модели Revit" : "Выберите модель Revit",
-                Filter = "Модели Revit (*.rvt)|*.rvt",
+                Title = multiple ? "Choose Revit models" : "Choose a Revit model",
+                Filter = "Revit models (*.rvt)|*.rvt",
                 Multiselect = multiple,
                 CheckFileExists = true
             };
@@ -42,10 +42,11 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Дерево папок Revit Server. Имя сервера берётся из настроек и пополняется тем,
-        /// что пользователь ввёл здесь: набирать его заново в каждом окне незачем.
+        /// The Revit Server folder tree. The server name comes from the settings and is
+        /// extended with whatever the user types in here: no reason to type it in again
+        /// in every window.
         /// </summary>
-        /// <param name="known">Ключи уже собранных моделей — такие показываются серыми.</param>
+        /// <param name="known">Keys of the models already gathered — those are shown greyed out.</param>
         public static IReadOnlyList<LinkEntry> Server(
             Window owner,
             string title,
@@ -57,7 +58,7 @@ namespace VladTools.UI
             return picker.ShowDialog() == true ? picker.Selected : Nothing;
         }
 
-        /// <summary>Та же дорога, но наружу уходит папка: «Комплект по корпусу» спрашивает, где искать.</summary>
+        /// <summary>The same path, but a folder leaves at the end: the "Building Kit" asks where to search.</summary>
         public static ModelFolder PickServerFolder(Window owner, string title, LinkPreferences preferences)
         {
             var picker = ServerWindow(owner, title, preferences, Nobody, node => ToFolder(node) != null);
@@ -85,7 +86,7 @@ namespace VladTools.UI
             var strip = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
             strip.Children.Add(new TextBlock
             {
-                Text = "Сервер:",
+                Text = "Server:",
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 8, 0)
             });
@@ -95,8 +96,9 @@ namespace VladTools.UI
 
             var window = new ModelBrowserWindow(
                 "Revit Server",
-                "Имя сервера — то же, что в диалоге Revit: без «RSN://» и без слэшей. " +
-                "Папки читаются по мере раскрытия, поэтому первое обращение к большому серверу занимает секунду-другую.",
+                "The server name — the same one you'd type in the Revit dialog: without \"RSN://\" and " +
+                "without slashes. Folders are read as they are expanded, so the first request to a large " +
+                "server takes a second or two.",
                 strip,
                 roots,
                 node => ExpandServer(node, known),
@@ -107,7 +109,7 @@ namespace VladTools.UI
 
             var addServer = new Button
             {
-                Content = "Показать сервер",
+                Content = "Show server",
                 Padding = new Thickness(10, 3, 10, 3),
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -116,7 +118,7 @@ namespace VladTools.UI
                 var server = RevitServerClient.NormalizeServer(serverBox.Text);
                 if (server.Length == 0)
                 {
-                    MessageBox.Show(window, "Впишите имя сервера.", title,
+                    MessageBox.Show(window, "Type in the server name.", title,
                         MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
@@ -133,8 +135,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Дерево BIM360/ACC под учётной записью, которой пользователь вошёл в сам Revit.
-        /// Токена нет — окно не открывается вовсе, а пользователю предлагается ввод по GUID.
+        /// The BIM360/ACC tree under the account the user is signed in with inside Revit itself.
+        /// No token — the window does not open at all, and the user is offered GUID entry instead.
         /// </summary>
         public static IReadOnlyList<LinkEntry> Cloud(Window owner, string title, Func<HashSet<string>> known)
         {
@@ -143,7 +145,7 @@ namespace VladTools.UI
             return picker != null && picker.ShowDialog() == true ? picker.Selected : Nothing;
         }
 
-        /// <summary>Папка BIM360 вместо моделей — для «Комплекта по корпусу».</summary>
+        /// <summary>A BIM360 folder instead of models — for the "Building Kit".</summary>
         public static ModelFolder PickCloudFolder(Window owner, string title)
         {
             var picker = CloudWindow(owner, title, Nobody, node => ToFolder(node) != null);
@@ -151,7 +153,7 @@ namespace VladTools.UI
             return picker != null && picker.ShowDialog() == true ? ToFolder(picker.SelectedFolder) : null;
         }
 
-        /// <summary>Окно дерева облака; вход в учётную запись не получен — null и объяснение пользователю.</summary>
+        /// <summary>The cloud tree window; if signing in was never obtained — null and an explanation for the user.</summary>
         private static ModelBrowserWindow CloudWindow(
             Window owner,
             string title,
@@ -163,7 +165,7 @@ namespace VladTools.UI
             {
                 MessageBox.Show(
                     owner,
-                    obstacle + "\n\nМодель можно указать парой GUID — кнопка «BIM360 по GUID…».",
+                    obstacle + "\n\nThe model can be given as a pair of GUIDs — the \"BIM360 by GUID…\" button.",
                     title,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -180,7 +182,7 @@ namespace VladTools.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(owner, "Не удалось получить список учётных записей Autodesk.\n\n" + exception.Message,
+                MessageBox.Show(owner, "Could not get the list of Autodesk accounts.\n\n" + exception.Message,
                     title, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return null;
             }
@@ -200,9 +202,9 @@ namespace VladTools.UI
 
             var window = new ModelBrowserWindow(
                 "BIM360 / Autodesk Docs",
-                "Показано то, что доступно учётной записи, под которой вы вошли в Revit" +
+                "Shown is what is available to the account you are signed in to Revit with" +
                 (user.Length > 0 ? " (" + user + ")" : string.Empty) + ". " +
-                "Связать можно только совмещённые модели: обычный .rvt, просто лежащий в папке, в списке не появится.",
+                "Only workshared models can be linked: a plain .rvt just sitting in a folder will not appear in the list.",
                 null,
                 roots,
                 node => ExpandCloud(node, known),
@@ -214,7 +216,7 @@ namespace VladTools.UI
             return window;
         }
 
-        /// <summary>Ввод облачной модели парой GUID — запасной путь, когда просмотр недоступен.</summary>
+        /// <summary>Entering a cloud model as a pair of GUIDs — the fallback when browsing is unavailable.</summary>
         public static IReadOnlyList<LinkEntry> CloudByGuid(Window owner, string region)
         {
             var window = new CloudLinkWindow(region) { Owner = owner };
@@ -223,17 +225,17 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Папка на диске или в сети. Выбирается указанием любой модели внутри неё: своего
-        /// диалога выбора папки у WPF нет ни в одном из трёх собираемых годов (в .NET 8 он
-        /// появился, в .NET Framework 4.8 — нет), а тащить ради него WinForms в надстройку,
-        /// живущую в чужом процессе, — плохой размен.
+        /// A folder on disk or on the network. It is chosen by pointing at any model inside it: WPF
+        /// has no folder-picker dialog of its own in any of the three years this add-in is built for
+        /// (it exists in .NET 8, not in .NET Framework 4.8), and dragging in WinForms just for that,
+        /// in an add-in that lives inside somebody else's process, is a bad trade.
         /// </summary>
         public static ModelFolder PickFileFolder(Window owner)
         {
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Title = "Укажите любую модель в нужной папке",
-                Filter = "Модели Revit (*.rvt)|*.rvt",
+                Title = "Point to any model in the folder you need",
+                Filter = "Revit models (*.rvt)|*.rvt",
                 CheckFileExists = true
             };
 
@@ -246,8 +248,8 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// Узел дерева как папка. У учётной записи и проекта BIM360 папки нет: до содержимого
-        /// там ещё не добрались, и выбирать нечего — предикат окна на это и опирается.
+        /// A tree node as a folder. A BIM360 account or project has no folder: its contents have not
+        /// been reached yet, and there is nothing to choose — the window's predicate relies on exactly that.
         /// </summary>
         private static ModelFolder ToFolder(BrowseNode node)
         {
@@ -265,20 +267,20 @@ namespace VladTools.UI
             return null;
         }
 
-        /// <summary>Список уже собранных моделей в режиме выбора папки не нужен: серым красить нечего.</summary>
+        /// <summary>In folder-picking mode there is no list of models already gathered — nothing to grey out.</summary>
         private static HashSet<string> Nobody()
         {
             return new HashSet<string>(StringComparer.Ordinal);
         }
 
-        /// <summary>Запоминает введённое значение первым в списке, без повторов.</summary>
+        /// <summary>Remembers the entered value as the first in the list, without duplicates.</summary>
         public static void Remember(List<string> values, string value)
         {
             values.RemoveAll(item => string.Equals(item, value, StringComparison.OrdinalIgnoreCase));
             values.Insert(0, value);
         }
 
-        // ───────────────────────────── что раскрывать дальше ─────────────────────────────
+        // ───────────────────────────── what to expand next ─────────────────────────────
 
         private static BrowseNode ServerRoot(string server)
         {
@@ -308,7 +310,7 @@ namespace VladTools.UI
         {
             var token = AutodeskSession.Token;
             if (token == null)
-                throw new InvalidOperationException("Сеанс Autodesk истёк. Войдите в учётную запись в Revit заново.");
+                throw new InvalidOperationException("The Autodesk session has expired. Sign in to your account in Revit again.");
 
             var hub = node.Context as AccHub;
             if (hub != null)
@@ -345,14 +347,14 @@ namespace VladTools.UI
                 .ToList();
         }
 
-        /// <summary>Модель в дереве: уже собранную показываем серой и отметить не даём.</summary>
+        /// <summary>A model in the tree: one already gathered is shown greyed out and cannot be checked.</summary>
         private static BrowseNode ModelNode(LinkEntry entry, HashSet<string> known)
         {
             var isKnown = known.Contains(entry.Key);
-            return BrowseNode.Model(entry, isKnown ? "уже в списке" : string.Empty, !isKnown);
+            return BrowseNode.Model(entry, isKnown ? "already in the list" : string.Empty, !isKnown);
         }
 
-        /// <summary>Папка на Revit Server: сервер плюс путь со своим разделителем.</summary>
+        /// <summary>A folder on Revit Server: the server plus a path with its own separator.</summary>
         private sealed class ServerFolder
         {
             public ServerFolder(string server, string path)
@@ -365,7 +367,7 @@ namespace VladTools.UI
             public string Path { get; }
         }
 
-        /// <summary>Место в облаке: учётная запись, проект и папка. Папка не задана — это сам проект.</summary>
+        /// <summary>A place in the cloud: the account, the project and the folder. No folder given means the project itself.</summary>
         private sealed class CloudFolder
         {
             public CloudFolder(AccHub hub, AccProject project, string folderId)

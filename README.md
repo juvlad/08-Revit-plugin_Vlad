@@ -660,6 +660,9 @@ Then, in any model at all, choose the set and press "Insert".
 
 **What is worth knowing.**
 
+- **The set is named in the "Set" box**, and on a first run it already holds a name ("Schedules"),
+  so nothing has to be typed in before the first "Open project". Any other name typed in makes a new
+  set; a name chosen from the drop-down opens an existing one.
 - **A set is a small Revit file**, not a list of names: `%AppData%\VladTools\schedules\<Revit
   year>\<set name>.rvt`. That is why a schedule arrives whole — fields, filters, sorting,
   formatting — and why the base model is not needed to insert it. The file can be copied to a

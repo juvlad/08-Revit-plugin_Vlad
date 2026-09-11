@@ -165,9 +165,7 @@ namespace VladTools.UI
             // The set is named first and read after: assigning the text of an editable box that
             // matches an item raises SelectionChanged, and the set would otherwise be read twice.
             _loadingSets = true;
-            _setBox.Text = _preferences.Set.Length > 0
-                ? _preferences.Set
-                : ScheduleLibrary.Names().FirstOrDefault() ?? string.Empty;
+            _setBox.Text = StartingSet();
             _loadingSets = false;
 
             ReloadSet();
@@ -189,6 +187,8 @@ namespace VladTools.UI
             {
                 Text = "Schedules are taken out of a base model once and kept in the Windows profile; from then on " +
                        "they are inserted into any model with one button, and the base model is not needed for it.\n" +
+                       "A set is filled by \"Open project\" — the schedules of the model you are standing in — or " +
+                       "from any other model by the buttons next to it.\n" +
                        "The checked ones go into " +
                        (string.IsNullOrEmpty(projectName) ? "the open project" : "\"" + projectName + "\"") +
                        " as a single operation — one Ctrl+Z undoes all of it.",
@@ -372,6 +372,20 @@ namespace VladTools.UI
         }
 
         // ───────────────────────────── the set ─────────────────────────────
+
+        /// <summary>
+        /// The set the window opens on: the one worked with last, else whichever exists, else a
+        /// default name. The last step is what matters — a first run has neither, and a name box left
+        /// empty turns the very first press of a source button into a refusal ("type in a name
+        /// first") instead of the thing the user came to do.
+        /// </summary>
+        private string StartingSet()
+        {
+            if (_preferences.Set.Length > 0)
+                return _preferences.Set;
+
+            return ScheduleLibrary.Names().FirstOrDefault() ?? ScheduleLibrary.DefaultSetName;
+        }
 
         private void ReloadSetNames()
         {
@@ -757,8 +771,10 @@ namespace VladTools.UI
             {
                 _status.Foreground = SystemColors.GrayTextBrush;
                 _status.Text = SetName.Length == 0
-                    ? "No set is chosen. Type in a name and take the schedules from a model — the open one, say."
-                    : "The set \"" + SetName + "\" is empty: take the schedules from a model.";
+                    ? "No set is named. Type a name into the \"Set\" box, then press \"Open project\" to take " +
+                      "the schedules out of the model you are standing in."
+                    : "The set \"" + SetName + "\" is empty. Press \"Open project\" to take the schedules out of " +
+                      "the model you are standing in — or one of the buttons next to it for another model.";
             }
             else if (marked.Count == 0)
             {

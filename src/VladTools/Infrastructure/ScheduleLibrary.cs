@@ -39,6 +39,14 @@ namespace VladTools.Infrastructure
         /// </summary>
         public static string Year { get; set; } = "2022";
 
+        /// <summary>
+        /// The name a set gets when there is nothing to remember yet. A first run must not open with
+        /// a refusal: without this, the window comes up with an empty name box, and the very first
+        /// press of "Open project" answers "type in a name for a set first" instead of doing the one
+        /// thing the user came for. The name can be changed straight away — it is only a starting point.
+        /// </summary>
+        public const string DefaultSetName = "Schedules";
+
         /// <summary>%AppData%\VladTools\schedules — the settings live here, the sets one level down.</summary>
         public static string FolderPath
         {

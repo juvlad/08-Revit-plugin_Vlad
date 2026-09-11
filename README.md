@@ -637,6 +637,54 @@ Worth knowing:
 - Pinned grids and levels are edited normally: the pin is removed for the duration and put back after.
 - What worked and what did not — in the report after running, together with Revit's own warnings.
 
+### Schedule Library (Project panel)
+
+Works **only in a project** (`.rvt`). Carries schedules out of a base model into every model after
+it — what Revit does through "Insert → Insert Views from File".
+
+What for: a discipline works by the same few schedules, drawn once and then dragged into every new
+model by hand. Each time it means finding the base model on the network again, walking the dialog
+again and picking the same three schedules out of its whole list again.
+
+**What the button does.** It keeps a **set** of schedules in the Windows profile and inserts the
+checked ones into the open project in a single operation.
+
+A set is filled from any model:
+
+- **"Open project"** — the fastest way and the one the button is built around: stand in the base
+  model, press it, and the schedules are taken straight from there, with nothing to open;
+- **"File…" / "Revit Server…" / "BIM360…" / "by GUID…"** — any other model. It is opened in the
+  background and closed again right after; a large model takes a while, and that happens once.
+
+Then, in any model at all, choose the set and press "Insert".
+
+**What is worth knowing.**
+
+- **A set is a small Revit file**, not a list of names: `%AppData%\VladTools\schedules\<Revit
+  year>\<set name>.rvt`. That is why a schedule arrives whole — fields, filters, sorting,
+  formatting — and why the base model is not needed to insert it. The file can be copied to a
+  colleague as it is.
+- **The set is not updated on its own.** Change a schedule in the base model, and the set keeps the
+  old one until the schedules are taken again — taking one of the same name refreshes it rather
+  than doubling it.
+- **A set belongs to its Revit year.** A Revit file never opens in an older version than the one
+  that wrote it, so 2022 and 2025 keep their sets apart; in a new year they are captured again.
+- **Where the project already holds a schedule of that name**, the "If the name is taken" column
+  asks what to do with it, per row:
+  - *Skip* — the project's own stays, nothing is inserted (the default: a button that inserts must
+    not quietly delete somebody's schedule);
+  - *Replace* — the project's own is deleted and the one from the set takes its place, **going back
+    onto the same sheets**; how many sheets that is is shown in the table before anything is done;
+  - *Insert as a copy* — it arrives alongside, under a free name ("Doors (2)").
+  The drop-down at the bottom of the window sets the same action on every clashing row at once.
+- **A key schedule carries its key values along** — that is data, not merely a view. Such rows are
+  marked "Key schedule" in the "Kind" column, and the choosing window counts them separately.
+- **"Remove from set"** throws the checked schedules out of the set; **"Delete set"** removes the
+  whole set from the profile. Neither touches the project.
+- Everything checked is inserted as one operation and rolls back with a single Ctrl+Z.
+- What was inserted, what replaced what and what did not work — in the report after running,
+  together with Revit's own warnings.
+
 ## Structure
 
 ```
@@ -656,6 +704,7 @@ src/VladTools/
     BaseFileCommand.cs                logic for the "Base File" button (project)
     AutoDimensionCommand.cs           logic for the "Auto Dimensions" button (project)
     AcceptCoordinationCommand.cs      logic for the "Accept Changes" button (project)
+    ScheduleLibraryCommand.cs         logic for the "Schedule Library" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -690,6 +739,12 @@ src/VladTools/
     CoordinationChangeRow.cs         a row of that table (check box, what differs, before → after)
     CoordinationChangeKind.cs        the kinds of difference (Position/Name/Missing/New/Cannot be applied)
     CoordinationScan.cs              the result of comparing against one link
+    ScheduleLibraryWindow.cs         the "Schedule Library" window: the set, where to fill it from, the insert table
+    ScheduleChooserWindow.cs         "which of this model's schedules go into the set"
+    ScheduleRow.cs                   a row of those tables (check box, schedule, clash action, state)
+    ScheduleInfo.cs                  a snapshot of one schedule for the window
+    ScheduleAction.cs                what to do when the name is taken (Skip/Replace/Insert as a copy)
+    ScheduleSetScan.cs               the result of reading or filling a set
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     Icons.cs                     loading icons from the assembly's resources
@@ -718,6 +773,8 @@ src/VladTools/
     AutoDimensionMarker.cs       the "this dimension was placed by the button" mark (ExtensibleStorage), against duplicates
     CoordinationCatalog.cs       comparing the project's grids and levels against the coordination file
     DatumUpdate.cs                a ready-made edit for a single grid or level: rotation, translation, elevation, name
+    ScheduleLibrary.cs           the schedule cache: sets as .rvt files (%AppData%), copying between documents
+    SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — six buttons, working **only in a project** (`.rvt`). There is no test
+editor** (`.rfa`); "Project" — seven buttons, working **only in a project** (`.rvt`). There is no test
 project — checking is done by hand, in Revit.
 
 ## Build and run
@@ -134,6 +134,12 @@ UI/CoordinationChangeKind.cs      the kinds of discrepancy against the coordinat
 UI/CoordinationChangeRow.cs       a row of the "Accept Changes" table + the ready-made edit
 UI/CoordinationScan.cs            the result of comparing against one link: rows + how many elements monitor it
 UI/AcceptCoordinationWindow.cs    the "Accept Changes" window: choosing a link, the discrepancy table
+UI/ScheduleInfo.cs                a snapshot of one schedule for the window + the ScheduleChooser call-back
+UI/ScheduleAction.cs              what to do when the project already holds a schedule of that name + captions
+UI/ScheduleRow.cs                 a row of the schedule table: the snapshot, the check box, the action, the state
+UI/ScheduleSetScan.cs             the result of reading/filling/emptying a set: contents + what was added + failures
+UI/ScheduleChooserWindow.cs       "which of this model's schedules go into the set" — shown with the model open
+UI/ScheduleLibraryWindow.cs       the "Schedule Library" window: the set, where to fill it from, the insert table
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
@@ -163,6 +169,8 @@ Infrastructure/DimensionSampleReader.cs  sample dimensions → a chain template 
 Infrastructure/DimensionTextLayout.cs    pulling short labels of a chain out onto a leader (also a heuristic: the API gives no text width)
 Infrastructure/DimensionTemplate.cs      auto-dimension templates + %AppData%\VladTools\autodim\<name>.txt and _settings.txt
 Infrastructure/AutoDimensionMarker.cs    ExtensibleStorage: the "this dimension was placed by the button" mark, against duplicates
+Infrastructure/ScheduleLibrary.cs        the schedule cache: sets as .rvt files, background documents, copying between them
+Infrastructure/SchedulePreferences.cs    the "Schedule Library" window settings (%AppData%\VladTools\schedules\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -181,6 +189,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project | "Base File" | `BaseFileCommand` | links the coordination file (guessed on its own from the building number in the open model's name — a file, Revit Server, or BIM360) and immediately sets up the project against it: `Document.AcquireCoordinates`, the site name, a pin, switching to a workset (creating it if it does not exist); as its last step it opens "Copy/Monitor → Select Link" mode — the actual copy-monitoring is something the Revit API cannot do |
 | Project | "Auto Dimensions" | `AutoDimensionCommand` | from a catalogue of chain kinds (overall / openings / opening centres / partitions / wall faces / all combined) places dimensions along the sides of the selected rooms; the set of chains is gathered with the "Take a sample…" button (parsing dimensions already placed by hand) or by hand, and saved as a template. Three check boxes apply to the whole set: capture the thickness of adjoining walls, pull small labels out onto a leader, remove what was placed before |
 | Project | "Accept Changes" | `AcceptCoordinationCommand` | compares the grids and levels monitoring the coordination file against the file itself and applies the checked ones in a single transaction: a grid by rotating about its own midpoint plus a sideways shift, a level by a new elevation, plus renaming to follow the link. Missing and new link elements are only shown |
+| Project | "Schedule Library" | `ScheduleLibraryCommand` | carries schedules from one model into another: a set is taken out of a base model once (the open project, a file, Revit Server, BIM360) into a small .rvt in the Windows profile, and from then on inserted into any model with `ElementTransformUtils.CopyElements` out of that file. Where the project already holds a schedule of that name, the table asks per row: skip, replace (the replacement goes back onto the same sheets) or insert alongside under a free name |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -824,6 +833,57 @@ types plus a list of saved templates, rather than a pair of DTOs.
   and removed before the new one is placed. A window box lets this be turned off. Dimensions the
   user placed by hand carry no mark and are never touched — by construction, not by checking a name
   or a layer.
+- **A schedule set is a small .rvt of its own, not a text description of the schedule.** The API
+  does allow one to be built from scratch (`ViewSchedule.CreateSchedule` plus `AddField`, all
+  present in 2022/2024/2025), but reproducing one exactly — calculated values, cell formatting,
+  merged headings, an embedded schedule — is a large and fragile job, and the result would still
+  differ from what the user drew. A .rvt carrier costs nothing to keep, and copying out of it is
+  `ElementTransformUtils.CopyElements`, the very call Revit's own "Insert Views from File" makes, so
+  the schedule arrives whole. The price is that a set is refreshed by hand when the base model
+  changes; the gain is that inserting costs the opening of a file a couple of megabytes big — the
+  base model is not needed at all, and a set can be handed to a colleague. This is the one place in
+  the add-in where a setting is not a text file, and the reason is exactly this: text is for what we
+  generate ourselves (`autodim\`, `links\`), not for what a person drew.
+- **The cache is kept per Revit year** (`schedules\<year>\<set>.rvt`; `ScheduleLibrary.Year` is set
+  by `App.OnStartup` from `ControlledApplication.VersionNumber`, exactly like
+  `RevitServerClient.ServiceVersion`). A .rvt only ever opens in its own Revit version or a newer
+  one, so a set captured in 2025 simply would not open in 2022 — and that failure would look like a
+  broken button rather than what it is. The settings file stays one level up, shared by every year:
+  a set name is worth remembering across them.
+- **A name clash is settled before the copy, never after.** Revit will not hold two views of one
+  name, and what it does when asked to — rename the arrival, or refuse — is not something to build
+  on. So no clash is ever left to reach `CopyElements`: what is to be replaced is deleted from the
+  project inside the same transaction first, and what is to arrive alongside is renamed **in the
+  cache document** (`ScheduleLibraryCommand.Prepare`), which is then closed without saving, so the
+  rename lasts exactly one run. The report still prints the name Revit really gave the schedule
+  (`inserted.Name`), not the one that was asked for: if a clash was somehow settled another way, the
+  report must show that rather than repeat the plan.
+- **Replacing puts the schedule back on its sheets.** Deleting the project's own schedule takes its
+  `ScheduleSheetInstance`s with it, so they are written down first (sheet, point, segment index,
+  rotation) and recreated on the new one. Without this, "Replace" would quietly strip a sheet set —
+  the kind of loss nobody notices until printing. For the same reason the sheet count is shown in
+  the window **before** the choice is made, not reported after it.
+- **The source model is opened detached but with its worksets open** — the opposite of "Link
+  Manager", and deliberately. A key schedule's rows are elements, and closing the worksets would
+  fetch the schedule without its keys — a silent loss of data. Opening is the slow half of the work
+  and it is paid for once: every insert after that goes through the cache. Detaching itself is not
+  optional: an ordinary open would either make a local copy or lock somebody's central model, and
+  the button only ever reads. `DetachAndDiscardWorksets` is not allowed on a model that is not
+  workshared, and Revit's refusal is the signal to open it plainly — hence the second attempt,
+  rather than deciding in advance.
+- **Choosing what to take is a call-back, not a second pass over the model.** `ScheduleChooser`
+  (declared next to `ScheduleInfo`) is handed to `ScheduleLibrary.Capture`: the command opens the
+  model once, asks the window, copies and closes. Reading it, then showing a window, then reopening
+  it to copy would mean opening a base model twice — minutes, not seconds. The "windows know nothing
+  about Revit" rule is kept the same way as with `DeleteProjectParametersWindow`'s family scan.
+- **`DuplicateTypeAction` has exactly two values** — `UseDestinationTypes` and `Abort` (confirmed by
+  reflection over `RevitAPI.dll`). `Abort` cancels the whole copy, so the handler always answers
+  with the destination's own type: a schedule arriving with the project's own text types is a far
+  better outcome than one not arriving at all.
+- **Schedules are copied one at a time, not as a batch.** `CopyElements` is all-or-nothing: one
+  schedule Revit will not take would cancel every other. `ScheduleLibrary.CopyOne` wraps a single id
+  so a failure lands in the list and the rest carry on — the same rule as everywhere here. There are
+  a handful of schedules in a set, so the cost of the extra calls is nothing.
 
 ## Storing user settings
 
@@ -835,7 +895,8 @@ opens correctly in Notepad.
 whenever it closes (including "Close" and Esc). `dimensions\` is not a setting but a cache: written
 when a scan actually runs, not when the window closes. `links\` is both: `_settings.txt` is
 rewritten whenever the "Link Manager" window closes, while the sets themselves are only saved with
-the "Save set" button. `basefile\` holds settings only.
+the "Save set" button. `basefile\` holds settings only. `schedules\` is both too — and the one
+folder whose contents are not text at all: a set of schedules is a Revit file (see "Key decisions").
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -911,6 +972,23 @@ here at all — it is shared with the "Building Kit" and lives in `links\_settin
 is only one base file. The window reads and adds to Revit Server names in `links\_settings.txt` —
 the user should not have to type them in twice.
 
+`schedules\<Revit year>\<set name>.rvt` — a saved set of schedules for the "Schedule Library"
+button. This is the one setting in the add-in that is not a text file: the set **is** a small Revit
+project holding nothing but the schedules themselves, and a schedule is inserted by copying it out
+of there (the reasons are in "Key decisions"). The year in the path is not tidiness either: a .rvt
+never opens in an older Revit than the one that wrote it. A set is only ever written by the "Add to
+the set from…" buttons and by "Remove from set"; Revit's own backups (`<name>.0001.rvt`) are swept
+away together with the set, otherwise "deleted" would leave its contents lying on disk. A set file
+can be copied to a colleague as it is — that is the whole point of keeping it as a file.
+
+`schedules\_settings.txt` — that window's settings: `KEY = value` — `SET` (the set worked with
+last), `MODEL` (the model the schedules were last taken from, in the same line format as a link
+set) and `ACTION` (`Skip`/`Replace`/`AddCopy` — what to do by default when the project already holds
+a schedule of that name; `Skip`, because a button that inserts must not quietly delete somebody's
+schedule). It lies one level above the sets, shared by every Revit year: a set name is worth
+remembering across them. The window also reads and adds to the Revit Server names in
+`links\_settings.txt`, for the same reason as "Base File".
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -936,9 +1014,12 @@ every year. The year is a build key, `-p:RevitVersion=<year>` (defaulting to `20
 `RevitAddinsDir`, `Product`, the **target framework** in
 [VladTools.csproj](src/VladTools/VladTools.csproj) (see "Key decisions", TFM by year) and the
 separate `bin\R<year>\` / `obj\R<year>\` folders (details and the related MSB3539/CS0579 build trap
-are in "Build and run"). `RevitServerClient.ServiceVersion` needs no manual edit — `App.OnStartup`
-sets it (see "Key decisions"). `build.ps1` with no arguments builds all three years at once,
-skipping any that are not installed.
+are in "Build and run"). `RevitServerClient.ServiceVersion` and `ScheduleLibrary.Year` need no
+manual edit — `App.OnStartup` sets both from `ControlledApplication.VersionNumber` (see "Key
+decisions"). A new year does start with an empty schedule cache, and that is by design rather than
+an oversight: the sets are .rvt files, and one written by a newer Revit will not open in an older
+one — they are captured again in the new year. `build.ps1` with no arguments builds all three years
+at once, skipping any that are not installed.
 
 The full rundown for each move is in [CHECKLIST-Revit2024.md](CHECKLIST-Revit2024.md) and
 [CHECKLIST-Revit2025.md](CHECKLIST-Revit2025.md). Briefly, what is left as a warning (not an

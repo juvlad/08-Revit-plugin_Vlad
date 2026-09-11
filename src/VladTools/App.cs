@@ -19,6 +19,10 @@ namespace VladTools
             // itself, so the same build does not confuse 2022 and 2024 when talking to the server.
             RevitServerClient.ServiceVersion = application.ControlledApplication.VersionNumber;
 
+            // The schedule cache is a .rvt, and a .rvt never opens in an older Revit than the one
+            // that wrote it — so every year keeps its sets in a folder of its own.
+            ScheduleLibrary.Year = application.ControlledApplication.VersionNumber;
+
             var familyPanel = Ribbon.GetOrCreatePanel(application, TabName, FamilyPanelName);
 
             // ───────────────── Button 1: 3D Thumbnail ─────────────────
@@ -234,6 +238,30 @@ namespace VladTools
                     "It works off monitoring links — the ones \"Copy/Monitor\" sets up.\n" +
                     "If the project has none, there is nothing to compare against.",
                 iconBaseName: "coordination");
+
+            // ───────────────── Button 11: Schedule Library (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_ScheduleLibrary",
+                text: "Schedule\nLibrary",
+                commandType: typeof(ScheduleLibraryCommand),
+                tooltip: "Carries schedules out of a base model into every model after it.",
+                longDescription:
+                    "The schedules a discipline works by are drawn once and then dragged into every new\n" +
+                    "model through \"Insert Views from File\": find the base model on the network again,\n" +
+                    "walk the dialog again, pick the same three schedules out of its whole list again.\n\n" +
+                    "Here the list is assembled once and named. The set is kept in the Windows profile\n" +
+                    "as a small Revit file, so inserting takes a second and the base model is not needed\n" +
+                    "for it at all — the set can even be handed to a colleague.\n\n" +
+                    "The set is filled from the model open right now (the fastest way — nothing has to\n" +
+                    "be opened), or from a file, Revit Server or BIM360; those are opened in the\n" +
+                    "background, and a large model takes a while.\n\n" +
+                    "A schedule arrives whole: fields, filters, sorting and formatting. Where the project\n" +
+                    "already holds a schedule of that name, the table asks what to do with it —\n" +
+                    "skip, replace (the replacement goes back onto the same sheets), or insert alongside\n" +
+                    "under a free name. Everything checked goes in as one operation and rolls back\n" +
+                    "with a single Ctrl+Z.",
+                iconBaseName: "schedules");
 
             // ──────── Add the next project buttons here ────────
 

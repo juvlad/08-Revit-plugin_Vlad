@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — seven buttons, working **only in a project** (`.rvt`). There is no test
+editor** (`.rfa`); "Project" — eight buttons, working **only in a project** (`.rvt`). There is no test
 project — checking is done by hand, in Revit.
 
 ## Build and run
@@ -140,6 +140,14 @@ UI/ScheduleRow.cs                 a row of the schedule table: the snapshot, the
 UI/ScheduleSetScan.cs             the result of reading/filling/emptying a set: contents + what was added + failures
 UI/ScheduleChooserWindow.cs       "which of this model's schedules go into the set" — shown with the model open
 UI/ScheduleLibraryWindow.cs       the "Schedule Library" window: the set, where to fill it from, the insert table
+UI/CategoryInfo.cs                a snapshot of one bindable category of the open project, for the category picker
+UI/ParameterGroupInfo.cs          a snapshot of one Revit parameter group (ForgeTypeId + label), for the "Group" column
+UI/SharedParameterInfo.cs         a snapshot of one definition read out of a shared parameter file
+UI/ParameterStatusInfo.cs         what "Parameter Sets" found comparing one entry against the open project
+UI/ParameterSetRow.cs             a row of the parameter-set table: the entry itself, the check box, the state
+UI/CategoryPickerWindow.cs        "Choose categories…" — a small checklist opened from a parameter-set row
+UI/SharedParameterPickerWindow.cs "Add from shared file…" — picking definitions out of a shared parameter file
+UI/ParameterSetWindow.cs          the "Parameter Sets" window: the set, "Add from shared file…", the apply table
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
@@ -171,6 +179,8 @@ Infrastructure/DimensionTemplate.cs      auto-dimension templates + %AppData%\Vl
 Infrastructure/AutoDimensionMarker.cs    ExtensibleStorage: the "this dimension was placed by the button" mark, against duplicates
 Infrastructure/ScheduleLibrary.cs        the schedule cache: sets as .rvt files, background documents, copying between them
 Infrastructure/SchedulePreferences.cs    the "Schedule Library" window settings (%AppData%\VladTools\schedules\_settings.txt)
+Infrastructure/ParameterSetLibrary.cs    saved parameter sets, %AppData%\VladTools\parameters\<name>.txt; also ParameterEntry, ParameterBindingKind
+Infrastructure/ParameterSetPreferences.cs  the "Parameter Sets" window settings (%AppData%\VladTools\parameters\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -190,6 +200,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project | "Auto Dimensions" | `AutoDimensionCommand` | from a catalogue of chain kinds (overall / openings / opening centres / partitions / wall faces / all combined) places dimensions along the sides of the selected rooms; the set of chains is gathered with the "Take a sample…" button (parsing dimensions already placed by hand) or by hand, and saved as a template. Three check boxes apply to the whole set: capture the thickness of adjoining walls, pull small labels out onto a leader, remove what was placed before |
 | Project | "Accept Changes" | `AcceptCoordinationCommand` | compares the grids and levels monitoring the coordination file against the file itself and applies the checked ones in a single transaction: a grid by rotating about its own midpoint plus a sideways shift, a level by a new elevation, plus renaming to follow the link. Missing and new link elements are only shown |
 | Project | "Schedule Library" | `ScheduleLibraryCommand` | carries schedules from one model into another: a set is taken out of a base model once (the open project, a file, Revit Server, BIM360) into a small .rvt in the Windows profile, and from then on inserted into any model with `ElementTransformUtils.CopyElements` out of that file. Where the project already holds a schedule of that name, the table asks per row: skip, replace (the replacement goes back onto the same sheets) or insert alongside under a free name |
+| Project | "Parameter Sets" | `ParameterSetCommand` | applies a named bundle of shared parameters to the open project: for every parameter — instance/type, categories, parameter group, "varies across groups" — built once from a shared parameter file (`Application.OpenSharedParameterFile`) and kept in the Windows profile. Opening the window compares the set against the project by GUID: what is missing is bound (`BindingMap.Insert`), what is already bound but differs is brought in line with the saved settings (`BindingMap.ReInsert`) rather than duplicated |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -884,6 +895,68 @@ types plus a list of saved templates, rather than a pair of DTOs.
   schedule Revit will not take would cancel every other. `ScheduleLibrary.CopyOne` wraps a single id
   so a failure lands in the list and the rest carry on — the same rule as everywhere here. There are
   a handful of schedules in a set, so the cost of the extra calls is nothing.
+- **A parameter set stores a GUID, never a name.** A shared parameter's name can be typed
+  differently by whoever maintains the shared parameter file; the GUID is its one permanent
+  identity, and it is what a set is looked up by, both in the open project
+  (`SharedParameterElement.Lookup(doc, guid)`) and, for one not yet in the project, in the shared
+  parameter file itself. The name in a saved entry is a label kept only for display, refreshed
+  whenever the parameter is picked again from the file.
+- **Categories are stored as `BuiltInCategory` names, the parameter group as a `ForgeTypeId.TypeId`
+  string** — the same reasoning as a project workset or a dimension chain kind stored by name
+  elsewhere in this add-in: a set has to travel between projects in any language Revit runs in.
+  `ParameterSetCommand.CollectCategories` only ever offers categories with a `BuiltInCategory`
+  representation (`(BuiltInCategory)category.Id.IntegerValue`, the same idiom this project already
+  keeps for 2022 compatibility — see "Porting to another Revit version"); a custom, per-document
+  category with no such enum value cannot be addressed by a set and is left out rather than saved as
+  something nothing could read back. **Trap:** a `ForgeTypeId` group string has not been confirmed
+  byte-for-byte identical between 2022 and 2025 the way `Definition.GetGroupTypeId()` itself has —
+  so a saved group is validated against `ParameterUtils.GetAllBuiltInGroups()` on the Revit that is
+  actually applying the set, and silently substituted with the first available group, noted in the
+  report, rather than left to throw and fail the whole row over a cosmetic setting.
+- **The shared parameter file Revit is configured with is swapped out only for the duration of a
+  read, and always restored.** The API has no way to open an arbitrary `.txt` path directly —
+  `Application.OpenSharedParameterFile()` always reads whatever `SharedParametersFilename` currently
+  points at — so browsing to a different file means setting the property, reading, and setting it
+  back in a `finally`. This is an application-wide Revit setting, not something a single button
+  should leave changed behind it. **Applying swaps it too, and must:** a parameter missing from the
+  project can only be created out of the file the set was actually built from (remembered in
+  `parameters\_settings.txt` as `FILE`), which is often not the one Revit is pointed at — without
+  the swap, every genuinely new parameter would fail with "GUID not found", which is the button's
+  main job. The swap there wraps the whole run rather than a single read: the `ExternalDefinition`s
+  are handed to `BindingMap.Insert` and only stay valid while their file is the current one.
+- **A row the project already matches is left untouched, and the report says so separately.**
+  `ParameterSetCommand.Compare` is the single source of truth for both the "State" column and the
+  applying, so the table can never promise one thing and the button do another; a matching row is
+  counted as "Already as required" and never re-bound. Re-inserting a binding that is already right
+  is a real document edit for no gain, and it would make the report claim an update that never
+  happened — on a button whose whole purpose is "check and bring in line", a truthful count of what
+  actually changed is the product.
+- **A category the set asks for that this project does not have is not a difference.** Comparing
+  against the raw saved list would leave a set built in an MEP project reading "will be updated" in
+  an architectural one forever, re-binding on every run and never converging. `Compare` therefore
+  splits the entry's categories into the ones this project offers and the rest, compares only the
+  first, and carries the second into the caption and the report as a plain note.
+- **Binding uses `Insert` for a parameter never bound before and `ReInsert` for one that already
+  is — `ReInsert` freely swaps instance for type and back, in the same call that also updates
+  categories.** Both overloads take the parameter group directly
+  (`Insert(Definition, Binding, ForgeTypeId)` / `ReInsert(Definition, Binding, ForgeTypeId)`,
+  confirmed identical in 2022 and 2025), so there is no separate `SetGroupTypeId` call needed just
+  to place a parameter under the right group. `SetAllowVaryBetweenGroups` sits completely outside
+  the binding, though, and cannot be read back from it — only from the `InternalDefinition` itself
+  (`VariesAcrossGroups`) — so it is compared and (re)applied on its own, in its own `try`/`catch`,
+  independently of whether the binding needed touching at all.
+- **Narrowing categories or swapping instance for type is flagged, never applied silently.**
+  Removing a category from an already-bound parameter drops its values on every element of that
+  category — Revit gives no warning for this, `ReInsert` simply succeeds. `ParameterSetCommand.
+  DescribeOne` treats exactly these two cases as the ones worth a red flag (a wider category list, a
+  changed group or a changed "varies across groups" only ever add or relabel, never drop data), and
+  `ParameterSetWindow.OnApply` repeats the same list in a confirmation before running — the same
+  shape as "Schedule Library"'s warning before a "Replace".
+- **A category with no categories chosen cannot be applied, and the window catches this itself,
+  without asking the command.** `BindingMap.Insert`/`ReInsert` need a non-empty `CategorySet`; a
+  freshly added parameter starts with none chosen (there is nothing sensible to default to), so
+  `ParameterSetWindow.Revalidate` marks such a row on its own, in plain C#, and only asks the
+  Revit-side call-back about the rows that pass this local check.
 
 ## Storing user settings
 
@@ -897,6 +970,9 @@ when a scan actually runs, not when the window closes. `links\` is both: `_setti
 rewritten whenever the "Link Manager" window closes, while the sets themselves are only saved with
 the "Save set" button. `basefile\` holds settings only. `schedules\` is both too — and the one
 folder whose contents are not text at all: a set of schedules is a Revit file (see "Key decisions").
+`parameters\` follows the `links\` shape most closely: `_settings.txt` only ever changes when the
+window closes, and a set itself only through its own "Save set" button — table edits (categories,
+binding, group) are not written until then.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -989,6 +1065,19 @@ schedule). It lies one level above the sets, shared by every Revit year: a set n
 remembering across them. The window also reads and adds to the Revit Server names in
 `links\_settings.txt`, for the same reason as "Base File".
 
+`parameters\<set name>.txt` — a saved bundle of shared parameters for the "Parameter Sets" button.
+One line per parameter, fields separated by a vertical bar:
+`PARAM | GUID | name | Instance|Type | varies across groups: 1|0 | group ForgeTypeId | categories, comma separated`.
+The GUID is the parameter's real identity (see "Key decisions") — the name is only a label kept for
+display, and is re-read whenever the parameter is picked again from the shared parameter file. Only
+written by the "Save set" button, unlike `links\` and `autodim\`, whose `_settings.txt` is rewritten
+on every close: nothing here is session state, so there is nothing to save except on request.
+
+`parameters\_settings.txt` — that window's settings: `KEY = value` — `SET` (the set worked with
+last) and `FILE` (the shared parameter file last browsed for definitions, so "Add from shared
+file…" does not ask again). The "_settings" name is taken by this file, by the same rule as
+`links\` and `schedules\`.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -1002,8 +1091,16 @@ remembering across them. The window also reads and adds to the Revit Server name
 - **Wherever a button deletes**, an empty filter must not mean "select everything" — a guard
   against accidental deletion. Where nothing is deleted, the rule does not apply: "Accept Changes"
   checks everything applicable right away, because that is exactly what it is asked to do (see
-  "Key decisions"). The second rule — "only what is shown gets applied" — holds in every window
-  without exception: a row that leaves the table through a filter loses its check mark.
+  "Key decisions"). The second rule — "only what is shown gets applied" — holds wherever the filter
+  **is** the selection: a row that leaves the table through it loses its check mark. The one
+  exception is `CategoryPickerWindow`, whose search box only ever *finds* a category and never
+  narrows the answer: check "Walls", type "door" to reach the next one, and the box out of sight
+  stays checked. Adding a filter that selects for the user means the rule comes back with it.
+- **Name a WPF binding path with `nameof`, never a bare string**, and never rely on
+  `GridBuilder.CheckBoxTemplate()`'s default path for a row whose flag is not called `IsSelected`.
+  A binding to a property that does not exist fails **silently**: an unbound `IsChecked` still ticks
+  on screen and the value simply never reaches the row. That is exactly how the category picker came
+  to look as if it refused to remember anything.
 
 ## Porting to another Revit version
 

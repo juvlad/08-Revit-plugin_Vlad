@@ -263,6 +263,27 @@ namespace VladTools
                     "with a single Ctrl+Z.",
                 iconBaseName: "schedules");
 
+            // ───────────────── Button 12: Parameter Sets (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_ParameterSets",
+                text: "Parameter\nSets",
+                commandType: typeof(ParameterSetCommand),
+                tooltip: "Applies a saved bundle of shared parameters to the open project.",
+                longDescription:
+                    "The office's own shared parameters — a mass, a code, a status — have to be present in\n" +
+                    "every project with exactly the same settings, and setting each one up by hand in\n" +
+                    "\"Manage → Project Parameters\" one project at a time is easy to get slightly wrong.\n\n" +
+                    "Here a bundle is built once, from a shared parameter file: for every parameter, whether\n" +
+                    "it is bound per instance or per type, which categories, which parameter group, and —\n" +
+                    "for an instance parameter — whether its value can vary between the instances of a model\n" +
+                    "group. The bundle is named and kept in the Windows profile, offered in full next time.\n\n" +
+                    "Opening the window in another project shows the same bundle and checks it against what\n" +
+                    "is already there: a parameter missing from the project is added, one already bound is\n" +
+                    "compared and brought in line with the saved settings rather than duplicated. Everything\n" +
+                    "checked is applied as one operation, so it rolls back with a single Ctrl+Z.",
+                iconBaseName: "parametersets");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

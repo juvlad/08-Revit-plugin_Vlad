@@ -33,16 +33,55 @@ namespace VladTools.UI
             };
         }
 
-        /// <summary>A check box in a cell: with its own template it reacts to the first click.</summary>
-        public static DataTemplate CheckBoxTemplate()
+        /// <summary>
+        /// A check box in a cell: with its own template it reacts to the first click. Binds to
+        /// "IsSelected" by default; <paramref name="enabledPath"/> additionally disables the box
+        /// where the setting makes no sense for that row (a type-bound row's "varies across groups", say).
+        ///
+        /// **Name the path explicitly whenever the row's flag is not called "IsSelected".** A WPF
+        /// binding to a property that does not exist fails silently: the box still ticks on screen,
+        /// because an unbound <c>IsChecked</c> keeps its own local value, and the tick simply never
+        /// reaches the row. That is what made the category picker look like it refused to remember
+        /// anything.
+        /// </summary>
+        public static DataTemplate CheckBoxTemplate(string bindingPath = "IsSelected", string enabledPath = null)
         {
             var checkBox = new FrameworkElementFactory(typeof(CheckBox));
             checkBox.SetBinding(ToggleButton.IsCheckedProperty,
-                new Binding("IsSelected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+                new Binding(bindingPath) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+
+            if (enabledPath != null)
+                checkBox.SetBinding(FrameworkElement.IsEnabledProperty, new Binding(enabledPath));
+
             checkBox.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
             checkBox.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 
             return new DataTemplate { VisualTree = checkBox };
+        }
+
+        /// <summary>
+        /// A combo box in a cell, bound one way only — never with a <c>DataGridComboBoxColumn</c>,
+        /// whose three mutually exclusive bindings silently drop a choice if more than one is set
+        /// (see CLAUDE.md, the "DataGridComboBoxColumn" key decision). The list is shared by every
+        /// row, so <c>IsSynchronizedWithCurrentItem</c> is turned off — otherwise a choice in one row
+        /// would drag the others along.
+        /// </summary>
+        public static DataTemplate ComboTemplate(
+            System.Collections.IEnumerable itemsSource,
+            string displayMemberPath,
+            string selectedValuePath,
+            string bindingPath)
+        {
+            var combo = new FrameworkElementFactory(typeof(ComboBox));
+            combo.SetValue(ItemsControl.ItemsSourceProperty, itemsSource);
+            combo.SetValue(ItemsControl.DisplayMemberPathProperty, displayMemberPath);
+            combo.SetValue(Selector.SelectedValuePathProperty, selectedValuePath);
+            combo.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 1, 2, 1));
+            combo.SetValue(Selector.IsSynchronizedWithCurrentItemProperty, (bool?)false);
+            combo.SetBinding(Selector.SelectedValueProperty,
+                new Binding(bindingPath) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+
+            return new DataTemplate { VisualTree = combo };
         }
     }
 }

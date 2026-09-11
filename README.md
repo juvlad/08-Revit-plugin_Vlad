@@ -685,6 +685,58 @@ Then, in any model at all, choose the set and press "Insert".
 - What was inserted, what replaced what and what did not work — in the report after running,
   together with Revit's own warnings.
 
+### Parameter Sets (Project panel)
+
+Works **only in a project** (`.rvt`). Applies a saved bundle of shared parameters to the open
+project — what "Manage → Project Parameters → Add" does, one parameter at a time, by hand.
+
+What for: the office's own shared parameters (a mass, a code, a status) have to be present in every
+project with exactly the same settings — instance or type, which categories, which group, whether
+the value can vary between the instances of a model group. Setting each one up by hand, project
+after project, drifts: a category forgotten here, a group different there.
+
+**What the button does.** It keeps a **named set** of parameters in the Windows profile — built
+once from a shared parameter file — and checks it against the open project every time the window
+opens.
+
+1. **"Add from shared file…"** picks definitions out of a shared parameter file (Revit's own — the
+   one it is already configured with, or another one chosen with "Browse…"). Only the GUID and the
+   name come from there; everything else is set up in the table below.
+2. For every parameter in the table: **Binding** (Instance/Type), **Vary by group** (meaningful
+   only for an instance parameter — Revit's own "values can vary by group instance"),
+   **Categories** (its own small picker, opened from the table), **Group** (the parameter group
+   Revit shows it under).
+3. **"State"** compares the row against the open project as the table is edited: *"Not in the
+   project yet — will be added"*, *"Already matches"*, or *"Will be updated — …"* naming exactly
+   what changes (categories added, group changed, "varies across groups" changed). A row that
+   would **lose data** — a category taken away, or instance swapped for type and back — is coloured
+   and spelled out, and confirmed separately before applying.
+4. **"Apply to Project"** binds what is missing and re-binds what differs, in one operation; it
+   rolls back with a single Ctrl+Z. A parameter that already matches is left alone entirely, and
+   the report counts it separately ("Already as required") — so a run that changed nothing says so
+   instead of claiming an update.
+
+**What is worth knowing.**
+
+- **The parameter's identity is its GUID, never its name.** A name can be typed differently by
+  whoever names things in the shared file; the GUID cannot. A set entry is looked up in the project,
+  and in the shared file when applying, by GUID alone.
+- **Categories are matched by `BuiltInCategory` name**, so a set travels between projects in any
+  language Revit runs in — the category picker only ever offers what this project can actually bind
+  a parameter to. A category the set carries but this project does not have is simply noted and
+  skipped, not treated as a difference to keep re-applying.
+- **The shared parameter file is remembered with the set.** Applying reaches for the file the set
+  was built from, whatever Revit itself happens to be pointed at — and puts Revit's own setting back
+  afterwards. A parameter already present in the project needs no shared parameter file at all.
+- **Removing a category from an already-bound parameter loses its values on that category** — Revit
+  has no undo for that beyond Ctrl+Z in the same session. Such a row is flagged in the table and
+  called out again before "Apply to Project" runs.
+- **"Save set"** writes the table as it stands to the Windows profile; edits in the table are not
+  written until it is pressed. **"Remove from set"** and **"Delete set"** only ever touch the saved
+  set, never the project.
+- What was added, what was updated and what did not work — in the report after running, together
+  with Revit's own warnings.
+
 ## Structure
 
 ```
@@ -705,6 +757,7 @@ src/VladTools/
     AutoDimensionCommand.cs           logic for the "Auto Dimensions" button (project)
     AcceptCoordinationCommand.cs      logic for the "Accept Changes" button (project)
     ScheduleLibraryCommand.cs         logic for the "Schedule Library" button (project)
+    ParameterSetCommand.cs            logic for the "Parameter Sets" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -745,6 +798,14 @@ src/VladTools/
     ScheduleInfo.cs                  a snapshot of one schedule for the window
     ScheduleAction.cs                what to do when the name is taken (Skip/Replace/Insert as a copy)
     ScheduleSetScan.cs               the result of reading or filling a set
+    ParameterSetWindow.cs            the "Parameter Sets" window: the set, "Add from shared file…", the apply table
+    ParameterSetRow.cs               a row of that table (check box, binding, categories, group, state)
+    CategoryPickerWindow.cs          "Choose categories…" — a small checklist opened from a row
+    CategoryInfo.cs                  a snapshot of one bindable category for that picker
+    SharedParameterPickerWindow.cs   "Add from shared file…" — picking definitions out of a shared parameter file
+    SharedParameterInfo.cs           a snapshot of one definition read out of a shared parameter file
+    ParameterGroupInfo.cs            a snapshot of one parameter group, for the "Group" column
+    ParameterStatusInfo.cs           what the command found comparing a row against the open project
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     Icons.cs                     loading icons from the assembly's resources
@@ -775,6 +836,8 @@ src/VladTools/
     DatumUpdate.cs                a ready-made edit for a single grid or level: rotation, translation, elevation, name
     ScheduleLibrary.cs           the schedule cache: sets as .rvt files (%AppData%), copying between documents
     SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
+    ParameterSetLibrary.cs       saved parameter sets (%AppData%)
+    ParameterSetPreferences.cs   the "Parameter Sets" window settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

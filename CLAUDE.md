@@ -14,7 +14,7 @@ Must be updated whenever:
 | A ribbon button is added, removed or renamed                                                                                                     | "Buttons and commands", and "How a command is built" if needed                |
 | A ribbon panel is added or renamed                                                                                                               | "What this is", "Buttons and commands"                                        |
 | A new class appears in`Infrastructure/` or a new shared abstraction                                                                            | "Code map", "Key decisions"                                                   |
-| The format or path of a file under`%AppData%\VladTools\` changes (`formulas.txt`, `names.txt`, `dimensions\`, `links\`, `basefile\`) | "Storing user settings"                                                       |
+| The format or path of a file under`%AppData%\VladTools\` changes (`formulas.txt`, `names.txt`, `dimensions\`, `links\`, `basefile\`, `coordination\`) | "Storing user settings"                                                       |
 | `build.ps1`, `VladTools.csproj`, `VladTools.addin`, the Revit version or the TFM changes                                                   | "Build before reporting", "Build and run", "Porting to another Revit version" |
 | A test project or a linter appears                                                                                                               | "Build and run" — add the commands to run them                               |
 | Any of the "Conventions" is broken or deliberately changed                                                                                       | "Conventions" — rewrite the rule, don't leave the discrepancy standing       |
@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — eight buttons, working **only in a project** (`.rvt`). There is no test
+editor** (`.rfa`); "Project" — nine buttons, working **only in a project** (`.rvt`). There is no test
 project — checking is done by hand, in Revit.
 
 ## Build and run
@@ -134,6 +134,8 @@ UI/CoordinationChangeKind.cs      the kinds of discrepancy against the coordinat
 UI/CoordinationChangeRow.cs       a row of the "Accept Changes" table + the ready-made edit
 UI/CoordinationScan.cs            the result of comparing against one link: rows + how many elements monitor it
 UI/AcceptCoordinationWindow.cs    the "Accept Changes" window: choosing a link, the discrepancy table
+UI/BatchModelRow.cs               a row of the "other models" table: the model itself and a check box
+UI/BatchCoordinationWindow.cs     "Accept Changes → Other models…": the model list, which worksets to open, what may be changed
 UI/ScheduleInfo.cs                a snapshot of one schedule for the window + the ScheduleChooser call-back
 UI/ScheduleAction.cs              what to do when the project already holds a schedule of that name + captions
 UI/ScheduleRow.cs                 a row of the schedule table: the snapshot, the check box, the action, the state
@@ -145,6 +147,12 @@ UI/ParameterGroupInfo.cs          a snapshot of one Revit parameter group (Forge
 UI/SharedParameterInfo.cs         a snapshot of one definition read out of a shared parameter file
 UI/ParameterStatusInfo.cs         what "Parameter Sets" found comparing one entry against the open project
 UI/ParameterSetRow.cs             a row of the parameter-set table: the entry itself, the check box, the state
+UI/WorksetInfo.cs                 a snapshot of one user workset: GUID + name + contents + owner + open/active
+UI/WorksetElementAction.cs        what happens to the elements in a removed workset (Move/Delete)
+UI/ProjectWorksetRow.cs           a row of the workset table in the "Worksets" window (not UI/WorksetRow.cs — that
+                                  one is a workset *name* shared across links in "Link Manager")
+UI/WorksetsWindow.cs              the "Worksets" window: the project's worksets, the check boxes, the question
+                                  about their contents
 UI/CategoryPickerWindow.cs        "Choose categories…" — a small checklist opened from a parameter-set row
 UI/SharedParameterPickerWindow.cs "Add from shared file…" — picking definitions out of a shared parameter file
 UI/ParameterSetWindow.cs          the "Parameter Sets" window: the set, "Add from shared file…", the apply table
@@ -168,7 +176,12 @@ Infrastructure/LinkPreferences.cs the "Link Manager" window settings (%AppData%\
 Infrastructure/BaseFilePreferences.cs  the "Base File" window settings (%AppData%\VladTools\basefile\_settings.txt)
 Infrastructure/BaseFileFinder.cs  guessing the base file from the building in the open model's name
 Infrastructure/CoordinationCatalog.cs  comparing the project's grids and levels against the coordination file
+                                  plus Verifier — the same comparison run again after the commit, to check the edit landed
 Infrastructure/DatumUpdate.cs     a ready-made edit for a single grid or level: rotation, translation, elevation, name
+                                  plus DatumVerdict — what a re-read after the commit says (Aligned/Off/Unknown)
+Infrastructure/BatchCoordination.cs  opening somebody else's model with two worksets, a local copy, synchronising back
+                                  plus BatchModel — one opened model of the batch
+Infrastructure/CoordinationPreferences.cs  the "other models" window settings (%AppData%\VladTools\coordination\_settings.txt)
 Infrastructure/DisciplineCatalog.cs  a discipline code (OV, VK…) from a model name → a project workset "01_Link_OV", by tokens
 Infrastructure/RoomSide.cs        one straight side of a room boundary: direction, inward normal, walls
 Infrastructure/RoomSideBuilder.cs a room's GetBoundarySegments → a list of RoomSide (merging collinear segments)
@@ -198,8 +211,9 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | (can be guessed from the discipline code in the model name). The "Building Kit…" button assembles the list itself: it finds the models of every discipline of the same building through the project's folders. New links are created in a single transaction and pinned; existing ones are reloaded with`LoadFrom` outside a transaction |                            |                                    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Base File"                | `BaseFileCommand`                | links the coordination file (guessed on its own from the building number in the open model's name — a file, Revit Server, or BIM360) and immediately sets up the project against it:`Document.AcquireCoordinates`, the site name, a pin, switching to a workset (creating it if it does not exist); as its last step it opens "Copy/Monitor → Select Link" mode — the actual copy-monitoring is something the Revit API cannot do                                                                                            |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Auto Dimensions"          | `AutoDimensionCommand`           | from a catalogue of chain kinds (overall / openings / opening centres / partitions / wall faces / all combined) places dimensions along the sides of the selected rooms; the set of chains is gathered with the "Take a sample…" button (parsing dimensions already placed by hand) or by hand, and saved as a template. Three check boxes apply to the whole set: capture the thickness of adjoining walls, pull small labels out onto a leader, remove what was placed before                                                  |
-| Project                                                                                                                                                                                                                                                                                                                                     | "Accept Changes"           | `AcceptCoordinationCommand`      | compares the grids and levels monitoring the coordination file against the file itself and applies the checked ones in a single transaction: a grid by rotating about its own midpoint plus a sideways shift, a level by a new elevation, plus renaming to follow the link. Missing and new link elements are only shown                                                                                                                                                                                                          |
+| Project                                                                                                                                                                                                                                                                                                                                     | "Accept Changes"           | `AcceptCoordinationCommand`      | compares the grids and levels monitoring the coordination file against the file itself and applies the checked ones in a single transaction: a grid by rotating about its own midpoint plus a sideways shift, a level by a new elevation, plus renaming to follow the link. What is gone from the file can also be deleted, but only once the window's own box turns those rows on and they are checked by hand; new link elements are only shown. The "Other models…" button does the same for a batch of models nobody has open: each is opened in turn with only the grid and base-file worksets in it (a local copy for a workshared one), its grids are moved, and it is synchronised back — never deleting anything                                                     |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Schedule Library"         | `ScheduleLibraryCommand`         | carries schedules from one model into another: a set is taken out of a base model once (the open project, a file, Revit Server, BIM360) into a small .rvt in the Windows profile, and from then on inserted into any model with`ElementTransformUtils.CopyElements` out of that file. Where the project already holds a schedule of that name, the table asks per row: skip, replace (the replacement goes back onto the same sheets) or insert alongside under a free name                                                     |
+| Project                                                                                                                                                                                                                                                                                                                                     | "Worksets"                 | `WorksetsCommand`                | shows every user workset of the project — what it holds, whether it is open, who owns it — and removes the checked ones in one batch. The question Revit's own dialog asks per workset is asked once for the whole batch, under the table: move the elements standing in them into another workset (`DeleteWorksetOption.MoveElementsToWorkset`) or delete them with it (`DeleteAllElements`). The worksets are checked out before the run; a closed workset is flagged rather than counted                                                                                                                                                                                                                              |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Parameter Sets"           | `ParameterSetCommand`            | applies a named bundle of shared parameters to the open project: for every parameter — instance/type, categories, parameter group, "varies across groups" — built once from a shared parameter file (`Application.OpenSharedParameterFile`) and kept in the Windows profile. Opening the window compares the set against the project by GUID: what is missing is bound (`BindingMap.Insert`), what is already bound but differs is brought in line with the saved settings (`BindingMap.ReInsert`) rather than duplicated |
 
 ## How a command is built (a shared pattern — follow it in new ones)
@@ -237,6 +251,17 @@ sample (`DimensionSampleReader`) and reopens the window with the same instance o
 filled in. The loop ends when the user closes the window with "Place" or "Close".
 The data snapshot (step 3) is not a single one either: a `FilteredElementCollector` over dimension
 types plus a list of saved templates, rather than a pair of DTOs.
+
+**Exception — `WorksetsCommand`, step 5.** Everything else is the same, but the batch is not one
+transaction: each workset is deleted in a transaction of its own, all of them inside a
+`TransactionGroup` that is `Assimilate()`d at the end. Autodesk's documentation for `DeleteWorkset`
+names a **transaction** failure as a possible outcome ("Deleting all open views in a project is not
+allowed") — a failure that rolls the transaction back rather than throwing on one item, so in a
+shared transaction one bad workset would take every other deletion with it, after the user had
+already confirmed. Assimilating the group buys back exactly what the batch rule was protecting: the
+whole run still undoes with one Ctrl+Z. On top of that, two phases run **before** the group opens —
+the checkout and the step off the active workset (see "Key decisions"). Do not fold this back into a
+single transaction.
 
 ## Key decisions
 
@@ -683,18 +708,90 @@ types plus a list of saved templates, rather than a pair of DTOs.
   will not move a pinned element, so without this the button would fail exactly on the models it
   was written for. A pin that does not come back does not derail the rest, but it goes into the
   report: the element is correctly positioned and unpinned, and that has to be known.
-- **The button never touches missing or new link elements.** Deleting a level means taking
-  everything standing on it with it, and that decision belongs to a person, not a batch button;
-  setting up monitoring on a new link element is something the Revit API cannot do at all (the same
-  gap as the "Base File" button's copy-monitoring). Both are shown in the window as an unchecked
-  row and counted in the status line — staying silent about this would make "accepted everything"
-  mean "everything is fine".
-- **In the "Accept Changes" window everything applicable is checked from the start — and that is
-  not an exception to the "an empty filter does not mean select everything" rule.** That rule
-  guards against accidental deletion; here nothing is deleted, everything rolls back with one
-  Ctrl+Z, and the button is asked to accept the coordination-file changes all at once — that is the
-  whole point of it. The "only what is shown gets applied" rule still holds as everywhere else: a
-  row that leaves the table through the "Show" filter loses its check mark.
+- **The button never touches new link elements**: setting up monitoring on one is something the
+  Revit API cannot do at all (the same gap as the "Base File" button's copy-monitoring). They are
+  shown in the window as a row with no check box and counted in the status line — staying silent
+  about this would make "accepted everything" mean "everything is fine".
+- **A move that raised no error is not a move that happened — "Accept Changes" checks the model
+  afterwards.** `ElementTransformUtils.MoveElement` returning without an exception only says Revit
+  took the request; a constraint or a lock on the datum, a group the element sits in, or a failure
+  resolved at commit time can leave the grid exactly where it was. Worse, `Transaction.Commit()`
+  **returns a status**, and Revit can roll the whole batch back there — the command used to ignore
+  it and print the shift it had asked for, so the button looked as though it only "accepted the
+  difference" instead of applying it (which is precisely the one thing it must never be mistaken
+  for: in Revit's own dialog "Accept Difference" leaves the grid in place and just stops reporting
+  it, while this button does what "Modify Grid" does). So: the commit status is checked, and a
+  rollback wipes the whole success list and is reported as such; and every moved element is read
+  back through `CoordinationCatalog.Verifier` and compared against the link once more. Three
+  outcomes, the same shape as checking link worksets after loading — `Aligned` (goes into
+  "Accepted"), `Off` (its own report section, "Revit did not carry these out", with what is left of
+  the difference) and `Unknown` (kept apart, never folded into success). The twin in the link is
+  found by the element's **current** name, after the rename pass. Renames need no such check:
+  `Element.Name` throws when Revit refuses.
+- **Deleting what is gone from the coordination file is the one destructive thing this button does,
+  and every part of the path to it is deliberate.** Deleting a level takes everything standing on it
+  with it, so the row is not merely "applicable": it is checkable only while the window's
+  "Delete…" box is on (`CoordinationChangeRow.CanApply` gates `RemovalAllowed` on top of
+  `CoordinationChangeKinds.CanApply`), it is never checked by default even then — that is the
+  "wherever a button deletes, an empty filter must not mean select everything" rule, and turning
+  the box on is not a selection — and the confirmation names every element with the count of what
+  is hosted on it. That count comes from `Element.GetDependentElements(null)`, read **while
+  scanning**, because the number is the whole basis for the decision and has to be on the table
+  before the deletion, not in the report after it; it is worded as "up to", since an element bound
+  to two deleted levels is counted by both. The report says what really went — `doc.Delete` returns
+  the ids, and that is the only honest count. Deletions run **first** inside the transaction: a name
+  held by an element about to go frees up for the rename pass, and nothing is moved a moment before
+  being deleted (a row can never be both — a `Missing` element matched nothing, so it produces no
+  `Position` or `Name` row).
+- **In the "Accept Changes" window everything applicable is checked from the start, deletions
+  excepted — and that is not an exception to the "an empty filter does not mean select everything"
+  rule.** That rule guards against accidental deletion; for everything but the removals nothing is
+  deleted here, it all rolls back with one Ctrl+Z, and the button is asked to accept the
+  coordination-file changes all at once — that is the whole point of it. The "only what is shown
+  gets applied" rule still holds as everywhere else: a row that leaves the table through the "Show"
+  filter loses its check mark, and so does one whose check box is switched off with the "Delete…" box.
+- **A batch of other models never edits a central file in place.** "Accept Changes → Other models…"
+  (`BatchCoordination`) takes the path a person would take: `WorksharingUtils.CreateNewLocal` into a
+  temporary folder, the edit in the local, `SynchronizeWithCentral` with everything relinquished,
+  and the local swept away afterwards. A central model opened straight through `OpenDocumentFile`
+  **is** editable and saveable — which is exactly why it must not be done here: a batch would be
+  writing into the file the whole team synchronises with, with nothing to merge through and nothing
+  to fall back on. Where a local cannot be made, the model is skipped with the reason rather than
+  opened anyway. A cloud model is the exception in form only: `CreateNewLocal` does not take a cloud
+  path, Revit makes and keeps the local itself, and synchronising works from there — hence
+  `BatchModel.NeedsSync` being "a local of ours, or the cloud" rather than plain `IsWorkshared`.
+- **The batch opens exactly two worksets, and both the prefix and the reporting of them are
+  load-bearing.** `00_Shared levels and grids` holds the grids, `00_Link_BM` holds the coordination
+  file, and everything else stays closed — not only to open faster, but because what a closed
+  workset holds is not in the document at all, so a run cannot touch an element it was not asked
+  about. The names are matched by **prefix** (`BatchCoordination.Matches`, through
+  `LinkPreferences.NormalizeWorkset`): the base-file workset carries a building suffix often enough
+  (`00_Link_BM_K3`) that an exact name would quietly open a model with no base file in it — and a
+  model with the link's workset closed produces no scan at all, which reads exactly like "this
+  model is fine". For the same reason a model where **nothing** matched is not opened: the report
+  names the worksets it actually has instead, and `Idle` tells four different "nothing was done"
+  cases apart — nothing monitors a link, the link is not loaded, nothing this run was allowed to
+  touch, and everything already in place.
+- **The batch never deletes, and this is not the same rule as the window's "Delete…" box.** In the
+  open project a row that is gone from the coordination file can be deleted — behind its own switch,
+  unchecked, with the count of what stands on the level in the confirmation. None of that can be
+  had for a model nobody is looking at: the count would come from a document the user cannot see,
+  and the answer would be given for a dozen models at once. Such rows are counted in the report and
+  left alone. Levels and renames are off by default for a softer version of the same reason, and
+  both are settings rather than fixed: a level drags everything standing on it, a name is what
+  somebody's drawings refer to.
+- **Elements are checked out before being edited, and the ones somebody else holds are named.**
+  In a local copy `WorksharingUtils.CheckoutElements` is not a formality: an element borrowed by
+  another user cannot be edited at all, and `AcceptCoordinationCommand.Borrow` says who is holding
+  it instead of letting a Revit exception per grid into the report. What nobody owns is borrowed and
+  handed straight back by the synchronisation; a model that turned out to need no change at all is
+  relinquished explicitly (`BatchCoordination.Relinquish`) — deleting the local copy does not do it,
+  and the central would go on believing the elements are checked out to this machine.
+- **Checking the result travels with the link, not with the document.** `Outcome.Applied` keeps a
+  `Change` — the row plus the scan it was measured against — because one model can monitor several
+  links at once (the building's coordination file and the overall site placement), and a grid
+  checked against the wrong one would be declared "still off" for no reason. The verifiers are built
+  one per link and cached for the run: reading a link's grids and levels is the expensive half of it.
 - **Auto dimensions do not copy a sample by its references — a sample's references belong to
   specific walls** and are meaningless in another room. Instead there is a fixed catalogue of chain
   kinds (`DimensionChainKind`: Overall / Openings / Opening centres / Partitions / Wall faces / All
@@ -955,6 +1052,59 @@ types plus a list of saved templates, rather than a pair of DTOs.
   freshly added parameter starts with none chosen (there is nothing sensible to default to), so
   `ParameterSetWindow.Revalidate` marks such a row on its own, in plain C#, and only asks the
   Revit-side call-back about the rows that pass this local check.
+- **"Copy settings" / "Paste settings" ride the grid's own row highlight
+  (`DataGrid.SelectedItems`), never the apply check boxes.** The check boxes already mean "will be
+  applied" and start checked on every row (`AddRow`), so they cannot double as "which rows to copy
+  into" without first unchecking the ones that should be left alone — exactly backwards from what
+  the button is for. The grid's highlight (click, Ctrl+click, Shift+click; the same selection
+  `ToggleSelectedRows`/Space already read) picks a source with nothing else disturbed: "Copy
+  settings" is enabled only when exactly one row is highlighted, captures Binding, Categories,
+  Group and "Vary by group" (never the name or the GUID — those stay each row's own identity) into
+  an in-memory `RowSettings` snapshot (a defensive copy of the category list, so a later edit to
+  the source row cannot retroactively change an already-pasted one), and "Paste settings" applies
+  it to every row currently highlighted. The four properties are set inside the same `_settingMany`
+  guard `SetAllSelected` uses for the check boxes, so a paste onto many rows revalidates the whole
+  table once — through one call to `_describeStatus`, a round trip into the open project — rather
+  than once per property per row.
+- **A closed workset reads as empty through every collector, and on the "Worksets" button that zero
+  would be the most dangerous lie it could tell.** `FilteredElementCollector` does not see elements
+  in a closed workset, and there is **no API to open one in an already-open document** — confirmed by
+  reflection over `RevitAPI.dll` 2022/2024/2025: `WorksetConfiguration` is only accepted when opening
+  a document or a link, and `Workset.IsOpen` has no setter. So a workset full of walls counts as
+  "0 elements", and on a button that offers to delete the contents a silent zero would take somebody's
+  geometry down without a word. Hence `WorksetsCommand.Count` returns `int?` rather than `int`, and
+  `WorksetInfo.IsCounted` keeps "empty" and "not counted" apart all the way through: the table reads
+  "not counted", the row is flagged, and the confirmation names the closed worksets separately and
+  says outright that their contents are **not** in the number above. Never collapse the two into one number.
+- **The checkout has to happen before any transaction opens, and the deletion only inside one — the
+  API forces both halves of that order.** `WorksharingUtils.CheckoutWorksets` throws
+  `InvalidOperationException` when a transaction, sub-transaction or transaction group is open, while
+  `WorksetTable.DeleteWorkset` throws `ModificationOutsideTransactionException` when none is (both
+  straight out of `RevitAPI.xml`). The same shape as "Link Manager", where `LoadFrom` has to run
+  outside a transaction and `Create` inside one. Without the checkout the button would look broken on
+  exactly the models it is for: `CanDeleteWorkset` returns false for any workset the current user does
+  not own, and in a freshly opened local model nobody owns anything — every row would come back
+  "Revit will not delete this workset". The destination workset is checked out too: elements arriving
+  in it are an edit to that workset as much as to the one going. A checkout failure is a note, not a
+  stop — `CanDeleteWorkset` gets the last word a moment later.
+- **The active workset is stepped off before the deletion, and that step is deliberately not undone
+  by Ctrl+Z.** Revit always has an active workset (new elements need somewhere to land), and it
+  cannot be deleted from under itself. `WorksetsCommand.Vacate` moves it to the chosen destination,
+  or to the first workset that is staying, before the transaction group opens — the active workset is
+  session state, not part of the document, the same reasoning as the workset switch in "Base File".
+  It goes into the report as a note: a setting that changed silently is one the user trips over later.
+- **A workset owned by another user gets no check box at all** (`WorksetsWindow.Removable`).
+  `CanDeleteWorkset` refuses it outright, so a check box there would lead only to a failure line in
+  the report after the user had already confirmed the run. The reason goes into "State" instead,
+  where it can be read before anything is decided. The window also refuses to let **every** workset be
+  checked: Revit keeps no project without a user workset, and there would be nowhere to move the
+  contents either — caught once in the summary line rather than as a row of identical failures later.
+- **Worksets are addressed by `Workset.UniqueId` (a `Guid`), never by `WorksetId`.** By Autodesk's own
+  documentation a `WorksetId` changes on synchronising with the central model and only the GUID is
+  stable — the same rule "Link Manager" keeps when it re-reads link workset ids right before loading.
+  So the window carries GUIDs and the command resolves them back through
+  `WorksetTable.GetWorkset(Guid)` (present since 2012, and in all three years) at the moment it
+  deletes; a workset gone in the meantime becomes a report line rather than a wrong deletion.
 
 ## Storing user settings
 
@@ -970,7 +1120,8 @@ the "Save set" button. `basefile\` holds settings only. `schedules\` is both too
 folder whose contents are not text at all: a set of schedules is a Revit file (see "Key decisions").
 `parameters\` follows the `links\` shape most closely: `_settings.txt` only ever changes when the
 window closes, and a set itself only through its own "Save set" button — table edits (categories,
-binding, group) are not written until then.
+binding, group) are not written until then. `coordination\` holds settings only, and has no sets of
+its own on purpose: the model list there is the same `LinkSetLibrary` one "Link Manager" uses.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -1078,6 +1229,17 @@ last) and `FILE` (the shared parameter file last browsed for definitions, so "Ad
 file…" does not ask again). The "_settings" name is taken by this file, by the same rule as
 `links\` and `schedules\`.
 
+`coordination\_settings.txt` — the settings of "Accept Changes → Other models…": `KEY = value`, the
+keys `WORKSET` and `MODEL` may repeat. `WORKSET` is the **start** of the name of a workset to open in
+somebody else's model (`00_Link_BM` also opens `00_Link_BM_K3`); no such line at all means
+`BatchCoordination.DefaultWorksets`, and on closing the window the list actually in effect is written
+back in full, so there is something to edit. `LEVELS` and `RENAME` (`1`/`0`) — whether to put levels
+in line with the file as well and whether to rename; both default to off, see "Key decisions".
+`SET` is the link set worked with last, and the `MODEL` lines are the model list the window was
+closed with, in the same line format as a link set (`LinkSetLibrary.Format`/`Parse` — no second
+parser). Sets themselves live in `links\`, shared with "Link Manager": a list of a project's models
+is the same list in both buttons.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -1091,7 +1253,8 @@ file…" does not ask again). The "_settings" name is taken by this file, by the
 - **Wherever a button deletes**, an empty filter must not mean "select everything" — a guard
   against accidental deletion. Where nothing is deleted, the rule does not apply: "Accept Changes"
   checks everything applicable right away, because that is exactly what it is asked to do (see
-  "Key decisions"). The second rule — "only what is shown gets applied" — holds wherever the filter
+  "Key decisions") — except its own deletions, which stay unchecked behind a box of their own, and
+  that is the same rule holding inside a button that mostly does not delete. The second rule — "only what is shown gets applied" — holds wherever the filter
   **is** the selection: a row that leaves the table through it loses its check mark. The one
   exception is `CategoryPickerWindow`, whose search box only ever *finds* a category and never
   narrows the answer: check "Walls", type "door" to reach the next one, and the box out of sight
@@ -1127,6 +1290,14 @@ error) and does not need to be touched:
   in 2024. The `CS0618` on 2024/2025 is left in place deliberately, for as long as 2022 is needed too.
 - **`WebRequest.Create`** (`JsonHttp.cs`) — deprecated on .NET 8 (`SYSLIB0014`, visible only when
   building for 2025); moving to `HttpClient` is a separate task, unrelated to compatibility.
+
+**The one API in the add-in with a lower bound inside a supported year:** `WorksetTable.DeleteWorkset`,
+`WorksetTable.CanDeleteWorkset`, `DeleteWorksetSettings` and `DeleteWorksetOption` are all marked
+`<since>2022.1</since>` in `RevitAPI.xml` — they do not exist in the original Revit **2022.0**
+release. Everything else this project uses predates it. The build takes its reference from whatever
+`RevitAPI.dll` the machine has, so this only bites on a 2022 that was never updated: there the
+"Worksets" button fails to load, and the fix is Revit's own update, not a code change. Checked by
+reflection on 2022, 2024 and 2025 — identical signatures in all three.
 
 Already done and no longer needing attention: `Definition.ParameterGroup` together with
 `LabelUtils.GetLabelFor(BuiltInParameterGroup)` (`GroupName` in both delete-parameters commands) —

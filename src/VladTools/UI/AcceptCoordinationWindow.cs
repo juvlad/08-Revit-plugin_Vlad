@@ -20,8 +20,13 @@ namespace VladTools.UI
     /// Showing the list before editing is mandatory, not "accept everything silently": in
     /// "Coordination Review" the user sees every change, and the button must not know less about
     /// the model than they do. Besides what the button is able to apply, the table also has
-    /// read-only rows — link elements that vanished or are new: there is nothing the API can do
-    /// about them, but the user still needs to know.
+    /// read-only rows — new link elements, and differences that cannot be expressed as a move:
+    /// there is nothing the API can do about them, but the user still needs to know.
+    ///
+    /// An element gone from the coordination file sits between the two: the button can delete it,
+    /// but a deleted level takes everything standing on it along, so such a row is checkable only
+    /// while the "Delete…" box is on and is never checked for the user — see
+    /// <see cref="AllowRemoval"/>.
     ///
     /// The window is built in code, without XAML — the project does not include the WPF markup assembly.
     /// </summary>
@@ -36,6 +41,7 @@ namespace VladTools.UI
         private readonly ComboBox _linkBox;
         private readonly ComboBox _scopeBox;
         private readonly CheckBox _selectAll;
+        private readonly CheckBox _removeBox;
         private readonly CheckBox _openReviewBox;
         private readonly DataGrid _grid;
         private readonly TextBlock _status;
@@ -53,6 +59,15 @@ namespace VladTools.UI
 
         /// <summary>Open "Coordination Review" after applying — to check that the list is empty.</summary>
         public bool OpenReview => _openReviewBox.IsChecked == true;
+
+        /// <summary>
+        /// The user asked for the batch over other models instead of the open project.
+        ///
+        /// The window closes on this rather than opening the batch one on top of itself: the two
+        /// decide different things, and a check mark set here means nothing there — the same reason
+        /// "Take a sample…" closes the "Auto Dimensions" window instead of working through it.
+        /// </summary>
+        public bool WantsBatch { get; private set; }
 
         public AcceptCoordinationWindow(IReadOnlyList<CoordinationScan> scans)
         {
@@ -84,6 +99,7 @@ namespace VladTools.UI
             _scopeBox.Items.Add("Every difference");
             _scopeBox.Items.Add("Position only");
             _scopeBox.Items.Add("Names only");
+            _scopeBox.Items.Add("Gone from the coordination file");
             _scopeBox.Items.Add("Only what the button cannot apply");
             _scopeBox.SelectedIndex = 0;
             _scopeBox.ToolTip =
@@ -100,6 +116,22 @@ namespace VladTools.UI
             };
             _selectAll.Checked += (s, e) => SetAllSelected(true);
             _selectAll.Unchecked += (s, e) => SetAllSelected(false);
+
+            _removeBox = new CheckBox
+            {
+                Content = "Delete grids and levels that are gone from the coordination file",
+                IsChecked = false,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = Brushes.Firebrick,
+                ToolTip =
+                    "Off — such rows are shown but their check box is disabled.\n\n" +
+                    "Deleting a level takes everything standing on it with it, and the\n" +
+                    "\"State\" column says how many elements that is for each row. That is why\n" +
+                    "the deletion is a switch of its own and nothing here is ever checked by\n" +
+                    "default: every other change in this window only moves or renames something."
+            };
+            _removeBox.Checked += (s, e) => AllowRemoval(true);
+            _removeBox.Unchecked += (s, e) => AllowRemoval(false);
 
             _openReviewBox = new CheckBox
             {
@@ -151,15 +183,17 @@ namespace VladTools.UI
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // link
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // filter
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // "Coordination Review"
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // switches
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
                 Text = "The project's grids and levels that monitor the coordination file have been compared " +
                        "against it. The checked ones will be put in line with the file as a single operation — " +
-                       "it can be undone with one Ctrl+Z. Rows with no check box are ones the Revit API does not " +
-                       "let this button apply: they are shown so they can be sorted out by hand.",
+                       "it can be undone with one Ctrl+Z. Elements gone from the file can be deleted along with " +
+                       "the rest, but only once the box below is on, and they are never checked by default. Rows " +
+                       "with no check box are ones the Revit API does not let this button apply: they are shown " +
+                       "so they can be sorted out by hand.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -191,8 +225,12 @@ namespace VladTools.UI
             Grid.SetRow(_grid, 3);
             root.Children.Add(_grid);
 
-            Grid.SetRow(_openReviewBox, 4);
-            root.Children.Add(_openReviewBox);
+            var switches = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            switches.Children.Add(_removeBox);
+            _openReviewBox.Margin = new Thickness(0, 4, 0, 0);
+            switches.Children.Add(_openReviewBox);
+            Grid.SetRow(switches, 4);
+            root.Children.Add(switches);
 
             var bottom = new Grid { Margin = new Thickness(0, 8, 0, 0) };
             bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -202,6 +240,22 @@ namespace VladTools.UI
             bottom.Children.Add(_status);
 
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+
+            var batchButton = new Button
+            {
+                Content = "Other models…",
+                MinWidth = 140,
+                Padding = new Thickness(10, 4, 10, 4),
+                Margin = new Thickness(8, 0, 0, 0),
+                ToolTip =
+                    "The same thing, but on a batch of models nobody has open: each one is opened in\n" +
+                    "turn with only the grid and base-file worksets in it, its grids are put in line\n" +
+                    "with the coordination file linked into it, and the model is synchronised back.\n\n" +
+                    "This window closes — what is checked in it applies to the open project alone."
+            };
+            batchButton.Click += OnBatch;
+            buttons.Children.Add(batchButton);
+
             buttons.Children.Add(_applyButton);
             buttons.Children.Add(closeButton);
             Grid.SetColumn(buttons, 1);
@@ -251,9 +305,21 @@ namespace VladTools.UI
             grid.MouseDoubleClick += (s, e) => ToggleSelectedRows();
             grid.PreviewKeyDown += OnGridKeyDown;
 
-            // Rows the button cannot apply are dimmed by colour: they have no check box anyway,
-            // and there is no reason to confuse them with actionable ones.
             var style = new Style(typeof(DataGridRow));
+
+            // A row that deletes is the one thing here that cannot be judged from the model
+            // afterwards, so it is coloured apart from the rows that merely move something.
+            var removal = new DataTrigger
+            {
+                Binding = new Binding(nameof(CoordinationChangeRow.IsRemoval)),
+                Value = true
+            };
+            removal.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.Firebrick));
+            style.Triggers.Add(removal);
+
+            // Rows the button cannot apply are dimmed by colour: they have no check box anyway,
+            // and there is no reason to confuse them with actionable ones. This trigger comes
+            // second on purpose — while deletions are switched off, grey wins over red.
             var trigger = new DataTrigger
             {
                 Binding = new Binding(nameof(CoordinationChangeRow.CanApply)),
@@ -261,6 +327,7 @@ namespace VladTools.UI
             };
             trigger.Setters.Add(new Setter(Control.ForegroundProperty, SystemColors.GrayTextBrush));
             style.Triggers.Add(trigger);
+
             grid.RowStyle = style;
 
             return grid;
@@ -317,6 +384,8 @@ namespace VladTools.UI
                 case 2:
                     return row.Kind == CoordinationChangeKind.Name;
                 case 3:
+                    return row.IsRemoval;
+                case 4:
                     return !row.CanApply;
                 default:
                     return true;
@@ -341,9 +410,29 @@ namespace VladTools.UI
             }
 
             foreach (var row in All)
+            {
                 row.PropertyChanged += OnRowChanged;
+                row.RemovalAllowed = _removeBox.IsChecked == true;
+            }
 
-            SetMany(row => row.CanApply);
+            SetMany(row => row.CanApply && !row.IsRemoval);
+            RebuildVisible();
+        }
+
+        /// <summary>
+        /// Turns deletions on or off for the rows of the current link.
+        ///
+        /// Switching the box on checks nothing by itself: the user said "deleting is allowed here",
+        /// not "delete everything that is gone from the file" — that is the one rule this add-in
+        /// keeps wherever a button deletes. Switching it off clears what was checked, through
+        /// <see cref="RebuildVisible"/>: a check mark on a row that can no longer be applied must
+        /// never reach the transaction.
+        /// </summary>
+        private void AllowRemoval(bool value)
+        {
+            foreach (var row in All)
+                row.RemovalAllowed = value;
+
             RebuildVisible();
         }
 
@@ -449,9 +538,11 @@ namespace VladTools.UI
             }
             else
             {
-                _status.Foreground = Brushes.DarkGreen;
+                var removals = marked.Where(row => row.IsRemoval).ToList();
+
+                _status.Foreground = removals.Count > 0 ? Brushes.Firebrick : Brushes.DarkGreen;
                 _status.Text = "Will be accepted: " + marked.Count + " of " + applicable +
-                               " applicable." + Unsupported();
+                               " applicable." + Removing(removals) + Unsupported();
             }
 
             _applyButton.IsEnabled = marked.Count > 0;
@@ -462,6 +553,27 @@ namespace VladTools.UI
                 ? false
                 : marked.Count == applicable ? true : (bool?)null;
             _syncingSelectAll = false;
+        }
+
+        /// <summary>
+        /// The deletion part of the status line, kept separate from the rest of the count: this is
+        /// the only thing in the window that removes something from the project, and a number in a
+        /// line that also says "accepted" would read as one more move.
+        ///
+        /// The element count is "up to": an element bound to two deleted levels at once is counted
+        /// by both of them, and overstating the price of a deletion is the safe direction to err in.
+        /// </summary>
+        private static string Removing(IReadOnlyList<CoordinationChangeRow> removals)
+        {
+            if (removals.Count == 0)
+                return string.Empty;
+
+            var dependents = removals.Sum(row => row.Dependents);
+            var text = " Will be deleted: " + removals.Count;
+
+            return dependents > 0
+                ? text + ", and up to " + dependents + " element(s) tied to them."
+                : text + ".";
         }
 
         /// <summary>A note about what the button is not able to do: this must not stay unmentioned.</summary>
@@ -477,6 +589,17 @@ namespace VladTools.UI
 
         // ───────────────────────────── actions ─────────────────────────────
 
+        /// <summary>
+        /// Hands the work over to the batch window. Closed with <c>DialogResult = false</c>: nothing
+        /// is applied to the open project here, and the command tells the two apart by
+        /// <see cref="WantsBatch"/> rather than by the dialog result.
+        /// </summary>
+        private void OnBatch(object sender, RoutedEventArgs e)
+        {
+            WantsBatch = true;
+            DialogResult = false;
+        }
+
         private void OnApply(object sender, RoutedEventArgs e)
         {
             var marked = Marked();
@@ -487,26 +610,68 @@ namespace VladTools.UI
                 return;
             }
 
+            var removals = marked.Where(row => row.IsRemoval).ToList();
             var moves = marked.Count(row => row.Kind == CoordinationChangeKind.Position);
-            var names = marked.Count - moves;
+            var names = marked.Count(row => row.Kind == CoordinationChangeKind.Name);
+
+            var text = "Accept " + marked.Count + " change(s) (position — " + moves + ", names — " + names +
+                       (removals.Count > 0 ? ", deletions — " + removals.Count : string.Empty) + ")?\n\n";
+
+            var edits = marked.Where(row => !row.IsRemoval).ToList();
+            if (edits.Count > 0)
+                text += Preview(edits) + "\n\n";
+
+            // The deletions are listed apart from the moves, by name and with their price: in the
+            // line above they are one number among three, and that is not enough to decide on.
+            if (removals.Count > 0)
+                text += Danger(removals) + "\n\n";
+
+            text += "The grids and levels will be put in line with the coordination file; anything tied to " +
+                    "them moves along with them.\n" +
+                    "This can be undone with a single \"Undo\" (Ctrl+Z) in Revit.";
 
             var answer = MessageBox.Show(
                 this,
-                "Accept " + marked.Count + " change(s) (position — " + moves + ", names — " + names + ")?\n\n" +
-                Preview(marked) + "\n\n" +
-                "The grids and levels will be put in line with the coordination file; anything tied to " +
-                "them moves along with them.\n" +
-                "This can be undone with a single \"Undo\" (Ctrl+Z) in Revit.",
+                text,
                 WindowTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
-                MessageBoxResult.Yes);
+                removals.Count > 0 ? MessageBoxResult.No : MessageBoxResult.Yes);
 
             if (answer != MessageBoxResult.Yes)
                 return;
 
             Selected = marked;
             DialogResult = true;
+        }
+
+        /// <summary>
+        /// What exactly will be deleted and at what price. Everything else in this window can be
+        /// checked by eye on the plan afterwards; a deleted level cannot, so the list is spelled
+        /// out here in full rather than summed up into a count.
+        /// </summary>
+        private static string Danger(IReadOnlyList<CoordinationChangeRow> removals)
+        {
+            const int limit = 12;
+
+            var text = "These " + removals.Count + " will be DELETED from the project — they are no longer " +
+                       "in the coordination file:\n" +
+                       string.Join("\n", removals.Take(limit).Select(row => "• " + row.Title +
+                           (row.Dependents > 0
+                               ? " — and " + row.Dependents + " element(s) tied to it"
+                               : string.Empty)));
+
+            if (removals.Count > limit)
+                text += "\n… and " + (removals.Count - limit) + " more";
+
+            var dependents = removals.Sum(row => row.Dependents);
+            if (dependents > 0)
+            {
+                text += "\n\nEverything standing on a deleted level is deleted by Revit together with it — " +
+                        "walls, rooms, views, whatever is hosted there.";
+            }
+
+            return text;
         }
 
         private static string Preview(IReadOnlyList<CoordinationChangeRow> rows)

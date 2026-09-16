@@ -285,10 +285,13 @@ namespace VladTools.Infrastructure
 
             foreach (var host in pending)
             {
+                var dependents = Dependents(host);
+
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Missing, false, host.Name,
                     string.Empty,
-                    "the coordination file has no grid with this name in this position",
-                    null));
+                    Gone(false, dependents),
+                    new DatumUpdate { HostId = host.Id },
+                    dependents));
             }
 
             foreach (var sample in free)
@@ -481,10 +484,13 @@ namespace VladTools.Infrastructure
 
             foreach (var host in pending)
             {
+                var dependents = Dependents(host);
+
                 rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Missing, true, host.Name,
-                    string.Empty,
-                    "the coordination file has no level with this name at this elevation",
-                    null));
+                    Mark(host.Elevation),
+                    Gone(true, dependents),
+                    new DatumUpdate { HostId = host.Id },
+                    dependents));
             }
 
             foreach (var sample in free)
@@ -588,6 +594,184 @@ namespace VladTools.Infrastructure
             rows.Add(new CoordinationChangeRow(CoordinationChangeKind.Name, isLevel, host.Name,
                 "\"" + host.Name + "\" → \"" + linkName + "\"", string.Empty,
                 new DatumUpdate { HostId = host.Id, NewName = linkName }));
+        }
+
+        // ───────────────────────────── checking the result ─────────────────────────────
+
+        /// <summary>
+        /// Reads the link once more so the elements just edited can be checked against it.
+        /// Returns null when there is nothing to check against — an unloaded or removed link.
+        /// </summary>
+        public static Verifier CreateVerifier(Document doc, ElementId linkId)
+        {
+            try
+            {
+                var link = doc.GetElement(linkId) as RevitLinkInstance;
+                var linkDoc = link == null ? null : link.GetLinkDocument();
+                if (linkDoc == null)
+                    return null;
+
+                return new Verifier(linkDoc, link.GetTotalTransform());
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Checks, after the transaction is committed, that an element really did end up where the
+        /// coordination file has it.
+        ///
+        /// **This is not belt and braces.** <c>ElementTransformUtils.MoveElement</c> not throwing
+        /// means Revit accepted the request, not that the element moved: a constraint, a group, a
+        /// scope box or a failure resolved at commit time can all leave it where it was, and the
+        /// command would have reported the shift it asked for as though it had happened. The same
+        /// trap as with link worksets — <c>WorksetConfiguration</c> also only conveys a wish — and
+        /// it is answered the same way: read the model back and say which of the three things
+        /// happened.
+        ///
+        /// The twin is looked up by the element's **current** name, after the rename pass: that is
+        /// what ties the two documents together everywhere in this file.
+        /// </summary>
+        internal sealed class Verifier
+        {
+            private readonly Transform _transform;
+            private readonly Dictionary<string, Curve> _grids =
+                new Dictionary<string, Curve>(StringComparer.CurrentCultureIgnoreCase);
+            private readonly Dictionary<string, double> _levels =
+                new Dictionary<string, double>(StringComparer.CurrentCultureIgnoreCase);
+
+            internal Verifier(Document linkDoc, Transform transform)
+            {
+                _transform = transform;
+
+                foreach (var grid in new FilteredElementCollector(linkDoc).OfClass(typeof(Grid)).Cast<Grid>())
+                {
+                    try
+                    {
+                        if (!_grids.ContainsKey(grid.Name))
+                            _grids[grid.Name] = grid.Curve.CreateTransformed(transform);
+                    }
+                    catch (Exception)
+                    {
+                        // A grid that cannot be read is one less thing to check against, not a
+                        // reason to give up on checking the rest.
+                    }
+                }
+
+                foreach (var level in new FilteredElementCollector(linkDoc).OfClass(typeof(Level)).Cast<Level>())
+                {
+                    try
+                    {
+                        if (!_levels.ContainsKey(level.Name))
+                            _levels[level.Name] = transform.OfPoint(new XYZ(0, 0, level.Elevation)).Z;
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Where the element stands now against the file. <paramref name="detail"/> is filled in
+            /// only for <see cref="DatumVerdict.Off"/> — what is still left of the difference.
+            /// </summary>
+            public DatumVerdict Check(Element element, out string detail)
+            {
+                detail = string.Empty;
+
+                try
+                {
+                    var level = element as Level;
+                    if (level != null)
+                    {
+                        double elevation;
+                        if (!_levels.TryGetValue(level.Name, out elevation))
+                            return DatumVerdict.Unknown;
+
+                        var shiftMm = Mm(elevation - level.Elevation);
+                        if (Math.Abs(shiftMm) <= ToleranceMm)
+                            return DatumVerdict.Aligned;
+
+                        detail = "still off by " + Number(shiftMm) + " mm";
+                        return DatumVerdict.Off;
+                    }
+
+                    var grid = element as Grid;
+                    if (grid == null)
+                        return DatumVerdict.Unknown;
+
+                    Curve curve;
+                    if (!_grids.TryGetValue(grid.Name, out curve))
+                        return DatumVerdict.Unknown;
+
+                    double offsetMm;
+                    double angleDeg;
+                    DatumUpdate update;
+                    string problem;
+
+                    if (!TryGridDiff(grid.Curve, curve, out offsetMm, out angleDeg, out update, out problem))
+                        return DatumVerdict.Unknown;
+
+                    if (offsetMm <= ToleranceMm && Math.Abs(angleDeg) <= AngleToleranceDeg)
+                        return DatumVerdict.Aligned;
+
+                    detail = "still off: " + Describe(offsetMm, angleDeg);
+                    return DatumVerdict.Off;
+                }
+                catch (Exception)
+                {
+                    return DatumVerdict.Unknown;
+                }
+            }
+        }
+
+        // ───────────────────────────── gone from the file ─────────────────────────────
+
+        /// <summary>
+        /// How many other elements Revit would delete together with this grid or level.
+        ///
+        /// <c>GetDependentElements(null)</c> answers exactly the question the user is about to be
+        /// asked — "what goes with it" — and it is read here, while scanning, rather than in the
+        /// command: the number is the whole basis for the decision, and it has to be on the table
+        /// **before** the deletion, not in the report after it. The element's own id is in the
+        /// returned set and is not part of the price.
+        ///
+        /// A failure is not a breakage: the row still appears, just without a count — and the
+        /// window's warning does not depend on the number, only the wording does.
+        /// </summary>
+        private static int Dependents(Element element)
+        {
+            try
+            {
+                var ids = element.GetDependentElements(null);
+                if (ids == null)
+                    return 0;
+
+                return ids.Count(id => !Equals(id, element.Id));
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// The note on an element that is gone from the coordination file. It says both why it was
+        /// counted as gone — the pair is recovered by name and then by position, so "gone" means
+        /// "neither matched" — and what deleting it would cost.
+        /// </summary>
+        private static string Gone(bool isLevel, int dependents)
+        {
+            var text = isLevel
+                ? "no level with this name at this elevation in the file"
+                : "no grid with this name in this position in the file";
+
+            if (dependents > 0)
+                text += "; deleting it takes " + dependents + " element(s) with it";
+
+            return text;
         }
 
         // ───────────────────────────── odds and ends ─────────────────────────────

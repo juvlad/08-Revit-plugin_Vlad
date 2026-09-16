@@ -14,6 +14,7 @@ namespace VladTools.UI
     internal sealed class CoordinationChangeRow : INotifyPropertyChanged
     {
         private bool _isSelected;
+        private bool _removalAllowed;
 
         public CoordinationChangeRow(
             CoordinationChangeKind kind,
@@ -21,7 +22,8 @@ namespace VladTools.UI
             string name,
             string detail,
             string note,
-            DatumUpdate update)
+            DatumUpdate update,
+            int dependents = 0)
         {
             Kind = kind;
             IsLevel = isLevel;
@@ -29,6 +31,7 @@ namespace VladTools.UI
             Detail = detail;
             Note = note;
             Update = update;
+            Dependents = dependents;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -49,8 +52,43 @@ namespace VladTools.UI
 
         public CoordinationChangeKind Kind { get; }
 
-        /// <summary>The command can apply this; the other rows have their check box disabled.</summary>
-        public bool CanApply => CoordinationChangeKinds.CanApply(Kind);
+        /// <summary>
+        /// The command can apply this; the other rows have their check box disabled.
+        ///
+        /// A removal is applicable only while the window's "Delete…" box is on: deleting a level
+        /// takes everything standing on it with it, and that must be switched on deliberately
+        /// rather than arrived at by clicking "select all".
+        /// </summary>
+        public bool CanApply =>
+            CoordinationChangeKinds.CanApply(Kind) && (!IsRemoval || _removalAllowed);
+
+        /// <summary>Applying this row deletes the project element — see <see cref="CoordinationChangeKinds.IsRemoval"/>.</summary>
+        public bool IsRemoval => CoordinationChangeKinds.IsRemoval(Kind);
+
+        /// <summary>
+        /// Whether the window currently permits deletions. Set on every row at once when the box is
+        /// toggled; on a row that is not a removal it changes nothing.
+        /// </summary>
+        public bool RemovalAllowed
+        {
+            get { return _removalAllowed; }
+            set
+            {
+                if (_removalAllowed == value)
+                    return;
+
+                _removalAllowed = value;
+                Raise(nameof(RemovalAllowed));
+                Raise(nameof(CanApply));
+            }
+        }
+
+        /// <summary>
+        /// How many other elements Revit would delete together with this one — its own count of
+        /// what is standing on the level. Read while scanning, because the whole point of showing it
+        /// is that the decision is made **before** the deletion, not explained after it.
+        /// </summary>
+        public int Dependents { get; }
 
         /// <summary>A level or a grid — both the caption and the way it is edited depend on this.</summary>
         public bool IsLevel { get; }

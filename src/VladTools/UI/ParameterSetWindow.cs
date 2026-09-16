@@ -50,10 +50,19 @@ namespace VladTools.UI
         private readonly DataGrid _grid;
         private readonly TextBlock _status;
         private readonly Button _applyButton;
+        private readonly Button _copySettingsButton;
+        private readonly Button _pasteSettingsButton;
 
         private bool _loadingSets;
         private bool _syncingSelectAll;
         private bool _settingMany;
+
+        /// <summary>
+        /// What "Copy settings" last captured — binding, categories, group and "vary by group", but
+        /// never the name or the GUID: those stay each row's own identity. <c>null</c> until the
+        /// button is used once.
+        /// </summary>
+        private RowSettings _clipboard;
 
         /// <summary>The rows the user confirmed for applying, each with a non-empty set of categories.</summary>
         public IReadOnlyList<ParameterSetRow> Selected { get; private set; } = new List<ParameterSetRow>();
@@ -141,6 +150,17 @@ namespace VladTools.UI
             };
             _applyButton.Click += OnApply;
 
+            _copySettingsButton = Small("Copy settings",
+                "Copies binding, categories, group and \"vary by group\" from the one row highlighted below.",
+                OnCopySettings);
+            _copySettingsButton.IsEnabled = false;
+
+            _pasteSettingsButton = Small("Paste settings",
+                "Applies the copied settings to every row highlighted below (click, Ctrl+click, Shift+click)." +
+                "\nThe name and the GUID of each row are left untouched.",
+                OnPasteSettings);
+            _pasteSettingsButton.IsEnabled = false;
+
             var closeButton = new Button
             {
                 Content = "Close",
@@ -198,6 +218,8 @@ namespace VladTools.UI
                 "Picks definitions out of a shared parameter file and adds them to the working set below.",
                 OnAddFromSharedFile));
             sets.Children.Add(Small("Remove from set", "Throws the checked parameters out of the working set.", OnRemoveFromSet));
+            sets.Children.Add(_copySettingsButton);
+            sets.Children.Add(_pasteSettingsButton);
             Grid.SetRow(sets, 1);
             root.Children.Add(sets);
 
@@ -304,6 +326,7 @@ namespace VladTools.UI
 
             grid.MouseDoubleClick += OnGridDoubleClick;
             grid.PreviewKeyDown += OnGridKeyDown;
+            grid.SelectionChanged += (s, e) => UpdateCopyPasteButtons();
 
             return grid;
         }
@@ -599,6 +622,62 @@ namespace VladTools.UI
             e.Handled = true;
         }
 
+        // ───────────────────────────── copying settings between rows ─────────────────────────────
+
+        /// <summary>
+        /// Deliberately separate from the "apply" check boxes: those mean "will be applied", and by
+        /// default every row starts checked (<see cref="AddRow"/>), so they cannot double as "which
+        /// rows to copy into" without emptying the table first. The grid's own row highlight
+        /// (<see cref="DataGrid.SelectedItems"/>, already live for <see cref="ToggleSelectedRows"/>)
+        /// picks out a source and, separately, targets without touching what will be applied.
+        /// </summary>
+        private void UpdateCopyPasteButtons()
+        {
+            _copySettingsButton.IsEnabled = _grid.SelectedItems.Count == 1;
+            _pasteSettingsButton.IsEnabled = _clipboard != null && _grid.SelectedItems.Count > 0;
+        }
+
+        private void OnCopySettings(object sender, RoutedEventArgs e)
+        {
+            var row = _grid.SelectedItem as ParameterSetRow;
+            if (row == null)
+                return;
+
+            _clipboard = new RowSettings(row.Binding, row.VariesAcrossGroups, row.Categories.ToList(), row.GroupTypeId);
+            UpdateCopyPasteButtons();
+        }
+
+        /// <summary>
+        /// Applies the clipboard to every highlighted row in one pass. The four properties are set
+        /// through <c>_settingMany</c> — the same guard <see cref="SetAllSelected"/> uses for the
+        /// check boxes — so a paste onto many rows revalidates the whole table once, not once per
+        /// property per row: an unguarded loop here would call <see cref="_describeStatus"/> (a
+        /// round trip into the open project) up to four times for every row pasted into.
+        /// </summary>
+        private void OnPasteSettings(object sender, RoutedEventArgs e)
+        {
+            if (_clipboard == null)
+                return;
+
+            var targets = _grid.SelectedItems.OfType<ParameterSetRow>().ToList();
+            if (targets.Count == 0)
+                return;
+
+            _settingMany = true;
+
+            foreach (var row in targets)
+            {
+                row.Binding = _clipboard.Binding;
+                row.VariesAcrossGroups = _clipboard.VariesAcrossGroups;
+                row.Categories = _clipboard.Categories;
+                row.GroupTypeId = _clipboard.GroupTypeId;
+            }
+
+            _settingMany = false;
+
+            Revalidate();
+        }
+
         private void OnRowChanged(object sender, PropertyChangedEventArgs e)
         {
             if (_settingMany)
@@ -785,6 +864,23 @@ namespace VladTools.UI
 
             public ParameterBindingKind Value { get; }
             public string Caption { get; }
+        }
+
+        /// <summary>What "Copy settings" carries between rows — never the name or the GUID, those stay each row's own identity.</summary>
+        private sealed class RowSettings
+        {
+            public RowSettings(ParameterBindingKind binding, bool variesAcrossGroups, IReadOnlyList<string> categories, string groupTypeId)
+            {
+                Binding = binding;
+                VariesAcrossGroups = variesAcrossGroups;
+                Categories = categories;
+                GroupTypeId = groupTypeId;
+            }
+
+            public ParameterBindingKind Binding { get; }
+            public bool VariesAcrossGroups { get; }
+            public IReadOnlyList<string> Categories { get; }
+            public string GroupTypeId { get; }
         }
     }
 }

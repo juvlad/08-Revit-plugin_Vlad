@@ -37,7 +37,7 @@ namespace VladTools.UI
                 case CoordinationChangeKind.Name:
                     return "Name";
                 case CoordinationChangeKind.Missing:
-                    return "Not in the coordination file";
+                    return "Deleted from the coordination file";
                 case CoordinationChangeKind.New:
                     return "New in the coordination file";
                 default:
@@ -46,14 +46,30 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// The command is able to apply this change. The other kinds go into the table for display
-        /// only: the command will not delete project grids and levels (a level takes everything
-        /// standing on it with it), and the Revit API does not allow setting up monitoring on a new
-        /// link element at all — that is done by hand, through "Copy/Monitor".
+        /// The command is able to apply this change. <see cref="CoordinationChangeKind.New"/> never
+        /// can be: setting up monitoring on a new link element is not in the Revit API at all, that
+        /// is done by hand through "Copy/Monitor".
+        ///
+        /// <see cref="CoordinationChangeKind.Missing"/> can — but it is the one kind that
+        /// **deletes**, and a deletion is never offered on its own: the row is only made checkable
+        /// once the window's "Delete…" box is on (see <see cref="CoordinationChangeRow.CanApply"/>).
         /// </summary>
         public static bool CanApply(CoordinationChangeKind kind)
         {
-            return kind == CoordinationChangeKind.Position || kind == CoordinationChangeKind.Name;
+            return kind == CoordinationChangeKind.Position ||
+                   kind == CoordinationChangeKind.Name ||
+                   kind == CoordinationChangeKind.Missing;
+        }
+
+        /// <summary>
+        /// Applying this change removes the element from the project. Everything else here only ever
+        /// moves or relabels something — this is the one kind that cannot be undone by looking at
+        /// the model afterwards, so it is treated apart everywhere: it is not checked by default,
+        /// it needs its own switch, and it has its own section in the report.
+        /// </summary>
+        public static bool IsRemoval(CoordinationChangeKind kind)
+        {
+            return kind == CoordinationChangeKind.Missing;
         }
     }
 }

@@ -284,6 +284,29 @@ namespace VladTools
                     "checked is applied as one operation, so it rolls back with a single Ctrl+Z.",
                 iconBaseName: "parametersets");
 
+            // ───────────────── Button 13: Worksets (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_Worksets",
+                text: "Worksets",
+                commandType: typeof(WorksetsCommand),
+                tooltip: "Shows every workset of the project and removes the checked ones in one batch.",
+                longDescription:
+                    "In Revit, \"Collaborate → Worksets\" deletes one workset at a time: select it, press\n" +
+                    "\"Delete\", answer the question about its contents, confirm — and the same again for\n" +
+                    "the next one. After a model arrives from a consultant there are dozens of them.\n\n" +
+                    "The window opens on the plain list of the project's worksets: what each holds, whether\n" +
+                    "it is open, and who owns it. Check the ones to remove — nothing is checked to begin with.\n\n" +
+                    "The question Revit asks per workset is asked here once for the whole batch, under the\n" +
+                    "table: move everything standing in them into another workset, or delete it along with\n" +
+                    "them. Moving is the default — it is the answer that loses nothing.\n\n" +
+                    "The worksets you own are checked out automatically; one owned by another user gets no\n" +
+                    "check box until they relinquish it. A closed workset is flagged rather than counted:\n" +
+                    "its contents are invisible to the add-in, and \"0 elements\" there would be a lie.\n\n" +
+                    "Everything runs as a single operation and undoes with one Ctrl+Z — but only until the\n" +
+                    "model is synchronised.",
+                iconBaseName: "worksets");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

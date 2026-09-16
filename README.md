@@ -602,19 +602,40 @@ copied through "Copy/Monitor"), compares them against that same link, and shows 
 | --- | --- | --- |
 | Position | the grid has shifted or rotated, the level has a different elevation | yes |
 | Name | the element is named differently in the base file | yes |
-| Not in the coordination file | something monitors the link, but no matching element was found in it | no, shown only |
+| Deleted from the coordination file | something monitors the link, but no matching element was found in it | yes, but only on request — see below |
 | New in the coordination file | the element exists in the base file, but nothing in the project monitors it | no, shown only |
 | Cannot be applied | an arc grid's radius changed, a grid became a line instead of an arc, and the like | no, shown only |
 
-Everything applicable is checked right away — that is the whole point of the button. Check marks
-can be edited by hand, and what is checked is applied as one operation and rolls back with one
-**Ctrl+Z**.
+Everything applicable is checked right away — that is the whole point of the button — **except the
+deletions**. Check marks can be edited by hand, and what is checked is applied as one operation and
+rolls back with one **Ctrl+Z**.
 
-**What the button does not do, and why.** It does not delete grids and levels that vanished from
-the base file: a level would take everything standing on it with it, and that decision belongs to
-a person. And it does not set up monitoring on new link elements — the Revit API cannot create
-monitoring links at all (the same limitation as the "Base File" button). Both are shown in the
-table as a row, to be sorted out by hand.
+**Deleting what is gone from the base file.** A grid or a level deleted in the new issue of the
+coordination file is shown in red, and the **"Delete grids and levels that are gone from the
+coordination file"** box turns such rows on. Until it is checked, they are shown but cannot be
+selected — and even with it on, nothing is checked for you: deleting a level takes **everything
+standing on it** with it, and the "State" column says how many elements that is for each row. The
+confirmation names every element to be deleted, and the report says how much really went. A pinned
+grid or level is unpinned for the deletion, like everything else here; if the deletion does not go
+through, the pin comes back.
+
+Worth pausing over: "gone from the file" means the button found no match **by name and then by
+position**. A consultant who renamed a grid *and* moved it far away in one issue produces "deleted"
+plus "new" rather than a match — check such a pair before deleting anything.
+
+**What the button still does not do.** It does not set up monitoring on new link elements — the
+Revit API cannot create monitoring links at all (the same limitation as the "Base File" button).
+Those are shown in the table as a row, to be copied in by hand through "Copy/Monitor".
+
+**The button really moves the grid — and checks that it did.** This is the "Modify Grid" action of
+Revit's own dialog, not "Accept Difference": the grid is rotated about its own midpoint and shifted
+sideways until it lies on the line the base file has, and the level is given the new elevation.
+After the operation every moved element is **read back and compared against the link once more**,
+because Revit taking an edit without an error is not the same as the element moving — a constraint
+or a lock on the datum, or a group it sits in, can hold it in place. What really landed goes into
+"Accepted"; what did not gets a section of its own, **"Revit did not carry these out"**, with how
+much of the difference is left. And if Revit rolled the whole batch back when committing, the report
+says exactly that instead of listing changes that never happened.
 
 **About "Coordination Review" itself.** The add-in cannot press "Accept" inside that dialog — it
 is simply not in the Revit API. The button edits the model itself, and Revit's own list empties
@@ -626,6 +647,9 @@ Worth knowing:
 
 - **A grid is aligned as a line, not a segment.** You trim a grid's length to fit your own views —
   the button leaves that alone, only the position and the tilt are aligned.
+- **If a grid would not move**, it is named in the report with the difference still left on it.
+  Almost always it is held by something: a dimension lock or another constraint on the datum, or a
+  group. Free it and press the button again.
 - **A difference accepted earlier here looks like a discrepancy.** If you once pressed "Accept
   Difference" in "Coordination Review" and left a grid deliberately shifted, the button will show
   that shift: the Revit API does not let the "allowed" offset be read. Uncheck such a row.
@@ -633,9 +657,71 @@ Worth knowing:
   window; the one with the most differences comes first. An unloaded link has nothing to compare
   against, and the window says so.
 - An element renamed in the base file and moved far away at the same time is not matched by the
-  button and is honestly shown as two rows — "not in the file" and "new in the file".
+  button and is honestly shown as two rows — "deleted from the file" and "new in the file".
 - Pinned grids and levels are edited normally: the pin is removed for the duration and put back after.
 - What worked and what did not — in the report after running, together with Revit's own warnings.
+
+#### Other models — a whole batch at once
+
+The window's **"Other models…"** button does the same thing for models nobody has open: you gather
+a list of models, and each one is opened in turn, its grids are put where the coordination file
+linked into it has them, and the model is synchronised back. The same button appears if the open
+project has nothing monitoring a link at all — that is the usual place to start this work from.
+
+What for: a new issue of the base file shifts the grids for every discipline at once, and putting
+them in line means opening a dozen models one after another, waiting for each and pressing the same
+button in it.
+
+**How the models are gathered.** The same four sources as in "Link Manager" — files, Revit Server,
+BIM360 and BIM360 by GUID — and the same saved **sets**: a list gathered once is loaded by name with
+"Load set" and kept with "Save set", and those sets are shared with "Link Manager". The list the
+window was closed with comes back the next time it opens.
+
+**Only two worksets are opened in each model**, and this is the setting worth understanding:
+
+- `00_Shared levels and grids` — where the grids themselves live;
+- `00_Link_BM` — where the coordination file is linked in. **The start of the name is enough**, so
+  `00_Link_BM_K3` and any other suffix are opened too.
+
+Everything else in the model stays closed. That is not only about opening faster: what a closed
+workset holds is not in the document at all, so the run cannot touch a single element it was not
+asked about. The flip side is that the names have to match — a model where none of them did is
+named in the report together with the worksets it actually has, because "nothing found" there means
+"nothing was opened to look at", not "the model is fine". The list is editable in the window
+(semicolons between the names) and is remembered.
+
+**What is changed, and what is not.**
+
+- **Grids** — always, by position.
+- **Levels** — only with the "Levels as well" box on. It is off by default: a level moved in a
+  discipline model takes every wall, room and view standing on it along, and here nobody is
+  watching it happen.
+- **Names** — only with the "Rename…" box on, off by default for the same kind of reason: a name
+  is what views, schedules and somebody's drawings refer to.
+- **Nothing is ever deleted.** Grids and levels gone from the coordination file are counted in the
+  report and left where they are. Deleting one is a decision to take with that model open, in the
+  main window of this button.
+
+**How a model is opened and given back.** A **local copy** is made of every workshared model
+(exactly as "Create New Local" does), the edit happens there, and the result goes back through
+**"Synchronize with Central"** with everything relinquished; the local copy is then deleted. The
+central file is never edited in place — and where a local copy cannot be made, the model is skipped
+with the reason rather than opened anyway. A cloud model works the same way, with Revit keeping the
+local itself.
+
+Worth knowing:
+
+- **There is no Ctrl+Z afterwards.** Each model is synchronised as soon as it is done — unlike the
+  main window, whose changes to the open project undo with a single Ctrl+Z.
+- **Revit is busy until the whole batch is finished**, with no progress bar: the Revit API is
+  single-threaded, and the work is the opening of one model after another.
+- **A model already open in Revit is skipped** with a note — including the project you are standing
+  in. Use the main window for that one.
+- **An element somebody else has borrowed** cannot be edited: it is named in the report together
+  with whoever is holding it.
+- Every model gets a line of its own in the report: what was put in line with the file, what Revit
+  refused to move, what was left alone and why.
+- The settings live in `%AppData%\VladTools\coordination\_settings.txt`.
 
 ### Schedule Library (Project panel)
 
@@ -708,7 +794,11 @@ opens.
 2. For every parameter in the table: **Binding** (Instance/Type), **Vary by group** (meaningful
    only for an instance parameter — Revit's own "values can vary by group instance"),
    **Categories** (its own small picker, opened from the table), **Group** (the parameter group
-   Revit shows it under).
+   Revit shows it under). Set one row up and **"Copy settings" / "Paste settings"** carry Binding,
+   Categories, Group and "Vary by group" onto other rows: highlight the row done by hand, press
+   "Copy settings", then highlight the rows that should match it (click, Ctrl+click, Shift+click —
+   this is the table's own row highlight, not the apply check boxes) and press "Paste settings".
+   The name and the GUID of every row stay its own.
 3. **"State"** compares the row against the open project as the table is edited: *"Not in the
    project yet — will be added"*, *"Already matches"*, or *"Will be updated — …"* naming exactly
    what changes (categories added, group changed, "varies across groups" changed). A row that
@@ -740,6 +830,53 @@ opens.
 - What was added, what was updated and what did not work — in the report after running, together
   with Revit's own warnings.
 
+### Worksets (Project panel)
+
+Works **only in a project** (`.rvt`), and only in a workshared one. Shows every workset of the
+project and removes the checked ones in one batch — what "Collaborate → Worksets → Delete" does, one
+workset at a time.
+
+What for: a model comes back from a consultant carrying two dozen of their worksets, and each one
+has to be selected, deleted, and answered for separately — "what do I do with the elements in it?" —
+before the next one.
+
+**What the button does.**
+
+1. The window opens on the **plain list of the project's worksets**: the name, how many elements
+   stand in each, and its state — the active one, a closed one, one owned by another user. Nothing
+   is checked to begin with.
+2. **Check what to remove.** Click, Ctrl+click or Shift+click and press Space to flip a whole run of
+   rows; the box in the header takes the lot. A workset somebody else owns has no check box at all —
+   Revit would refuse it, and the reason is written in "State" instead.
+3. **Answer the question under the table, once for the whole batch** — the one Revit asks per
+   workset: **"Move them to workset …"** (pick a workset that is staying) or **"Delete them together
+   with the worksets"**. Moving is what the window starts on: it is the answer that loses nothing.
+4. The "State" column spells out what each checked row will cost — *"14 elements move to
+   \"01_Link_AR\""*, *"Will be removed — it is empty"*, *"9 elements will be DELETED with the
+   workset"* — and the summary line at the bottom adds it all up before anything is pressed.
+5. **"Remove worksets"** confirms first, naming every workset and the answer in full, and then runs.
+   Everything goes in one operation and undoes with a single Ctrl+Z.
+
+**What is worth knowing.**
+
+- **A closed workset is flagged, never counted.** The add-in cannot see inside a closed workset, and
+  Revit offers no way to open one from the API — so it says "not counted" rather than "0 elements".
+  On the delete path this matters: whatever is in there goes, unseen. Open those worksets in Revit
+  and look first; the confirmation lists them separately for that reason.
+- **The worksets you are removing are checked out for you**, along with the one the elements move
+  into — without that Revit refuses to delete anything in a freshly opened local model. One owned by
+  another user cannot be removed until they relinquish it.
+- **The active workset is stepped off automatically** if it is one of the ones going, because Revit
+  will not delete the workset it is standing on. That switch is a session setting, so Ctrl+Z does
+  not put it back; the report says which workset is active now.
+- **At least one workset has to stay** — Revit keeps no workshared project without one, and there
+  would be nowhere to move the contents to. The window will not let everything be checked.
+- **Ctrl+Z only reaches until the model is synchronised.** Save or synchronise before removing
+  worksets with their contents.
+- Each workset is deleted in a step of its own, so one Revit refuses does not cancel the others; the
+  whole run is still a single undo. What went, what did not and why — in the report afterwards,
+  together with Revit's own warnings.
+
 ## Structure
 
 ```
@@ -761,6 +898,7 @@ src/VladTools/
     AcceptCoordinationCommand.cs      logic for the "Accept Changes" button (project)
     ScheduleLibraryCommand.cs         logic for the "Schedule Library" button (project)
     ParameterSetCommand.cs            logic for the "Parameter Sets" button (project)
+    WorksetsCommand.cs                logic for the "Worksets" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -795,6 +933,8 @@ src/VladTools/
     CoordinationChangeRow.cs         a row of that table (check box, what differs, before → after)
     CoordinationChangeKind.cs        the kinds of difference (Position/Name/Missing/New/Cannot be applied)
     CoordinationScan.cs              the result of comparing against one link
+    BatchCoordinationWindow.cs       "Other models…": the model list, the worksets to open, what may be changed
+    BatchModelRow.cs                 a row of that table (check box, model, source, where it lives)
     ScheduleLibraryWindow.cs         the "Schedule Library" window: the set, where to fill it from, the insert table
     ScheduleChooserWindow.cs         "which of this model's schedules go into the set"
     ScheduleRow.cs                   a row of those tables (check box, schedule, clash action, state)
@@ -807,6 +947,10 @@ src/VladTools/
     CategoryInfo.cs                  a snapshot of one bindable category for that picker
     SharedParameterPickerWindow.cs   "Add from shared file…" — picking definitions out of a shared parameter file
     SharedParameterInfo.cs           a snapshot of one definition read out of a shared parameter file
+    WorksetsWindow.cs                the "Worksets" window: the project's worksets and the question about their contents
+    ProjectWorksetRow.cs             a row of that table (check box, contents, state)
+    WorksetInfo.cs                   a snapshot of one user workset: GUID, name, contents, owner, open/active
+    WorksetElementAction.cs          what happens to the elements in a removed workset (move or delete)
     ParameterGroupInfo.cs            a snapshot of one parameter group, for the "Group" column
     ParameterStatusInfo.cs           what the command found comparing a row against the open project
   Infrastructure/
@@ -837,6 +981,8 @@ src/VladTools/
     AutoDimensionMarker.cs       the "this dimension was placed by the button" mark (ExtensibleStorage), against duplicates
     CoordinationCatalog.cs       comparing the project's grids and levels against the coordination file
     DatumUpdate.cs                a ready-made edit for a single grid or level: rotation, translation, elevation, name
+    BatchCoordination.cs         opening somebody else's model with two worksets, and synchronising it back
+    CoordinationPreferences.cs   the "Other models…" window settings (%AppData%)
     ScheduleLibrary.cs           the schedule cache: sets as .rvt files (%AppData%), copying between documents
     SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
     ParameterSetLibrary.cs       saved parameter sets (%AppData%)

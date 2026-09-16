@@ -35,4 +35,23 @@ namespace VladTools.Infrastructure
         /// <summary>The new name; null — do not rename.</summary>
         public string NewName { get; set; }
     }
+
+    /// <summary>
+    /// What re-reading an element after the commit says about the edit that was applied to it.
+    ///
+    /// Three outcomes, not two — the same lesson as checking link worksets after loading: merging
+    /// "could not be checked" into "worked" is exactly how a silent refusal by Revit stayed
+    /// invisible, with the report cheerfully claiming the grid had been moved.
+    /// </summary>
+    internal enum DatumVerdict
+    {
+        /// <summary>The element now stands where the coordination file has it.</summary>
+        Aligned,
+
+        /// <summary>The edit went through without an exception, but the element is still off.</summary>
+        Off,
+
+        /// <summary>There was nothing to check against — the link is gone, or the twin was not found.</summary>
+        Unknown
+    }
 }

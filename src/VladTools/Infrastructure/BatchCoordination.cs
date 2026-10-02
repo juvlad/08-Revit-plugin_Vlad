@@ -62,6 +62,10 @@ namespace VladTools.Infrastructure
     /// hence a prefix rather than an exact name ("00_Link_BM_K3" is the same workset), and hence the
     /// opened names being reported per model: a model where nothing matched is a model where
     /// nothing could have been found.
+    ///
+    /// **A cloud model's worksets cannot be listed without opening it** — see <see cref="Probe"/>.
+    /// There the list is fetched by opening the model with every workset closed and closing it
+    /// again: an extra open, and the same selective loading as everywhere else.
     /// </summary>
     internal static class BatchCoordination
     {
@@ -137,28 +141,37 @@ namespace VladTools.Infrastructure
                 return null;
             }
 
-            List<WorksetPreview> previews;
+            string trouble;
+            var worksets = Worksets(app, entry, path, out trouble);
 
-            try
+            if (worksets == null)
             {
-                previews = WorksharingUtils.GetUserWorksetInfo(path).ToList();
-            }
-            catch (Exception exception)
-            {
-                failures.Add(entry.Name + " — the worksets could not be read: " + LinkCatalog.Short(exception.Message));
-                return null;
+                // A model that is not workshared has no worksets to read and nothing to filter — and
+                // on some stores that is what the read fails with rather than an empty list. Only a
+                // file says so about itself without being opened, and only then is opening it
+                // plainly the right answer; everywhere else a failed read means the workset filter
+                // cannot be built, and opening the model without one would load the whole of it.
+                var plain = entry.Origin == LinkOrigin.File && NotWorkshared(entry.Path);
+
+                if (!plain)
+                {
+                    failures.Add(entry.Name + " — " + Diagnose(app, entry, path, trouble));
+                    return null;
+                }
+
+                worksets = new List<WorksetHandle>();
             }
 
-            var wanted = previews.Where(preview => Matches(preview.Name, prefixes)).ToList();
+            var wanted = worksets.Where(workset => Matches(workset.Name, prefixes)).ToList();
 
             // Opening a workshared model with nothing but closed worksets would fetch an empty
             // document over the network and find nothing in it — and "nothing found" would read as
             // "the model is fine". The names are the thing at fault here, and the message says so.
-            if (previews.Count > 0 && wanted.Count == 0)
+            if (worksets.Count > 0 && wanted.Count == 0)
             {
                 failures.Add(entry.Name + " — none of its worksets start with " + Quote(prefixes) +
                              ": there would be neither grids nor the base file in the opened model. " +
-                             "Its worksets: " + Quote(previews.Select(preview => preview.Name).ToList()) + ".");
+                             "Its worksets: " + Quote(worksets.Select(workset => workset.Name).ToList()) + ".");
                 return null;
             }
 
@@ -169,15 +182,15 @@ namespace VladTools.Infrastructure
                 // "Close all, then open the listed ones" — the same phrasing as for link worksets,
                 // and for the same reason: it is the one Revit carries out reliably.
                 var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
-                configuration.Open(wanted.Select(preview => preview.Id).ToList());
+                configuration.Open(wanted.Select(workset => workset.Id).ToList());
                 options.SetOpenWorksetsConfiguration(configuration);
             }
 
-            var names = wanted.Select(preview => LinkPreferences.NormalizeWorkset(preview.Name)).ToList();
+            var names = wanted.Select(workset => LinkPreferences.NormalizeWorkset(workset.Name)).ToList();
             var local = string.Empty;
             var target = path;
 
-            if (previews.Count > 0 && entry.Origin != LinkOrigin.Cloud)
+            if (worksets.Count > 0 && entry.Origin != LinkOrigin.Cloud)
             {
                 string reason;
                 target = Localise(path, entry, out local, out reason);
@@ -185,6 +198,7 @@ namespace VladTools.Infrastructure
                 if (target == null)
                 {
                     failures.Add(entry.Name + " — a local copy could not be made: " + reason +
+                                 Header(entry) +
                                  " The model was left untouched: editing somebody's central file " +
                                  "directly is not something this button does.");
                     return null;
@@ -304,6 +318,251 @@ namespace VladTools.Infrastructure
         {
             return first != null && first.Length > 0 &&
                    string.Equals(first, second, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        /// <summary>A workset of a model that is not open yet: the name to match on and the id to open by.</summary>
+        private sealed class WorksetHandle
+        {
+            public WorksetHandle(string name, WorksetId id)
+            {
+                Name = name ?? string.Empty;
+                Id = id;
+            }
+
+            public string Name { get; }
+
+            public WorksetId Id { get; }
+        }
+
+        /// <summary>
+        /// The model's worksets — by two different roads, because the short one has no cloud lane.
+        ///
+        /// **Null is not an empty list**: a model that is not workshared honestly has no worksets,
+        /// while null means the question could not be asked at all — and treating the second as the
+        /// first would open the model with every workset in it.
+        /// </summary>
+        private static List<WorksetHandle> Worksets(
+            Application app,
+            LinkEntry entry,
+            ModelPath path,
+            out string trouble)
+        {
+            return entry.Origin == LinkOrigin.Cloud ? Probe(app, path, out trouble) : Previews(path, out trouble);
+        }
+
+        /// <summary>
+        /// The worksets of a file or a Revit Server model, read without opening it at all:
+        /// <c>WorksharingUtils.GetUserWorksetInfo</c> reads them out of the file itself.
+        /// </summary>
+        private static List<WorksetHandle> Previews(ModelPath path, out string trouble)
+        {
+            trouble = string.Empty;
+
+            try
+            {
+                return WorksharingUtils.GetUserWorksetInfo(path)
+                    .Select(preview => new WorksetHandle(preview.Name, preview.Id))
+                    .ToList();
+            }
+            catch (Exception exception)
+            {
+                // The type name matters more than the message here — see Diagnose.
+                trouble = exception.GetType().Name + ": " + LinkCatalog.Short(exception.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The worksets of a **cloud** model: opening it with every workset closed, reading the list,
+        /// closing it again.
+        ///
+        /// <c>GetUserWorksetInfo</c> reads a model's worksets out of the file without opening it, and
+        /// a cloud model has no file to read — on an Autodesk Docs path it throws an
+        /// <c>InternalException</c> carrying Revit's own "A managed exception was thrown…" (seen on
+        /// this office's models; there is no other call that answers the question). Without the ids a
+        /// <c>WorksetConfiguration</c> cannot be built at all, and that would leave only two ways out:
+        /// open a consultant's model whole, or refuse to work on cloud models.
+        ///
+        /// So the list is fetched the one way left. Worksets are elements of the document, and
+        /// <c>FilteredWorksetCollector</c> returns **every** one of them, closed included: a document
+        /// opened with <c>CloseAllWorksets</c> holds no model elements but knows all its worksets.
+        /// The price is a second open, and it is the cheaper half — the first loads nothing, and by
+        /// the time the second runs Revit has the model in its local cache.
+        /// </summary>
+        private static List<WorksetHandle> Probe(Application app, ModelPath path, out string trouble)
+        {
+            trouble = string.Empty;
+
+            Document doc = null;
+
+            try
+            {
+                var options = new OpenOptions();
+                options.SetOpenWorksetsConfiguration(
+                    new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets));
+
+                doc = app.OpenDocumentFile(path, options);
+
+                if (!doc.IsWorkshared)
+                    return new List<WorksetHandle>();
+
+                return new FilteredWorksetCollector(doc)
+                    .OfKind(WorksetKind.UserWorkset)
+                    .ToWorksets()
+                    .Select(workset => new WorksetHandle(workset.Name, workset.Id))
+                    .ToList();
+            }
+            catch (Exception exception)
+            {
+                trouble = exception.GetType().Name + ": " + LinkCatalog.Short(exception.Message);
+                return null;
+            }
+            finally
+            {
+                if (doc != null)
+                {
+                    try
+                    {
+                        doc.Close(false);
+                    }
+                    catch (Exception)
+                    {
+                        // Nothing to tell the user here: the work is about to open this model again,
+                        // and if Revit is still holding it, that attempt says so itself.
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Why the worksets could not be read, in a form worth reading.
+        ///
+        /// Revit's own message for this is almost always "A managed exception was thrown by Revit or
+        /// by one of its external applications" — true, and of no use to anybody. What actually
+        /// explains it is visible from outside the exception: which store the model is in, whether
+        /// the file is even there, and what version it was saved in. So the report gets those
+        /// instead of Revit's sentence alone.
+        /// </summary>
+        private static string Diagnose(Application app, LinkEntry entry, ModelPath path, string trouble)
+        {
+            var text = "the worksets could not be read (" + trouble + "). Path: " + Visible(path) + ".";
+
+            if (entry.Origin == LinkOrigin.Server)
+            {
+                return text + " For Revit Server this is usually the server or its accelerator being " +
+                       "unreachable from this machine, or the model having been moved on the server.";
+            }
+
+            if (entry.Origin == LinkOrigin.Cloud)
+            {
+                return text + " A cloud model's worksets are read by opening it with every workset " +
+                       "closed, so this is the model refusing to open at all: no access to the project, " +
+                       "not signed in to Autodesk, or the model saved in a newer Revit than this one.";
+            }
+
+            if (!File.Exists(entry.Path))
+            {
+                return text + " There is no such file — the path may have come from a saved set and " +
+                       "gone stale, or the network folder may not be reachable from this machine.";
+            }
+
+            var info = Info(entry.Path);
+            if (info == null)
+            {
+                return text + " The file is there, but Revit will not read even its header: it may be " +
+                       "open by somebody, damaged, or not a Revit model at all.";
+            }
+
+            if (info.IsLater)
+            {
+                return text + " The model was saved in a newer Revit than this one (Revit " + app.VersionNumber +
+                       "; the model's own format is " + info.Format + "): an older Revit cannot open a newer model. " +
+                       "Run the batch from the Revit the model belongs to.";
+            }
+
+            return text + Header(entry);
+        }
+
+        /// <summary>
+        /// What the file's own header adds to a failure. Worth saying in two different places — a
+        /// workset read and a local copy both fall over on exactly these two things — so it is one
+        /// method rather than the same two sentences written twice.
+        /// </summary>
+        private static string Header(LinkEntry entry)
+        {
+            if (entry.Origin != LinkOrigin.File)
+                return string.Empty;
+
+            var info = Info(entry.Path);
+            if (info == null)
+                return string.Empty;
+
+            if (!info.IsWorkshared)
+                return " By its own header the model is not workshared.";
+
+            if (!info.IsCentral)
+            {
+                return " By its own header this is not a central model but somebody's local copy — " +
+                       "point the list at the central file.";
+            }
+
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// The file says of itself that it is not workshared — the one case where a failed workset
+        /// read is not a failure at all. Only a file on disk can be asked this without being opened.
+        /// </summary>
+        private static bool NotWorkshared(string file)
+        {
+            var info = Info(file);
+            return info != null && !info.IsWorkshared;
+        }
+
+        /// <summary>What a model's header says about it — the few facts that can be had without opening it.</summary>
+        private sealed class FileHeader
+        {
+            public bool IsWorkshared;
+            public bool IsCentral;
+
+            /// <summary>Saved in a newer Revit than the one running — then it will not open here at all.</summary>
+            public bool IsLater;
+
+            /// <summary>Revit's own version of the file format; in practice, the year.</summary>
+            public string Format = string.Empty;
+        }
+
+        /// <summary>
+        /// A model's header, read without opening it. Null — it could not be read either.
+        ///
+        /// The facts are copied out and the <c>BasicFileInfo</c> is disposed of right here: it holds
+        /// unmanaged memory, and handing it out would mean every caller remembering to let it go.
+        /// </summary>
+        private static FileHeader Info(string file)
+        {
+            try
+            {
+                if (!File.Exists(file))
+                    return null;
+
+                using (var info = BasicFileInfo.Extract(file))
+                {
+                    if (info == null)
+                        return null;
+
+                    return new FileHeader
+                    {
+                        IsWorkshared = info.IsWorkshared,
+                        IsCentral = info.IsCentral,
+                        IsLater = info.IsSavedInLaterVersion,
+                        Format = info.Format.ToString()
+                    };
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         // ───────────────────────────── giving the model back ─────────────────────────────

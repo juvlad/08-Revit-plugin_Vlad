@@ -307,6 +307,27 @@ namespace VladTools
                     "model is synchronised.",
                 iconBaseName: "worksets");
 
+            // ───────────────── Button 14: Translate (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_Translate",
+                text: "Translate",
+                commandType: typeof(TranslateCommand),
+                tooltip: "Translates the Russian typed into the project or template into English, through one dictionary.",
+                longDescription:
+                    "A template made in a Russian Revit stays Russian in an English one: Revit translates only\n" +
+                    "its own words (categories, built-in parameters, view types), and everything a person typed —\n" +
+                    "view and type names, parameter values, schedule headings — is kept exactly as typed.\n\n" +
+                    "The window lists every text with Cyrillic in it, once per spelling, with where it is used.\n" +
+                    "The English column is filled in by hand, from the dictionary of earlier projects, or from a\n" +
+                    "file: \"Export…\" writes the list for a translator or an AI, \"Import…\" reads it back.\n\n" +
+                    "Each text is replaced everywhere at once — names, parameter values, schedule headings and\n" +
+                    "filters, view filter rules, text notes — so filters and the Project Browser's grouping keep\n" +
+                    "matching what they matched before. Everything goes in one operation, one Ctrl+Z.\n\n" +
+                    "What the Revit API cannot change — a shared parameter's name, a line style — is shown in the\n" +
+                    "window and the report rather than skipped in silence. Text inside loaded families is not touched.",
+                iconBaseName: "translate");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

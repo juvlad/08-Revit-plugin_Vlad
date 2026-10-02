@@ -715,6 +715,12 @@ Worth knowing:
   main window, whose changes to the open project undo with a single Ctrl+Z.
 - **Revit is busy until the whole batch is finished**, with no progress bar: the Revit API is
   single-threaded, and the work is the opening of one model after another.
+- **A BIM360 / Autodesk Docs model is opened twice** — first with every workset closed, only to
+  find out what its worksets are called, and then properly with the two of them. Revit can read the
+  worksets of a file or of a Revit Server model without opening it, but not of a cloud one; the
+  first open loads nothing at all, so the cost is much smaller than it sounds. If a cloud model
+  cannot be opened even like that, the report says so — the usual reasons are no access to the
+  project, not being signed in to Autodesk, or the model belonging to a newer Revit.
 - **A model already open in Revit is skipped** with a note — including the project you are standing
   in. Use the main window for that one.
 - **An element somebody else has borrowed** cannot be edited: it is named in the report together
@@ -877,6 +883,75 @@ before the next one.
   whole run is still a single undo. What went, what did not and why — in the report afterwards,
   together with Revit's own warnings.
 
+### Translate (Project panel)
+
+Works **only in a project or a project template** (`.rvt`, `.rte`). Replaces the Russian a person
+typed into the file with English.
+
+What for: a template made in a Russian Revit stays Russian when it is opened in an English one.
+Revit translates only its own words — categories, built-in parameters, system families, view types
+("Floor Plan", "Sheets") — while everything a person typed is kept exactly as typed: view and view
+template names, the values the Project Browser groups views by ("01 - Отверстия WIP", "Планы"),
+type and family names, schedule headings, text notes. There is no switch for that in Revit; the
+strings have to be replaced.
+
+**What the button does.**
+
+1. The window lists **every text with Cyrillic in it, once per spelling**, with **where it is used**
+   (hover over "Where" for the full list): "Планы" used as a parameter value on twelve views is one
+   row, not twelve.
+2. **The English column** is filled in three ways, and they mix freely:
+   - **from the dictionary** — whatever was translated in an earlier project is filled in the moment
+     the window opens;
+   - **"Export…" → translate → "Import…"** — the list goes into a text file (the Russian, a TAB, the
+     English, a TAB, where it is used); fill in the second column in Notepad or Excel, or hand the
+     file to a translator, DeepL or an AI — the lines at the top of the file explain the format to
+     whoever does it — and read it back;
+   - **by hand**, right in the cell.
+3. **"State"** checks every translation before anything is applied: a translation used as a name
+   that would clash with another name ("План этажа" and "План эт." both becoming "Floor plan"), a
+   character Revit does not allow in names (``\ : { } [ ] | ; < > ? ` ~``), a translation that still
+   has Cyrillic in it. **"Show → Need attention"** lists those rows; the button stays off until the
+   clashes are fixed or their rows unchecked.
+4. **"Translate"** replaces every checked text **everywhere it is used, at once**, in one operation —
+   one Ctrl+Z undoes all of it.
+
+**What is translated:** the names of views, view templates, sheets, schedules, legends, families and
+types, materials, fill and line patterns, filters, levels, grids, phases, phase filters, print sets,
+project and global parameters, worksets; the values of text parameters (project information, sheet
+numbers and names, room names, "Title on Sheet", any project or shared parameter — including the
+ones the Project Browser groups by); schedule column headings, the plain-text cells of a schedule's
+header and the values schedule filters compare against; the strings in view filter rules; text
+notes (bold, italic, underline and all caps covering the whole note are kept).
+
+**What is worth knowing.**
+
+- **One text is replaced everywhere at once — and that is the point, not a convenience.** A string is
+  often data: "Отверстия" in a view parameter is also what a view filter, a schedule filter and the
+  browser grouping compare against. Translated in one place only, the filter would silently stop
+  matching. Here they all change together.
+- **What the Revit API cannot change is shown, not skipped.** A shared parameter's name is fixed by
+  its GUID in the shared parameter file — Revit will not rename it even by hand. Line styles and
+  object-style subcategories have no rename in the API — Manage → Additional Settings → Line Styles
+  and Manage → Object Styles do it by hand. Such rows say so in "State", and the report lists them.
+- **The Project Browser is watched.** A browser organization can filter views by a value, and the
+  API can neither read nor edit that filter. If a translated value makes views drop out of an
+  organization, the report says which organization and which views — fix its filter by hand
+  (View → User Interface → Browser Organization → Edit → Filtering), or undo with Ctrl+Z.
+- **The search box and "Show" only find rows, they do not select them.** Rows out of sight keep
+  their check marks and are translated too; the confirmation says how many of them there are.
+- **Every translation is remembered** — whatever the English column holds when the window closes,
+  applied or not, goes into the dictionary (`%AppData%\VladTools\translate\dictionary.txt`) and is
+  offered in the next project. Lines of an imported file that match no text of this project are kept
+  there too.
+- **Excel:** the exported file opens straight into columns. Save it back as **"Unicode Text
+  (*.txt)"** — the other text formats lose the Cyrillic.
+- **Not looked into:** text inside loaded families — tag labels, titleblock text, family parameter
+  names. Those are edited in the family itself. Grouped column headers of a schedule are not
+  translated either (the API does not let them be written).
+- **Save a copy of the template first.** Within the session one Ctrl+Z undoes the whole
+  translation; once the file is saved, it does not.
+
 ## Structure
 
 ```
@@ -899,6 +974,7 @@ src/VladTools/
     ScheduleLibraryCommand.cs         logic for the "Schedule Library" button (project)
     ParameterSetCommand.cs            logic for the "Parameter Sets" button (project)
     WorksetsCommand.cs                logic for the "Worksets" button (project)
+    TranslateCommand.cs               logic for the "Translate" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -953,6 +1029,10 @@ src/VladTools/
     WorksetElementAction.cs          what happens to the elements in a removed workset (move or delete)
     ParameterGroupInfo.cs            a snapshot of one parameter group, for the "Group" column
     ParameterStatusInfo.cs           what the command found comparing a row against the open project
+    TranslateWindow.cs               the "Translate" window: one row per Russian text, Export…/Import…, the clash check
+    TranslationRow.cs                a row of that table (check box, original, translation, state)
+    TranslationText.cs               a snapshot of one distinct text and where it is used
+    NameScope.cs                     a set of names Revit keeps unique, for the clash check
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     Icons.cs                     loading icons from the assembly's resources
@@ -987,6 +1067,10 @@ src/VladTools/
     SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
     ParameterSetLibrary.cs       saved parameter sets (%AppData%)
     ParameterSetPreferences.cs   the "Parameter Sets" window settings (%AppData%)
+    TextSite.cs                  one place holding typed text (a name, a parameter value, a filter rule…): read and write it
+    TextSiteCollector.cs         finds every place with Cyrillic text in the open project
+    TranslationDictionary.cs     the translation dictionary and the export/import file format (%AppData%)
+    TranslatePreferences.cs      the "Translate" window settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

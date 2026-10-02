@@ -54,7 +54,8 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — nine buttons, working **only in a project** (`.rvt`). There is no test
+editor** (`.rfa`); "Project" — ten buttons, working **only in a project** (`.rvt`, and a project
+template `.rte` — Revit opens both as the same kind of document). There is no test
 project — checking is done by hand, in Revit.
 
 ## Build and run
@@ -156,6 +157,10 @@ UI/WorksetsWindow.cs              the "Worksets" window: the project's worksets,
 UI/CategoryPickerWindow.cs        "Choose categories…" — a small checklist opened from a parameter-set row
 UI/SharedParameterPickerWindow.cs "Add from shared file…" — picking definitions out of a shared parameter file
 UI/ParameterSetWindow.cs          the "Parameter Sets" window: the set, "Add from shared file…", the apply table
+UI/TranslationText.cs             a snapshot of one distinct Russian text: counts and a description of where it is used
+UI/NameScope.cs                   a set of names Revit keeps unique (views of one kind, types of one family…), for the clash check
+UI/TranslationRow.cs              a row of the "Translate" table: check box, original, translation, state
+UI/TranslateWindow.cs             the "Translate" window: one row per text, Export…/Import…, the dictionary, the clash check
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
@@ -194,6 +199,13 @@ Infrastructure/ScheduleLibrary.cs        the schedule cache: sets as .rvt files,
 Infrastructure/SchedulePreferences.cs    the "Schedule Library" window settings (%AppData%\VladTools\schedules\_settings.txt)
 Infrastructure/ParameterSetLibrary.cs    saved parameter sets, %AppData%\VladTools\parameters\<name>.txt; also ParameterEntry, ParameterBindingKind
 Infrastructure/ParameterSetPreferences.cs  the "Parameter Sets" window settings (%AppData%\VladTools\parameters\_settings.txt)
+Infrastructure/TextSite.cs        one place holding typed text — a name, a parameter value, a column heading, a header
+                                  cell, a schedule filter value, a view filter rule, a text note, a workset name — with
+                                  its own read and write; FixedTextSite for what the API cannot change
+Infrastructure/TextSiteCollector.cs  finds every TextSite with Cyrillic in the open project, plus the NameScopes
+Infrastructure/TranslationDictionary.cs  the dictionary (%AppData%\VladTools\translate\dictionary.txt) and the
+                                  TAB-separated export/import format; also Normalize and HasCyrillic for both sides
+Infrastructure/TranslatePreferences.cs  the "Translate" window settings (%AppData%\VladTools\translate\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -215,6 +227,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project                                                                                                                                                                                                                                                                                                                                     | "Schedule Library"         | `ScheduleLibraryCommand`         | carries schedules from one model into another: a set is taken out of a base model once (the open project, a file, Revit Server, BIM360) into a small .rvt in the Windows profile, and from then on inserted into any model with`ElementTransformUtils.CopyElements` out of that file. Where the project already holds a schedule of that name, the table asks per row: skip, replace (the replacement goes back onto the same sheets) or insert alongside under a free name                                                     |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Worksets"                 | `WorksetsCommand`                | shows every user workset of the project — what it holds, whether it is open, who owns it — and removes the checked ones in one batch. The question Revit's own dialog asks per workset is asked once for the whole batch, under the table: move the elements standing in them into another workset (`DeleteWorksetOption.MoveElementsToWorkset`) or delete them with it (`DeleteAllElements`). The worksets are checked out before the run; a closed workset is flagged rather than counted                                                                                                                                                                                                                              |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Parameter Sets"           | `ParameterSetCommand`            | applies a named bundle of shared parameters to the open project: for every parameter — instance/type, categories, parameter group, "varies across groups" — built once from a shared parameter file (`Application.OpenSharedParameterFile`) and kept in the Windows profile. Opening the window compares the set against the project by GUID: what is missing is bound (`BindingMap.Insert`), what is already bound but differs is brought in line with the saved settings (`BindingMap.ReInsert`) rather than duplicated |
+| Project                                                                                                                                                                                                                                                                                                                                     | "Translate"                | `TranslateCommand`               | replaces the Russian typed into a project or template with English through one dictionary: every distinct text with Cyrillic in it is one row (with where it is used), and a translation replaces it in every place at once — element names (views, templates, sheets, schedules, families, types, materials, filters, levels, worksets…), text parameter values, schedule column headings, header cells and filter values, view filter rule strings, text notes — in one transaction. Translations come from the dictionary (`%AppData%\VladTools\translate\`), from a TAB-separated file ("Export…" for a translator or an AI, "Import…" back), or by hand; the window catches name clashes and forbidden characters first. What the API cannot change (shared parameter names, line styles, subcategories) is shown and reported, not skipped |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -772,6 +785,19 @@ single transaction.
   names the worksets it actually has instead, and `Idle` tells four different "nothing was done"
   cases apart — nothing monitors a link, the link is not loaded, nothing this run was allowed to
   touch, and everything already in place.
+- **A cloud model's worksets cannot be listed without opening it — so the batch opens it twice.**
+  `WorksharingUtils.GetUserWorksetInfo` reads the worksets out of the file itself, and an Autodesk
+  Docs model has no file to read: on a cloud path it throws `InternalException` with Revit's own "A
+  managed exception was thrown by Revit or by one of its external applications" (seen on this
+  office's models — the whole batch failed on it, six models out of six). There is no other call
+  that answers the question, and without the ids a `WorksetConfiguration` cannot be built at all,
+  which would leave only "open a consultant's model whole" or "cloud models are not supported".
+  `BatchCoordination.Probe` takes the one way left: worksets are elements of the document and
+  `FilteredWorksetCollector` returns **every** one of them, closed included, so the model is opened
+  with `CloseAllWorksets` (it holds no model elements then, but knows all its worksets), the list is
+  read, the document is closed, and the real open follows with the ids. The second open is the
+  cheap one — the first loads nothing and Revit has the model in its local cache by then. Files and
+  Revit Server keep the short road (`Previews`): there the file is there to be read.
 - **The batch never deletes, and this is not the same rule as the window's "Delete…" box.** In the
   open project a row that is gone from the coordination file can be deleted — behind its own switch,
   unchecked, with the count of what stands on the level in the confirmation. None of that can be
@@ -1105,6 +1131,79 @@ single transaction.
   So the window carries GUIDs and the command resolves them back through
   `WorksetTable.GetWorkset(Guid)` (present since 2012, and in all three years) at the moment it
   deletes; a workset gone in the meantime becomes a report line rather than a wrong deletion.
+- **"Translate" works on a *text*, never on a place — and that is the whole design, not a
+  convenience.** Revit has no language switch for typed content: it translates its own words
+  (categories, built-in parameters, view types) and keeps every typed string as typed. And a string
+  is often data, not a label: "Отверстия" in a view parameter is also what a view filter rule, a
+  schedule filter and the Project Browser's grouping compare against. Translated place by place, a
+  filter would keep looking for the Russian after the parameter turned English and silently stop
+  matching. So the window has one row per distinct normalised text (`TranslationDictionary.Normalize`:
+  "\n" line breaks, trimmed — one rule for the project, the dictionary and imported files), and
+  `TranslateCommand.Apply` replaces it in every `TextSite` that holds it, in one transaction.
+- **Every kind of place is a `TextSite` with its own read and write**, and `TextSiteCollector` finds
+  them. Names come off a **fixed list of classes** (`NamedClasses` + every `ElementType`), not off
+  every element: a wall's or a door's `Name` is its type's. Parameter values come off
+  `GetOrderedParameters` — what the Properties palette shows — not every parameter an element
+  carries: Revit's hidden internal parameters are nothing a person typed. A **built-in** string
+  parameter equal to the element's name is skipped, but only on an element whose name is already
+  collected — that is the name seen a second time (`VIEW_NAME`, `DATUM_TEXT`, a type's "Type Name");
+  a project or shared parameter is never skipped that way, and an element off the name list (a key
+  schedule row, a scope box, a room) keeps its built-in name parameter as an ordinary value.
+  `TEXT_TEXT` is skipped too: a text note goes through its own site.
+- **Only what the API can write is written, and what it cannot is shown, not dropped.** Confirmed
+  in `RevitAPI.xml` 2022/2024/2025: `Category.Name` and `InternalDefinition.Name` have no setter, so
+  line styles, object-style subcategories and shared parameter names (fixed by the GUID anyway) are
+  `FixedTextSite`s — collected so the window says "stays as it is — why" and the report lists them
+  with where to rename by hand. Subcategories are walked under Revit's own categories only
+  (`category.Id < ElementId.InvalidElementId`): an imported CAD file is a category of its own, and its
+  subcategories are the file's layers. A non-shared project parameter and a global parameter are
+  *tried* through `Element.Name`; a refusal is a report line with the manual route (`TextSite.Hint`).
+- **A text note is written through `FormattedText`, never `TextNote.Text`** — per the API, setting the
+  plain text drops all formatting. Bold/italic/underline/all caps covering the whole note, and a
+  uniform list type, are put back after `SetPlainText`; formatting on part of the text has no
+  counterpart in a translated sentence, so such a note is counted in the report (`FormattingReset`).
+- **Schedule header cells are taken only when `CellType.Text`.** Per the API, `SetCellText` on any
+  other cell type turns it into plain text — the cell would stop following the parameter it shows.
+  The cell reading the schedule's own name is skipped: that is the title, and it follows the name.
+  Grouped column headers live in the body section, where the API forbids `SetCellText` on a
+  standard schedule — not translated, and the README says so.
+- **View filter rules are rebuilt, not edited.** `GetElementFilter` and `GetRules` hand out copies;
+  `ViewFilterRuleSite` rewrites the tree (logical nodes in place, a parameter node recreated with
+  its `Inverted` flag) and puts it back through `SetElementFilter`. One site per distinct string in
+  a filter, so `Holds` is overridden: before the write "a rule compares against the original", after
+  it "a rule compares against the translation".
+- **A write is checked twice, the same way "Accept Changes" checks a move.** Before: the place still
+  holds the original (`TextSite.Holds`) — if it already holds the translation it was changed along
+  with something else this run (a built-in mirror the skip rule missed) and is passed over silently.
+  After: it really holds the translation; "Revit took it without an error" is not counted as done.
+  `Transaction.Commit()`'s status is checked, and a rollback empties the success list. Names go in
+  passes, like "Rename Nested": a name refused as taken (`Autodesk.Revit.Exceptions.ArgumentException`
+  — **not** a `System.ArgumentException`, both are caught) is retried while some other rename in the
+  pass went through.
+- **The window's clash check uses deliberately narrow scopes** (`TextSiteCollector.ScopeOf`): views
+  per `ViewType`, view templates, types per family, families per category, materials, filters,
+  levels, grids, sheet *numbers* (sheet names may repeat), worksets… A clash the window misses still
+  comes back from Revit as a report line; a clash it imagined would block a translation that would
+  have gone through — so when unsure, the scope is narrower. Compared ignoring case, like Revit. A
+  clash or a forbidden character blocks "Translate" until fixed or unchecked; Cyrillic left in a
+  translation only warns.
+- **The Project Browser is watched, because its filters cannot be edited.** A browser organization
+  can filter views by a value, and the API has no read or write for that filter — but it has
+  `BrowserOrganization.AreFiltersSatisfied`. `TranslateCommand.BrowserWatch` records which views pass
+  every organization before the run, re-checks inside the transaction after `Regenerate()`, before
+  the commit, and reports an organization that lost views, with the manual route. Silence here would
+  look like "the translation made my views disappear". **Trap:** `BrowserOrganization` is an
+  `ElementType` subclass — a `case BrowserOrganization` placed after `case ElementType` does not
+  compile (CS8120), and one left out would be named "type name".
+- **The dictionary is written whenever the window closes, applied or not**, merging what was read,
+  what "Import…" brought that matches nothing in this project, and the table on top (a cleared cell
+  removes its entry). A translation typed once must never be typed again; and unlike the add-in's
+  settings files, a failure to write it is shown, not swallowed — it is somebody's work.
+- **The export is written for whoever translates, a person or an AI**: TAB-separated (Excel opens it
+  as columns; a vertical bar can stand in a name), a third column saying where each text is used, and
+  a header that states the format, the forbidden name characters and "keep the first column as it
+  is". On import, Excel's quoting of a cell holding a quote is undone only when the field is wrapped
+  in quotes **and** carries a doubled quote inside — a text that genuinely reads `"Ось"` has none.
 
 ## Storing user settings
 
@@ -1122,6 +1221,8 @@ folder whose contents are not text at all: a set of schedules is a Revit file (s
 window closes, and a set itself only through its own "Save set" button — table edits (categories,
 binding, group) are not written until then. `coordination\` holds settings only, and has no sets of
 its own on purpose: the model list there is the same `LinkSetLibrary` one "Link Manager" uses.
+`translate\` is data, not settings: the dictionary there is rewritten whenever the "Translate" window
+closes, with every translation the window held (see "Key decisions").
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -1240,6 +1341,17 @@ closed with, in the same line format as a link set (`LinkSetLibrary.Format`/`Par
 parser). Sets themselves live in `links\`, shared with "Link Manager": a list of a project's models
 is the same list in both buttons.
 
+`translate\dictionary.txt` — the "Translate" button's dictionary: one line per text, the Russian
+original, a TAB, the English translation. Inside a text `\n` is a line break, `\t` a tab, `\\` a
+backslash, and a leading `\#` a literal `#` (a bare `#` starts a comment). Both texts are normalised
+(`TranslationDictionary.Normalize`). An exported file has the same format plus a third column —
+where the text is used — ignored on import; a line with an empty second column means "not translated"
+and is skipped. A file Excel saved as "Unicode Text" (UTF-16 with a BOM) reads as well as our own
+UTF-8 one.
+
+`translate\_settings.txt` — that window's settings: `KEY = value` — `FOLDER` (the folder the last
+export or import went through).
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -1255,10 +1367,12 @@ is the same list in both buttons.
   checks everything applicable right away, because that is exactly what it is asked to do (see
   "Key decisions") — except its own deletions, which stay unchecked behind a box of their own, and
   that is the same rule holding inside a button that mostly does not delete. The second rule — "only what is shown gets applied" — holds wherever the filter
-  **is** the selection: a row that leaves the table through it loses its check mark. The one
-  exception is `CategoryPickerWindow`, whose search box only ever *finds* a category and never
-  narrows the answer: check "Walls", type "door" to reach the next one, and the box out of sight
-  stays checked. Adding a filter that selects for the user means the rule comes back with it.
+  **is** the selection: a row that leaves the table through it loses its check mark. Two
+  exceptions, both search boxes that only ever *find*: `CategoryPickerWindow` (check "Walls", type
+  "door" to reach the next one, and the box out of sight stays checked) and `TranslateWindow`, whose
+  search box and "Show" list find a row among hundreds of texts without touching any other row's
+  check mark — its confirmation says how many of the rows going in are out of sight. Adding a filter
+  that selects for the user means the rule comes back with it.
 - **Name a WPF binding path with `nameof`, never a bare string**, and never rely on
   `GridBuilder.CheckBoxTemplate()`'s default path for a row whose flag is not called `IsSelected`.
   A binding to a property that does not exist fails **silently**: an unbound `IsChecked` still ticks

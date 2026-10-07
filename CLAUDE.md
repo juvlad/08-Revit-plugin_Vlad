@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — ten buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — eleven buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). There is no test
 project — checking is done by hand, in Revit.
 
@@ -161,6 +161,11 @@ UI/TranslationText.cs             a snapshot of one distinct Russian text: count
 UI/NameScope.cs                   a set of names Revit keeps unique (views of one kind, types of one family…), for the clash check
 UI/TranslationRow.cs              a row of the "Translate" table: check box, original, translation, state
 UI/TranslateWindow.cs             the "Translate" window: one row per text, Export…/Import…, the dictionary, the clash check
+UI/WorksetCategoryInfo.cs         a snapshot of one category in one workset: movable ids, ids in model groups, locked ids
+UI/WorksetCategoryScan.cs         the result of reading a scope (the selection or the whole model) + what was left out
+UI/WorksetCategoryRow.cs          a row of the "Move to Workset" table: check box, workset, kind, category, state
+UI/MoveToWorksetWindow.cs         the "Move to Workset" window: the scope, the "Show" list, the table, the target workset;
+                                  takes UI/WorksetInfo.cs snapshots as the target list
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
@@ -228,6 +233,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project                                                                                                                                                                                                                                                                                                                                     | "Worksets"                 | `WorksetsCommand`                | shows every user workset of the project — what it holds, whether it is open, who owns it — and removes the checked ones in one batch. The question Revit's own dialog asks per workset is asked once for the whole batch, under the table: move the elements standing in them into another workset (`DeleteWorksetOption.MoveElementsToWorkset`) or delete them with it (`DeleteAllElements`). The worksets are checked out before the run; a closed workset is flagged rather than counted                                                                                                                                                                                                                              |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Parameter Sets"           | `ParameterSetCommand`            | applies a named bundle of shared parameters to the open project: for every parameter — instance/type, categories, parameter group, "varies across groups" — built once from a shared parameter file (`Application.OpenSharedParameterFile`) and kept in the Windows profile. Opening the window compares the set against the project by GUID: what is missing is bound (`BindingMap.Insert`), what is already bound but differs is brought in line with the saved settings (`BindingMap.ReInsert`) rather than duplicated |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Translate"                | `TranslateCommand`               | replaces the Russian typed into a project or template with English through one dictionary: every distinct text with Cyrillic in it is one row (with where it is used), and a translation replaces it in every place at once — element names (views, templates, sheets, schedules, families, types, materials, filters, levels, worksets…), text parameter values, schedule column headings, header cells and filter values, view filter rule strings, text notes — in one transaction. Translations come from the dictionary (`%AppData%\VladTools\translate\`), from a TAB-separated file ("Export…" for a translator or an AI, "Import…" back), or by hand; the window catches name clashes and forbidden characters first. What the API cannot change (shared parameter names, line styles, subcategories) is shown and reported, not skipped |
+| Project                                                                                                                                                                                                                                                                                                                                     | "Move to Workset"          | `MoveToWorksetCommand`           | finds elements standing in the wrong workset — above all model elements in Revit's own worksets (project standards, views, families), where an AI tool or a script left them — and moves the checked ones into one user workset by writing `ELEM_PARTITION_PARAM`, in one transaction. The table is one row per workset × category, over the current selection or the whole model; rows in Revit's own worksets come first and are checked. The elements are checked out first (held / out-of-date ones are named, not attempted), every one is read back after the commit, and "Select in model" selects the checked elements instead of moving them |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -1204,6 +1210,43 @@ single transaction.
   a header that states the format, the forbidden name characters and "keep the first column as it
   is". On import, Excel's quoting of a cell holding a quote is undone only when the field is wrapped
   in quotes **and** carries a doubled quote inside — a text that genuinely reads `"Ось"` has none.
+- **"Move to Workset" decides what is movable two different ways, depending on the workset an
+  element stands in — and the asymmetry is the safety of the button.** In a **user** workset the
+  test is Revit's own: `ELEM_PARTITION_PARAM` exists and is not `IsReadOnly` — what the Properties
+  palette goes by, and it leaves out on its own everything whose workset Revit decides (curtain
+  panels, nested parts, annotation belonging to a view). In **Revit's own** worksets
+  (`WorksetKind` other than `UserWorkset`) that test is not trusted alone: a project-standards
+  workset legitimately holds phases, materials, patterns, project information, a family workset the
+  `Family` itself, and those rows would be **checked by default** — so there an element counts only
+  if it stands in the model (`LocationPoint`/`LocationCurve` or a bounding box, not `ViewSpecific`).
+  There, too, a read-only parameter does not hide the element: it becomes a "locked" id, shown in
+  the row with no way to move it — "nothing found" would read as "the model is clean". Elements with
+  no category or an `Internal` one are never listed in either case. Do not widen the test in Revit's
+  own worksets without keeping the "stands in the model" guard.
+- **Elements inside a model group are never moved by "Move to Workset"**, only counted and
+  selectable. Changing one member of a group outside "Edit Group" is a group edit Revit may refuse
+  at commit, and a refusal at commit rolls back the whole transaction — every other row with it.
+- **The checkout comes first, and the out-of-date check comes with it.** `WorksharingUtils`'s own
+  remarks give the recipe: `CheckoutElements`, then confirm the elements are up to date
+  (`GetModelUpdatesStatus`). An element held by another user (`GetCheckoutStatus`, the owner's name
+  goes into the report) or changed in the central model since the last reload is taken out before the
+  transaction opens: left to the commit, either one fails the whole batch rather than itself. A
+  standards workset is no exception — whoever last edited the phases may still own it, and with it
+  every stray element inside. A `CheckoutElements` that throws (no central yet, the network) is a
+  note, not a stop. The target workset itself is **not** checked out: that would lock a whole
+  discipline's workset against colleagues for the sake of an edit Revit borrows per element anyway;
+  a target owned by someone else is flagged in the window instead.
+- **"Move to Workset" checks the result the same way "Accept Changes" does**: the commit status is
+  read (a rollback empties the success list and is reported as such), and every element is read back
+  — `element.WorksetId == target` — before it is counted as moved. `Parameter.Set` returning `true`
+  is not a move. Failures are grouped by their reason, with the categories, so a hundred ducts
+  refused for one reason are one report line.
+- **Its check box means "these elements", not "move these"**: it feeds both "Move" and "Select in
+  model", so it is never disabled — a row with nothing movable (all in groups, already in the target)
+  is still worth selecting to look at; what each checked row will actually do is in "State". Rows in
+  Revit's own worksets start checked on the whole model, every row on a selection — nothing is
+  deleted here, and both are exactly what the user came to do. "Only what is shown gets applied"
+  holds as everywhere: a row leaving the table through "Show" loses its check mark.
 
 ## Storing user settings
 

@@ -328,6 +328,28 @@ namespace VladTools
                     "window and the report rather than skipped in silence. Text inside loaded families is not touched.",
                 iconBaseName: "translate");
 
+            // ───────────────── Button 15: Move to Workset (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_MoveToWorkset",
+                text: "Move to\nWorkset",
+                commandType: typeof(MoveToWorksetCommand),
+                tooltip: "Finds elements standing in the wrong workset and moves them into the right one, by category.",
+                longDescription:
+                    "Elements end up where no element belongs — modelled by an AI tool or a script into one of\n" +
+                    "Revit's own worksets (project standards, views, families), or simply into the wrong\n" +
+                    "discipline's workset. Revit has no \"select everything in this workset\", so finding\n" +
+                    "them means clicking through the model.\n\n" +
+                    "The window lists the elements by the workset they stand in and their category. Elements in\n" +
+                    "Revit's own worksets come first and are checked from the start. Check the rows, pick the\n" +
+                    "workset they belong in and press \"Move\" — one operation, one Ctrl+Z.\n\n" +
+                    "With elements selected before pressing the button, the window works on the selection;\n" +
+                    "otherwise on the whole model. \"Select in model\" selects the checked elements instead, to\n" +
+                    "look at them first.\n\n" +
+                    "The elements are checked out for you; ones held by another user, or changed in the central\n" +
+                    "model since the last reload, are named in the report rather than failing the whole run.",
+                iconBaseName: "moveworkset");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

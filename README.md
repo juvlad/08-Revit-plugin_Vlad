@@ -952,6 +952,55 @@ notes (bold, italic, underline and all caps covering the whole note are kept).
 - **Save a copy of the template first.** Within the session one Ctrl+Z undoes the whole
   translation; once the file is saved, it does not.
 
+### Move to Workset (Project panel)
+
+Works **only in a project** (`.rvt`), and only in a workshared one. Finds elements standing in the
+wrong workset and moves them into the right one — in bulk, by category.
+
+What for: elements modelled by an AI tool or a script can land in one of Revit's own worksets — a
+duct whose Properties palette reads *Workset: Параметры стадий* (by its name, a project standards
+workset, where no model element belongs) — or simply in the wrong discipline's workset.
+Revit has no "select everything in this workset", so finding them all means clicking through the
+model element by element.
+
+**What the button does.**
+
+1. **The scope.** With elements selected before pressing the button, the window works on the
+   selection; with nothing selected, on the whole model. The radio buttons above the table switch
+   between the two.
+2. **The table** has one row per **workset × category**: *"Параметры стадий — Project standards —
+   Ducts — 85"*. Rows in **Revit's own worksets** (project standards, views, families) come first and
+   are **checked from the start** — those are elements that ended up where none belong. On the
+   whole model, rows in user worksets start unchecked; on a selection, everything starts checked.
+3. **"Show"** narrows the table: "Outside user worksets" (the default when there are any), "All
+   worksets", or one workset at a time. A row that leaves the table loses its check mark — only what
+   is shown gets moved.
+4. **"Move to workset"** — pick the workset the checked elements belong in (only user worksets are
+   offered; the active one is preselected). "State" spells out what each row will do, and the line at
+   the bottom adds it up.
+5. **"Move"** rewrites the workset of every checked element in one operation — one Ctrl+Z.
+   **"Select in model"** instead closes the window and selects the checked elements in Revit, to look
+   at them first; nothing is changed.
+
+**What is worth knowing.**
+
+- **What is not in the table is Revit's to decide**: types, views, annotation belonging to a view,
+  curtain panels and other parts of an element follow their owner. For a selection the window says
+  how many were left out for that reason.
+- **Elements inside model groups are not moved** — changing one instance of a group from outside
+  "Edit Group" is a group edit Revit may refuse, and that would cancel the whole batch. They are
+  counted in "State"; edit or ungroup the group.
+- **If Revit does not let an element in its own worksets change workset at all**, the row still
+  shows, with that said in "State", rather than the table pretending the model is clean.
+- **The elements are checked out for you.** Ones held by another user, or changed in the central
+  model since your last reload, are left out and named in the report — "Reload Latest", or ask the
+  owner to synchronise and relinquish them, then run again.
+- **Every element is read back after the move**, and the report counts only the ones really
+  standing in the new workset.
+- **Closed worksets are not looked into** — what stands in them cannot be seen; the window lists
+  them. A target workset that is closed is marked in the list: elements moved into it disappear
+  from view.
+
 ## Structure
 
 ```
@@ -975,6 +1024,7 @@ src/VladTools/
     ParameterSetCommand.cs            logic for the "Parameter Sets" button (project)
     WorksetsCommand.cs                logic for the "Worksets" button (project)
     TranslateCommand.cs               logic for the "Translate" button (project)
+    MoveToWorksetCommand.cs           logic for the "Move to Workset" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1026,6 +1076,7 @@ src/VladTools/
     WorksetsWindow.cs                the "Worksets" window: the project's worksets and the question about their contents
     ProjectWorksetRow.cs             a row of that table (check box, contents, state)
     WorksetInfo.cs                   a snapshot of one user workset: GUID, name, contents, owner, open/active
+                                     (also the target list of "Move to Workset")
     WorksetElementAction.cs          what happens to the elements in a removed workset (move or delete)
     ParameterGroupInfo.cs            a snapshot of one parameter group, for the "Group" column
     ParameterStatusInfo.cs           what the command found comparing a row against the open project
@@ -1033,6 +1084,10 @@ src/VladTools/
     TranslationRow.cs                a row of that table (check box, original, translation, state)
     TranslationText.cs               a snapshot of one distinct text and where it is used
     NameScope.cs                     a set of names Revit keeps unique, for the clash check
+    MoveToWorksetWindow.cs           the "Move to Workset" window: the scope, the workset × category table, the target
+    WorksetCategoryRow.cs            a row of that table (check box, workset, kind, category, state)
+    WorksetCategoryInfo.cs           a snapshot of one category in one workset: movable, in groups, locked
+    WorksetCategoryScan.cs           the result of reading a scope (the selection or the whole model)
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     Icons.cs                     loading icons from the assembly's resources

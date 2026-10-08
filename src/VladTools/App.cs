@@ -350,6 +350,29 @@ namespace VladTools
                     "model since the last reload, are named in the report rather than failing the whole run.",
                 iconBaseName: "moveworkset");
 
+            // ───────────────── Button 16: Excel (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_ExcelSchedule",
+                text: "Excel",
+                commandType: typeof(ExcelScheduleCommand),
+                tooltip: "Exports schedules to Excel, and imports values edited in Excel back into a schedule.",
+                longDescription:
+                    "The button asks which way.\n\n" +
+                    "Export: check one or more schedules — each becomes a sheet of one Excel workbook, every value\n" +
+                    "exactly as the schedule shows it. The sheet can look like the schedule (title, headings, group\n" +
+                    "lines, totals) or be a plain table with filter buttons, for editing.\n\n" +
+                    "Import: pick a workbook and the schedule it goes into. The window shows the schedule with every\n" +
+                    "value the sheet changes highlighted — yellow: it will be written; red: it cannot be, and the\n" +
+                    "cell says why (a calculated column, a read-only parameter, an element in a model group…).\n" +
+                    "Nothing is written until \"Import\" is pressed; then everything goes in as one operation, one Ctrl+Z,\n" +
+                    "and the changed rows are selected in the schedule.\n\n" +
+                    "Rows are paired by the elements they were exported with — sorting the sheet in Excel does no\n" +
+                    "harm — or, for a file from elsewhere, by a key column (a mark, a number) or simply by order.\n" +
+                    "An instance parameter goes to every element of a row, a type parameter to their type —\n" +
+                    "the same as typing into the schedule in Revit. The import never creates or deletes elements.",
+                iconBaseName: "excel");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

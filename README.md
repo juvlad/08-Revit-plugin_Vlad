@@ -1001,6 +1001,77 @@ model element by element.
   them. A target workset that is closed is marked in the list: elements moved into it disappear
   from view.
 
+### Excel (Project panel)
+
+Works **only in a project** (`.rvt`, and a template `.rte`). Exports schedules to Excel, and
+brings values edited in Excel back into a schedule — the pair ModPlus calls "Export to Excel" and
+"Excel to Schedule". The button first asks which way.
+
+**Export.**
+
+1. **Check the schedules** to export; the one open on screen is checked already. "Find" only
+   finds a schedule — check marks out of sight stay.
+2. **Pick the layout of the sheet:**
+   - *As in Revit* — the title, the headings, group lines, subtotals and the grand total, the way
+     the schedule draws them;
+   - *Plain table* — one heading line and one line per schedule row, with filter buttons on the
+     headings. This is the form for editing in Excel.
+3. **"Export…"** asks where to save. Every checked schedule becomes a sheet of one workbook, and
+   the file opens in Excel straight away (a box below the list turns that off).
+
+**Import.**
+
+1. **Pick the workbook** (`.xlsx` or `.xlsm`; an old `.xls` has to be saved as `.xlsx` first). It
+   may stay open in Excel.
+2. **Pick the sheet and the schedule** it goes into. For a sheet this button exported, the
+   schedule is picked for you: the one it came from.
+3. **Pick how the rows are paired:**
+   - *By element (from the export)* — every line of an exported sheet remembers which elements it
+     stands for, so sorting or filtering the sheet in Excel does no harm. The default for such a file;
+   - *By a key column* — by a value that tells the rows apart: a mark, a room number, a sheet
+     number. For a sheet that came from somewhere else;
+   - *By row order* — the first line of data to the first row, the second to the second, as ModPlus
+     does it. "First data row" says where the data starts; the line above it is read as the headings.
+4. **Check the columns.** They are found by what they show and by their headings; the drop-down
+   under each heading picks the sheet column feeding it, or "(not imported)".
+5. **Look at the table.** It shows the schedule as it is, with every value the sheet changes
+   highlighted: **yellow** — it will be written; **red** — it cannot be; **blue** — the key the rows
+   are paired by. Hover a cell for the old value and, on a red one, the reason. "Show" narrows the
+   table to the rows with changes (the default), the ones that cannot be written, or the lines that
+   were not paired. A row's check box keeps it out of the import.
+6. **"Import"** writes the checked rows in one operation — one Ctrl+Z. Then the schedule opens with
+   the changed rows selected, so Revit highlights them (a box next to the button turns that off).
+
+**What is worth knowing.**
+
+- **The export writes every value exactly as the schedule shows it, as text**: "1 200", "001",
+  "12,50 m²" stay as they are, whatever the language of Excel. Don't delete the hidden column A,
+  the hidden first row or the hidden "VladTools" sheet if the file is to be imported back — that is
+  where each line keeps its elements and each column what it shows.
+- **What an import writes is what typing into the schedule in Revit would write**: an instance
+  parameter goes to every element of the row (a grouped row — "Itemize every instance" off — stands
+  for all of them), a type parameter to the type, and with it to every element of that type. The
+  tooltip says how many other rows of the schedule show the same type.
+- **A change is a change of value, not of text.** "1200" typed over "1 200 mm" is the same length
+  and is left alone; a number in a cell is taken in the unit the column shows — 12.5 under "m²" is
+  12.5 m².
+- **What cannot be written is shown red, with the reason**: calculated columns, "Count", combined
+  parameters, room / project information / material columns, read-only parameters (an area, "Family
+  and Type"), a choice of another element (a type, a level, a material), a total on a grouped row,
+  an element inside a model group whose parameter does not vary by group instance, and two lines
+  giving one element or one type different values.
+- **An empty cell leaves the value as it is.** "Empty cells clear values" makes it clear the value
+  instead — text parameters only; a number cannot be emptied.
+- **The import never creates or deletes elements.** A line typed into the sheet by hand has no
+  element behind it and is skipped, with a note.
+- **Elements are checked out for you.** Ones held by another user, or changed in the central model
+  since your last reload, are left out and named in the report.
+- **Every value is read back after the import**, and the report counts only the ones really there.
+- **Reading a schedule takes a moment on a large one.** Revit does not say which elements stand in
+  which row, so the button asks the schedule itself — through a temporary hidden column, in an
+  operation that is rolled back at once. The model is not changed by it, and nothing appears in Undo.
+- **Rows of elements from linked models** are exported, but cannot be written into.
+
 ## Structure
 
 ```
@@ -1025,6 +1096,7 @@ src/VladTools/
     WorksetsCommand.cs                logic for the "Worksets" button (project)
     TranslateCommand.cs               logic for the "Translate" button (project)
     MoveToWorksetCommand.cs           logic for the "Move to Workset" button (project)
+    ExcelScheduleCommand.cs           logic for the "Excel" button (project): export and import
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1088,6 +1160,10 @@ src/VladTools/
     WorksetCategoryRow.cs            a row of that table (check box, workset, kind, category, state)
     WorksetCategoryInfo.cs           a snapshot of one category in one workset: movable, in groups, locked
     WorksetCategoryScan.cs           the result of reading a scope (the selection or the whole model)
+    ExcelExportWindow.cs             the "Export to Excel" window: the schedules, the layout of the sheet
+    ExcelScheduleRow.cs              a row of that list (check box + schedule)
+    ExcelImportWindow.cs             the "Import from Excel" window: sheet → schedule, pairing, the highlighted preview
+    ExcelImportPreview.cs            what that window shows: the request, columns, rows and cells with their state
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     Icons.cs                     loading icons from the assembly's resources
@@ -1126,6 +1202,11 @@ src/VladTools/
     TextSiteCollector.cs         finds every place with Cyrillic text in the open project
     TranslationDictionary.cs     the translation dictionary and the export/import file format (%AppData%)
     TranslatePreferences.cs      the "Translate" window settings (%AppData%)
+    Xlsx.cs                      writing and reading .xlsx files (no third-party libraries)
+    ScheduleTable.cs             a schedule's columns and rows, and which elements stand in each row
+    ScheduleWorkbook.cs          how a schedule sits on an Excel sheet, both ways
+    ScheduleImport.cs            comparing a sheet with a schedule: what would change, and why not
+    ExcelPreferences.cs          the "Excel" button settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

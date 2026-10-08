@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — eleven buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — twelve buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). There is no test
 project — checking is done by hand, in Revit.
 
@@ -166,6 +166,12 @@ UI/WorksetCategoryScan.cs         the result of reading a scope (the selection o
 UI/WorksetCategoryRow.cs          a row of the "Move to Workset" table: check box, workset, kind, category, state
 UI/MoveToWorksetWindow.cs         the "Move to Workset" window: the scope, the "Show" list, the table, the target workset;
                                   takes UI/WorksetInfo.cs snapshots as the target list
+UI/ExcelScheduleRow.cs            a row of the "Export to Excel" list: a ScheduleInfo + its check box
+UI/ExcelExportWindow.cs           the "Export to Excel" window: the schedules, the layout of the sheet, open when done
+UI/ExcelImportPreview.cs          the import window's data: ExcelImportRequest (what the window asks for), the preview,
+                                  its columns, rows and cells with an ExcelCellState each — plain DTOs, no Revit types
+UI/ExcelImportWindow.cs           the "Import from Excel" window: sheet → schedule, how rows are paired, a source-column
+                                  drop-down under every heading, the highlighted preview; previews come from a call-back
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
@@ -211,6 +217,17 @@ Infrastructure/TextSiteCollector.cs  finds every TextSite with Cyrillic in the o
 Infrastructure/TranslationDictionary.cs  the dictionary (%AppData%\VladTools\translate\dictionary.txt) and the
                                   TAB-separated export/import format; also Normalize and HasCyrillic for both sides
 Infrastructure/TranslatePreferences.cs  the "Translate" window settings (%AppData%\VladTools\translate\_settings.txt)
+Infrastructure/Xlsx.cs            writing and reading .xlsx with the framework's zip + XML only: XlsxSheet/XlsxWriter out,
+                                  XlsxReader → XlsxReadSheet/XlsxValue back (shared strings, numbers, dates, strict namespaces)
+Infrastructure/ScheduleTable.cs   a schedule read out of Revit: ScheduleColumn (what a column shows, whether it may be
+                                  written), ScheduleDataRow (texts + the elements behind the row), the rows as drawn;
+                                  the row → elements probe lives here (see "Key decisions")
+Infrastructure/ScheduleWorkbook.cs  how a schedule sits on a sheet, both ways: the export layout (hidden key row/column,
+                                  the hidden "VladTools" sheet) and ExcelSheetSource — a sheet as the import reads it
+Infrastructure/ScheduleImport.cs  ScheduleImportPlanner: pairs sheet lines with schedule rows and judges every cell →
+                                  ScheduleImportPlan (the preview + PlannedWrites); ScheduleValues — finding a column's
+                                  parameter on an element or its type, parsing/comparing a value in the column's units
+Infrastructure/ExcelPreferences.cs  the "Excel" button settings (%AppData%\VladTools\excel\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -234,6 +251,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project                                                                                                                                                                                                                                                                                                                                     | "Parameter Sets"           | `ParameterSetCommand`            | applies a named bundle of shared parameters to the open project: for every parameter — instance/type, categories, parameter group, "varies across groups" — built once from a shared parameter file (`Application.OpenSharedParameterFile`) and kept in the Windows profile. Opening the window compares the set against the project by GUID: what is missing is bound (`BindingMap.Insert`), what is already bound but differs is brought in line with the saved settings (`BindingMap.ReInsert`) rather than duplicated |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Translate"                | `TranslateCommand`               | replaces the Russian typed into a project or template with English through one dictionary: every distinct text with Cyrillic in it is one row (with where it is used), and a translation replaces it in every place at once — element names (views, templates, sheets, schedules, families, types, materials, filters, levels, worksets…), text parameter values, schedule column headings, header cells and filter values, view filter rule strings, text notes — in one transaction. Translations come from the dictionary (`%AppData%\VladTools\translate\`), from a TAB-separated file ("Export…" for a translator or an AI, "Import…" back), or by hand; the window catches name clashes and forbidden characters first. What the API cannot change (shared parameter names, line styles, subcategories) is shown and reported, not skipped |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Move to Workset"          | `MoveToWorksetCommand`           | finds elements standing in the wrong workset — above all model elements in Revit's own worksets (project standards, views, families), where an AI tool or a script left them — and moves the checked ones into one user workset by writing `ELEM_PARTITION_PARAM`, in one transaction. The table is one row per workset × category, over the current selection or the whole model; rows in Revit's own worksets come first and are checked. The elements are checked out first (held / out-of-date ones are named, not attempted), every one is read back after the commit, and "Select in model" selects the checked elements instead of moving them |
+| Project | "Excel" | `ExcelScheduleCommand` | asks which way (a `TaskDialog` with two command links). **Export**: the checked schedules into one .xlsx, a sheet each, every value as text exactly as the schedule shows it — laid out "as in Revit" (title, headings, group lines, totals) or as a plain table with filters; every element row carries a hidden key to its elements. **Import**: a sheet of a workbook into a schedule — rows paired by those elements, by a key column or by order (the ModPlus way); a preview with every changed cell highlighted (yellow — will be written, red — cannot be, with the reason); the checked rows are written into the elements' parameters (instance → every element of the row, type → the type) in one transaction, read back, and the changed rows selected in the opened schedule |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -282,6 +300,16 @@ whole run still undoes with one Ctrl+Z. On top of that, two phases run **before*
 the checkout and the step off the active workset (see "Key decisions"). Do not fold this back into a
 single transaction.
 
+**Exception — `ExcelScheduleCommand`, steps 3–4.** One button, two directions: before any window a
+`TaskDialog` with two command links asks "Export to Excel" or "Import from Excel". The import's data
+snapshot is not taken once before the window: the window asks for a preview through a
+`Func<ExcelImportRequest, ExcelImportPreview>` every time the sheet, the schedule or the pairing
+changes, and the command's side of that call-back reads the schedule (a transaction of its own, always
+rolled back — see "Key decisions") while the modal window is open, caching it per schedule. What the
+window hands back is the preview the user confirmed; the command keeps the `ScheduleImportPlan` behind
+each preview in a dictionary and writes from that. Steps 5–8 are as usual, plus a read-back after the
+commit. The export has no transaction at all — only the rolled-back reads.
+
 ## Key decisions
 
 - **The target framework depends on the Revit year.** Revit 2022 and 2024 are `.NET Framework 4.8`, Revit 2025 is `.NET 8` (Revit 2025's `RevitAPI.runtimeconfig.json` says `tfm net8.0` +
@@ -293,7 +321,8 @@ single transaction.
   references to different `RevitAPI.dll` copies in one build. This is also why `UseWPF=true` is
   used on net8.0-windows instead of explicit references to `PresentationCore`/`PresentationFramework`/
   `WindowsBase`/`System.Xaml` (those only matter for net48 — on net8 such references do not resolve
-  by name) and `MSBuildWarningsAsMessages=MSB3277`: `RevitAPI.dll` drags in about fifty neighbouring
+  by name; the same goes for `System.IO.Compression`, the zip behind .xlsx, referenced on net48 only
+  because net8 has it in the base library) and `MSBuildWarningsAsMessages=MSB3277`: `RevitAPI.dll` drags in about fifty neighbouring
   Revit DLLs with their own versions of `System.Drawing` and the like, and without this line the
   real warnings are lost behind the MSB3277 wall. `AppendTargetFrameworkToOutputPath=false` matters
   even more here: without it 2025's output would land in `bin\R2025\Release\net8.0-windows\`, and
@@ -1247,6 +1276,89 @@ single transaction.
   Revit's own worksets start checked on the whole model, every row on a selection — nothing is
   deleted here, and both are exactly what the user came to do. "Only what is shown gets applied"
   holds as everywhere: a row leaving the table through "Show" loses its check mark.
+- **.xlsx is written and read by our own code** (`Infrastructure/Xlsx.cs`: `System.IO.Compression`
+  + `System.Xml`), not by a library such as ClosedXML or EPPlus — the same reasoning as the JSON
+  parser: the add-in lives in Revit's process, where every extra assembly is one more way to fail to
+  load or to clash with another add-in's copy of it. The writer needs only text cells, five styles,
+  widths, a frozen pane, merges, a filter and hidden rows/columns/sheets; the reader takes what Excel
+  actually saves (shared strings, numbers, booleans, formula results, dates told apart by the number
+  format, the "strict" namespaces). Checked against real Excel: a written file opens without a repair
+  prompt with every feature intact, and a file re-saved by Excel reads back the same. Old binary
+  `.xls` is refused with a "save it as .xlsx" message rather than half-read.
+- **The Revit API has no "elements of a schedule row" — the rows are asked, in a transaction that is
+  always rolled back** (`ScheduleTable.Probe`). `TableSectionData` gives texts only (confirmed in
+  RevitAPI.xml 2022/2024/2025). Inside the throwaway transaction: headers, group headers/footers,
+  blank lines and the grand total are turned off; the sorting/grouping fields are unhidden; a
+  temporary text parameter is bound to the schedule's categories (created in a throwaway shared
+  parameter file — the same `SharedParametersFilename` swap as "Parameter Sets", put back in a
+  `finally`); every element of `FilteredElementCollector(doc, schedule.Id)` gets a key of its own in
+  it; the parameter is added as a column; and each row reads back which key it shows. With
+  `SetClearAfterRollback(true)` nothing of it surfaces, and nothing reaches the undo list.
+  `ViewSchedule.RefreshData()` is called before every read — the definition was just changed.
+  **Rejected: `TableSectionData.RemoveRow` per row** (deleting a row deletes its elements, then
+  rolling back) — it is one sub-transaction per row, a host's deletion takes hosted elements in other
+  rows with it, and a group member may refuse to be deleted at all. **Two traps the probe guards
+  against:** copies of a model group share a parameter's value unless it varies by group instance —
+  so the key parameter is set to vary (`SetAllowVaryBetweenGroups`), and every key is read back and
+  dropped if it is not on exactly its own element; and a grouped row ("Itemize every instance" off)
+  shows a key only when it holds one element — so the schedule is itemized for a moment, and each
+  itemized row is put back into the grouped row carrying the same sorting/grouping values, which is
+  exactly Revit's own rule for folding rows. When the two lists line up run for run, order settles
+  it; otherwise values are matched, and a grouped row whose values repeat is left untied rather than
+  guessed. A row that cannot be tied (linked elements, a category that takes no project parameter)
+  keeps its texts and says why — it is exported but never written into. If no transaction can be
+  opened at all, the rows are read as drawn, all untied: still enough to export.
+- **The export writes text, exactly as the schedule shows it, into text-formatted cells (`@`).**
+  ModPlus does the same and for the same reason: turning "1 200" or "001" into numbers depends on the
+  reader's locale and loses leading zeros — and the import compares what comes back with what the
+  schedule shows, for which text is the one form that survives unchanged.
+- **Every exported line carries a key to its elements, in the line itself.** Hidden column A holds a
+  short row key ("R12"); the hidden "VladTools" sheet maps it to the elements' UniqueIds (split into
+  30 000-character pieces — a grouped row can stand for thousands of elements, more than a cell
+  holds). The key travels *in the row*, so sorting or filtering the sheet in Excel cannot detach a
+  line from its elements; the filter range therefore starts at column A. Hidden row 1 holds what each
+  column shows (`ScheduleColumn.Key`: the field kind plus `BIP:` name / shared `GUID:` / project
+  `NAME:`), so the import finds a column again after its heading was edited, the columns were moved,
+  or the sheet is imported into another schedule or another project. UniqueIds, not ElementIds: a
+  file may well come back to a different copy of the model.
+- **"As in Revit" is the drawn body lined up against the probed rows, or nothing.** The element rows
+  read the same in both (the same fields, the same formatting) and in the same order; headings, group
+  lines and totals are the lines in between. If the alignment does not reach the end, that schedule
+  is written as a plain table and the report says so — never with keys guessed onto the wrong lines.
+- **An import change is a change of value, not of text** (`ScheduleValues.SameValue`). A number is
+  parsed through `UnitFormatUtils.TryParse` with the column's own `FormatOptions`, formatted back the
+  same way and compared with what the schedule shows: "1200" typed over "1 200 mm" is the same, and
+  rewriting it would round off whatever the display hid. A number cell from Excel is taken in the
+  column's display unit (12.5 under "m²" is 12.5 m²) and converted to internal units. Yes/No accepts
+  yes/no/да/нет/1/0/true/false.
+- **What an import may write is what typing into the schedule in Revit may write**: `Instance` and
+  `ElementType` fields only — never calculated, count, combined, room, project-information, material
+  or link columns (`ScheduleTable.ReadOnlyReason`). **Trap:** per RevitAPI.xml a shared parameter
+  bound *per type* still comes to a schedule as an `Instance` field, so a parameter missing on the
+  element is looked for on its type (`ScheduleValues.Find`). An instance parameter goes to every
+  element of a grouped row; a type parameter to the distinct types. Refused per cell, with the reason
+  in its tooltip: a read-only parameter, a choice of another element (`StorageType.ElementId`), a
+  total over a grouped row (`DisplayType != Standard` and more than one element), an element in a
+  model group whose parameter does not vary by group instance (left to the commit, that would roll
+  back the whole batch), and two lines giving one element or type different values — neither is
+  written then. A type parameter changed on one line while other lines of that type still show the
+  old value is **not** a conflict: that is how editing a type in a Revit schedule works, and the
+  tooltip counts the other rows instead.
+- **An empty cell leaves a value alone unless "Empty cells clear values" is on** (off by default, and
+  never for numbers): an empty cell is far more often a column nobody filled in than a deliberate
+  deletion. The import never creates or deletes elements — a line with no element behind it is
+  skipped with a note.
+- **Pairing by elements takes the row standing for exactly the line's elements first**, then the one
+  row holding any of them (the grouping may have shifted since the export — the row says so). A line
+  whose elements now stand in several rows is left unpaired, never guessed. Rows standing for the same
+  elements — a material takeoff lists an element once per material — are taken in turn.
+- **Writing follows "Move to Workset" and "Accept Changes"**: the targets are checked out first
+  (held / out-of-date ones named, not attempted); values go in in passes, like renames (a sheet
+  number still held by the sheet about to give it up goes through in the next pass); the commit
+  status is checked; and every value is read back (`ScheduleValues.Holds`) before it is counted.
+- **"The changed data highlighted" in Revit itself is the selection**: after the import the schedule
+  becomes the active view (`UIDocument.ActiveView`, outside any transaction) and the changed rows'
+  elements are selected — Revit highlights a selected element's row in a schedule.
 
 ## Storing user settings
 
@@ -1395,6 +1507,14 @@ UTF-8 one.
 `translate\_settings.txt` — that window's settings: `KEY = value` — `FOLDER` (the folder the last
 export or import went through).
 
+`excel\_settings.txt` — the "Excel" button's settings, and the only thing in `excel\`: the button
+keeps no data of its own (an exported workbook carries its own bookkeeping, on its hidden sheet).
+`KEY = value` — `FOLDER` (the folder of the last export or import), `LAYOUT` (`AsInRevit` /
+`PlainTable`), `OPEN_AFTER`, `EMPTY_CLEARS` (default `0` — see "Key decisions") and `SELECT_AFTER`
+(`1`/`0`). Rewritten whenever one of the button's windows closes. Reading a schedule also writes a
+throwaway shared parameter file, `%TEMP%\VladTools-rowkey-<guid>.txt`, deleted again in a `finally`
+— it is not a setting and never outlives the read.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -1410,12 +1530,14 @@ export or import went through).
   checks everything applicable right away, because that is exactly what it is asked to do (see
   "Key decisions") — except its own deletions, which stay unchecked behind a box of their own, and
   that is the same rule holding inside a button that mostly does not delete. The second rule — "only what is shown gets applied" — holds wherever the filter
-  **is** the selection: a row that leaves the table through it loses its check mark. Two
-  exceptions, both search boxes that only ever *find*: `CategoryPickerWindow` (check "Walls", type
-  "door" to reach the next one, and the box out of sight stays checked) and `TranslateWindow`, whose
-  search box and "Show" list find a row among hundreds of texts without touching any other row's
-  check mark — its confirmation says how many of the rows going in are out of sight. Adding a filter
-  that selects for the user means the rule comes back with it.
+  **is** the selection: a row that leaves the table through it loses its check mark. The
+  exceptions are search boxes and lists that only ever *find*: `CategoryPickerWindow` (check "Walls", type
+  "door" to reach the next one, and the box out of sight stays checked), `ExcelExportWindow` (the
+  same, over schedules), and `TranslateWindow` and `ExcelImportWindow`, whose search box and "Show"
+  list find a row among hundreds without touching any other row's check mark — looking at the rows
+  that cannot be written must not uncheck the ones that can. Both confirmations say how many of the
+  rows going in are out of sight. Adding a filter that selects for the user means the rule comes
+  back with it.
 - **Name a WPF binding path with `nameof`, never a bare string**, and never rely on
   `GridBuilder.CheckBoxTemplate()`'s default path for a row whose flag is not called `IsSelected`.
   A binding to a property that does not exist fails **silently**: an unbound `IsChecked` still ticks
@@ -1462,6 +1584,13 @@ in Revit 2025 the `BuiltInParameterGroup` type itself is removed entirely; this 
 compile error on the move to 2025 — replaced with `Definition.GetGroupTypeId()` +
 `LabelUtils.GetLabelForGroup(ForgeTypeId)`, present and not deprecated in all three years.
 `new ElementId(BuiltInCategory)` — **confirmed not deprecated** in any version, no need to touch it.
+`ScheduleFieldType` gained `CustomField`, `HostCount`, `Revision`, `Sheets` and `Views` in 2024 — so
+`ScheduleTable.ReadOnlyReason` names only the members present in 2022 and sends every other one to
+its `default` branch (read-only); a 2024-only member in a `case` would not compile for 2022. Every
+other API the "Excel" button uses (`ViewSchedule.RefreshData`, `UnitFormatUtils.TryParse` with
+`ValueParsingOptions`, `ExternalDefinitionCreationOptions(string, ForgeTypeId)`,
+`BindingMap.Insert(Definition, Binding)`, `ScheduleField.GetSpecTypeId`/`DisplayType`) was checked
+against RevitAPI.xml of all three years — present in each, with the same signature.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

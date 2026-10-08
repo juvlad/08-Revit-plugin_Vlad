@@ -54,6 +54,8 @@
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
+    <!-- ZipArchive для .xlsx (кнопка «Excel»): на net8 он в базовой библиотеке, на net48 — отдельная сборка фреймворка. -->
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
 
   <!-- Иконки лежат внутри DLL: разворачивать нужно только один файл. -->

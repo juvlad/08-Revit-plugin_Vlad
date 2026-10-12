@@ -617,10 +617,15 @@ commit. The export has no transaction at all — only the rolled-back reads.
 - **Revit itself says where the open model lives — the cloud included.** For a workshared model
   the **central** model's path is taken (`GetWorksharingCentralModelPath`), not the local copy's:
   the discipline folders sit next to the central model. A cloud model has
-  `Document.GetCloudFolderId` — exactly the id Data Management knows the folder by (confirmed by
-  reflection: present in 2022, 2024 and 2025), and the project id is assembled from the cloud
-  path's GUID with a `b.` prefix. So neither the hub nor the project has to be searched for — the
-  kit is assembled straight from the model's folder. Nothing came of it (the project has never been
+  `Document.GetCloudFolderId` — exactly the id Data Management knows the folder by — and
+  `Document.GetProjectId` for the project (both `<since>2022</since>` in RevitAPI.xml, present in all
+  three years). So neither the hub nor the project has to be searched for — the kit is assembled
+  straight from the model's folder. **Trap:** the project id must not be assembled as `b.` + the
+  cloud path's `GetProjectGUID()`: that GUID is the cloud-worksharing one, not necessarily the
+  BIM360/ACC project's own, and on an EMEA project every folder request came back 404 — the kit and
+  the base-file guess both read nothing. The path GUID stays only as a fallback when `GetProjectId`
+  throws (`LinkCatalog.DataManagementProject`); the GUID *pair* of the path is still what a link is
+  made from — that is a different id space from Data Management's. Nothing came of it (the project has never been
   saved, or is open detached) is not a bug — the window will ask for the folder through buttons and
   the building through a field.
 - **`ModelStore` is a third view of the same stores, and it is not a duplicate of the first two.**

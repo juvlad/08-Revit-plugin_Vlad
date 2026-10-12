@@ -166,9 +166,9 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// The same, given a project id alone. It is also assembled from the GUID of the open cloud
-        /// model (<see cref="ProjectId"/>) when the project is known but the hub is not: there is no
-        /// point in walking the whole storeroom just for the hub name.
+        /// The same, given a project id alone. For the open cloud model Revit reports the project id
+        /// itself (<c>Document.GetProjectId</c>) while the hub is not known: there is no point in
+        /// walking the whole storeroom just for the hub name.
         /// </summary>
         public static IReadOnlyList<AccEntry> Contents(string token, string projectId, string folderId)
         {
@@ -234,9 +234,10 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// The Data Management project id from the project GUID of a Revit cloud path: in BIM360/ACC it
-        /// is the same GUID with a "b." prefix. It checks itself — with a wrong id the service refuses,
-        /// and the button offers picking the folder by hand.
+        /// A Data Management project id in its full form, with the "b." prefix BIM360/ACC ids carry.
+        /// Takes what <c>Document.GetProjectId</c> returns, prefixed or not. A cloud path's project GUID
+        /// is only a last-resort guess here: it is the cloud-worksharing GUID, not necessarily the
+        /// project's own id, and with a wrong id the service answers 404.
         /// </summary>
         public static string ProjectId(string projectGuid)
         {

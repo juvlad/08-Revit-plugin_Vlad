@@ -134,7 +134,7 @@ namespace VladTools.Infrastructure
             {
                 var folderId = doc.GetCloudFolderId(false);
                 if (!string.IsNullOrEmpty(folderId))
-                    folder = ModelFolder.ForCloud(path.Region, AccClient.ProjectId(project), folderId, string.Empty);
+                    folder = ModelFolder.ForCloud(path.Region, DataManagementProject(doc, project), folderId, string.Empty);
             }
             catch (Exception)
             {
@@ -142,6 +142,29 @@ namespace VladTools.Infrastructure
             }
 
             return new HostModel(entry, folder, doc.Title);
+        }
+
+        /// <summary>
+        /// The Data Management project id, asked of Revit rather than assembled from the cloud path.
+        /// The path's project GUID is the cloud-worksharing one, and it need not be the BIM360/ACC
+        /// project's own: "b." plus it was answered with a 404 on every folder of an EMEA project, so the
+        /// "Building Kit" and the base-file guess both read nothing.
+        /// </summary>
+        private static string DataManagementProject(Document doc, string pathGuid)
+        {
+            try
+            {
+                var id = doc.GetProjectId();
+                if (!string.IsNullOrEmpty(id))
+                    return AccClient.ProjectId(id);
+            }
+            catch (Exception)
+            {
+                // Revit could not reach the service. The path's GUID is the last guess: it holds on some
+                // projects, and where it does not, the folder read says so and the folder is given by hand.
+            }
+
+            return AccClient.ProjectId(pathGuid);
         }
 
         /// <summary>The central model path, or the file's own path when there is none.</summary>

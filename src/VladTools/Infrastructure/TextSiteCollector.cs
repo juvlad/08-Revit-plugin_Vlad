@@ -595,7 +595,8 @@ namespace VladTools.Infrastructure
             }
         }
 
-        private static string ViewKind(View view)
+        /// <summary>A view's kind in plain English, the same in every Revit language. Also the "Sheets" button's word for a placed view.</summary>
+        internal static string ViewKind(View view)
         {
             switch (view.ViewType)
             {

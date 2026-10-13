@@ -73,6 +73,13 @@ namespace VladTools.Infrastructure
         /// <summary>The range the filter buttons sit on, headings row first; null for none.</summary>
         public XlsxRange? AutoFilter { get; set; }
 
+        /// <summary>
+        /// Excel's row grouping — the +/− buttons in the margin: a row's outline level, 1 to 7; a row
+        /// not listed is level 0, outside every group. Each group's button sits on the line above it,
+        /// a heading over its contents — Excel's default, below, is for a total under its rows.
+        /// </summary>
+        public Dictionary<int, int> OutlineLevels { get; } = new Dictionary<int, int>();
+
         public IEnumerable<KeyValuePair<int, SortedDictionary<int, KeyValuePair<string, XlsxStyle>>>> Rows => _rows;
 
         public int LastRow => _rows.Count == 0 ? -1 : _rows.Keys.Max();
@@ -393,6 +400,17 @@ namespace VladTools.Infrastructure
             writer.WriteStartElement("worksheet", MainNs);
             writer.WriteAttributeString("xmlns", "r", null, RelationshipNs);
 
+            var outline = sheet.OutlineLevels.Where(entry => entry.Value > 0).ToDictionary(entry => entry.Key, entry => Math.Min(entry.Value, 7));
+
+            if (outline.Count > 0)
+            {
+                writer.WriteStartElement("sheetPr", MainNs);
+                writer.WriteStartElement("outlinePr", MainNs);
+                writer.WriteAttributeString("summaryBelow", "0");
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+            }
+
             writer.WriteStartElement("sheetViews", MainNs);
             writer.WriteStartElement("sheetView", MainNs);
             if (selected)
@@ -418,6 +436,8 @@ namespace VladTools.Infrastructure
 
             writer.WriteStartElement("sheetFormatPr", MainNs);
             writer.WriteAttributeString("defaultRowHeight", "15");
+            if (outline.Count > 0)
+                writer.WriteAttributeString("outlineLevelRow", outline.Values.Max().ToString(CultureInfo.InvariantCulture));
             writer.WriteEndElement();
 
             var columns = sheet.ColumnWidths.Keys.Union(sheet.HiddenColumns).OrderBy(column => column).ToList();
@@ -450,6 +470,8 @@ namespace VladTools.Infrastructure
                 writer.WriteAttributeString("r", (row + 1).ToString(CultureInfo.InvariantCulture));
                 if (sheet.HiddenRows.Contains(row))
                     writer.WriteAttributeString("hidden", "1");
+                if (outline.TryGetValue(row, out var level))
+                    writer.WriteAttributeString("outlineLevel", level.ToString(CultureInfo.InvariantCulture));
 
                 if (cellsByRow.TryGetValue(row, out var cells))
                 {

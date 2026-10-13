@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — twelve buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — thirteen buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). There is no test
 project — checking is done by hand, in Revit.
 
@@ -172,6 +172,9 @@ UI/ExcelImportPreview.cs          the import window's data: ExcelImportRequest (
                                   its columns, rows and cells with an ExcelCellState each — plain DTOs, no Revit types
 UI/ExcelImportWindow.cs           the "Import from Excel" window: sheet → schedule, how rows are paired, a source-column
                                   drop-down under every heading, the highlighted preview; previews come from a call-back
+UI/SheetInfo.cs                   a snapshot of one sheet: number, name, its Project Browser folders, one line per thing placed
+UI/SheetListRow.cs                a line of the "Sheets" table: a browser folder (foldable, with a sheet count) or a sheet
+UI/SheetsWindow.cs                the "Sheets" window: the browser's folder tree laid flat, Find, Open sheet, Export to Excel
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
@@ -218,7 +221,8 @@ Infrastructure/TranslationDictionary.cs  the dictionary (%AppData%\VladTools\tra
                                   TAB-separated export/import format; also Normalize and HasCyrillic for both sides
 Infrastructure/TranslatePreferences.cs  the "Translate" window settings (%AppData%\VladTools\translate\_settings.txt)
 Infrastructure/Xlsx.cs            writing and reading .xlsx with the framework's zip + XML only: XlsxSheet/XlsxWriter out,
-                                  XlsxReader → XlsxReadSheet/XlsxValue back (shared strings, numbers, dates, strict namespaces)
+                                  XlsxReader → XlsxReadSheet/XlsxValue back (shared strings, numbers, dates, strict namespaces);
+                                  shared by "Excel" and "Sheets" (row groups — Excel's +/− outline — are for the latter)
 Infrastructure/ScheduleTable.cs   a schedule read out of Revit: ScheduleColumn (what a column shows, whether it may be
                                   written), ScheduleDataRow (texts + the elements behind the row), the rows as drawn;
                                   the row → elements probe lives here (see "Key decisions")
@@ -228,6 +232,7 @@ Infrastructure/ScheduleImport.cs  ScheduleImportPlanner: pairs sheet lines with 
                                   ScheduleImportPlan (the preview + PlannedWrites); ScheduleValues — finding a column's
                                   parameter on an element or its type, parsing/comparing a value in the column's units
 Infrastructure/ExcelPreferences.cs  the "Excel" button settings (%AppData%\VladTools\excel\_settings.txt)
+Infrastructure/SheetPreferences.cs  the "Sheets" window settings (%AppData%\VladTools\sheets\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -252,6 +257,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project                                                                                                                                                                                                                                                                                                                                     | "Translate"                | `TranslateCommand`               | replaces the Russian typed into a project or template with English through one dictionary: every distinct text with Cyrillic in it is one row (with where it is used), and a translation replaces it in every place at once — element names (views, templates, sheets, schedules, families, types, materials, filters, levels, worksets…), text parameter values, schedule column headings, header cells and filter values, view filter rule strings, text notes — in one transaction. Translations come from the dictionary (`%AppData%\VladTools\translate\`), from a TAB-separated file ("Export…" for a translator or an AI, "Import…" back), or by hand; the window catches name clashes and forbidden characters first. What the API cannot change (shared parameter names, line styles, subcategories) is shown and reported, not skipped |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Move to Workset"          | `MoveToWorksetCommand`           | finds elements standing in the wrong workset — above all model elements in Revit's own worksets (project standards, views, families), where an AI tool or a script left them — and moves the checked ones into one user workset by writing `ELEM_PARTITION_PARAM`, in one transaction. The table is one row per workset × category, over the current selection or the whole model; rows in Revit's own worksets come first and are checked. The elements are checked out first (held / out-of-date ones are named, not attempted), every one is read back after the commit, and "Select in model" selects the checked elements instead of moving them |
 | Project | "Excel" | `ExcelScheduleCommand` | asks which way (a `TaskDialog` with two command links). **Export**: the checked schedules into one .xlsx, a sheet each, every value as text exactly as the schedule shows it — laid out "as in Revit" (title, headings, group lines, totals) or as a plain table with filters; every element row carries a hidden key to its elements. **Import**: a sheet of a workbook into a schedule — rows paired by those elements, by a key column or by order (the ModPlus way); a preview with every changed cell highlighted (yellow — will be written, red — cannot be, with the reason); the checked rows are written into the elements' parameters (instance → every element of the row, type → the type) in one transaction, read back, and the changed rows selected in the opened schedule |
+| Project | "Sheets" | `SheetsCommand` | a table of every sheet — "A101 - Name" on the left, one line per thing placed on it on the right (views by kind, legends, schedules, panel schedules, images, CAD) — in the folders and the order of the Project Browser's current sheet organization (`BrowserOrganization.GetFolderItems`, `SortingParameterId`/`SortingOrder`); sheets the browser's filter hides and placeholder sheets get folders of their own at the end. A click folds a folder, a double click opens the sheet (once the window has closed). "Export to Excel…" writes the table as the search leaves it (folding does not narrow it) into one .xlsx sheet whose folders are Excel row groups. Read-only — no transaction |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -309,6 +315,13 @@ rolled back — see "Key decisions") while the modal window is open, caching it 
 window hands back is the preview the user confirmed; the command keeps the `ScheduleImportPlan` behind
 each preview in a dictionary and writes from that. Steps 5–8 are as usual, plus a read-back after the
 commit. The export has no transaction at all — only the rolled-back reads.
+
+**Exception — `SheetsCommand`, steps 4–7.** It only reads: no transaction, no batch, no success
+report. The window closes for one of two things it does not do itself, and `SheetsWindow.Action`
+says which: open a sheet (a sheet opened behind a modal window could not be looked at — the command
+sets `UIDocument.ActiveView` after `ShowDialog` returns) or export (the window hands back the lines
+as shown and a path; the command writes, like the "Excel" export). A dialog appears only when the
+write or the opening failed, or when the file was not opened in Excel.
 
 ## Key decisions
 
@@ -1285,7 +1298,7 @@ commit. The export has no transaction at all — only the rolled-back reads.
   + `System.Xml`), not by a library such as ClosedXML or EPPlus — the same reasoning as the JSON
   parser: the add-in lives in Revit's process, where every extra assembly is one more way to fail to
   load or to clash with another add-in's copy of it. The writer needs only text cells, five styles,
-  widths, a frozen pane, merges, a filter and hidden rows/columns/sheets; the reader takes what Excel
+  widths, a frozen pane, merges, a filter, hidden rows/columns/sheets and row groups; the reader takes what Excel
   actually saves (shared strings, numbers, booleans, formula results, dates told apart by the number
   format, the "strict" namespaces). Checked against real Excel: a written file opens without a repair
   prompt with every feature intact, and a file re-saved by Excel reads back the same. Old binary
@@ -1364,6 +1377,41 @@ commit. The export has no transaction at all — only the rolled-back reads.
 - **"The changed data highlighted" in Revit itself is the selection**: after the import the schedule
   becomes the active view (`UIDocument.ActiveView`, outside any transaction) and the changed rows'
   elements are selected — Revit highlights a selected element's row in a schedule.
+- **"Sheets" takes its folders from the Project Browser itself, not from a parameter it guesses.**
+  `BrowserOrganization.GetCurrentBrowserOrganizationForSheets` is the organization in use,
+  `GetFolderItems(sheetId)` the folders a sheet sits in (outermost first), and `SortingParameterId` +
+  `SortingOrder` the order inside a folder; the sorting parameter is found among the sheet's own
+  `Parameters` by its id, which covers built-in, project and shared parameters alike without
+  `IntegerValue`. What the API does not give is the order of the folders themselves: they are
+  sorted ascending, naturally (A2 before A10), which is how the browser lists them. An empty grouping
+  value is shown as "???", as Revit shows it. All of it is in RevitAPI.xml 2022/2024/2025, unchanged.
+- **No sheet is dropped because the browser does not show it.** A sheet the organization's filter
+  rejects (`AreFiltersSatisfied`) and a placeholder sheet (`IsPlaceholder` — a line in sheet lists
+  only, nothing to open) are still sheets of the project; each kind gets a folder of its own after
+  the browser's. A filter check that throws counts as passing — a sheet must not land under "hidden"
+  because Revit failed to answer.
+- **The "Sheets" table is the browser's tree laid flat** (`SheetListRow`: a folder line, then its
+  contents one level deeper), not a WPF grouped collection view: the window's lines map one for one
+  onto Excel rows, and a grouped view would have to be laid flat again for the export anyway.
+  Folding removes and inserts lines with one merge over the ordered list
+  (`SheetsWindow.RebuildVisible`), never `Clear()`, so a fold keeps the scroll position and the
+  selection. Column sorting is off: a click on a heading would scatter sheets out of their folders.
+  The natural comparison falls back to an ordinal one on a tie, so two folders differing only in case
+  never interleave — the window starts a new folder line wherever the name changes.
+- **The export writes what the search shows, and folding is not narrowing** — "only what is shown
+  gets applied", but a folded folder is still part of the table, the way a folded group in Excel
+  still holds its rows. Folder lines become Excel row groups (`XlsxSheet.OutlineLevels`, the button
+  above the group — `outlinePr summaryBelow="0"`, a heading over its contents rather than a total
+  under its rows), so the folders fold in Excel as well. Filter buttons go on only when there are no
+  folder lines: sorting through them would scatter the sheets. Checked in real Excel: the file opens
+  without a repair prompt, with the levels and the button position intact.
+- **What stands on a sheet is read in one pass per kind over the whole project**, not with a
+  collector per sheet: viewports (`Viewport.SheetId` — views and legends), `ScheduleSheetInstance`
+  (`IsTitleblockRevisionSchedule` skipped — it is on every sheet and belongs to the titleblock; a
+  split schedule's segments fold into one line with a count), `PanelScheduleSheetInstance`,
+  `ImageInstance` and view-specific `ImportInstance` (`OwnerViewId`). Titleblocks, text notes and
+  annotation are left out: they are on nearly every sheet and would bury what was placed. The word for
+  a view's kind is `TextSiteCollector.ViewKind`, shared with "Translate" rather than copied.
 
 ## Storing user settings
 
@@ -1382,7 +1430,7 @@ window closes, and a set itself only through its own "Save set" button — table
 binding, group) are not written until then. `coordination\` holds settings only, and has no sets of
 its own on purpose: the model list there is the same `LinkSetLibrary` one "Link Manager" uses.
 `translate\` is data, not settings: the dictionary there is rewritten whenever the "Translate" window
-closes, with every translation the window held (see "Key decisions").
+closes, with every translation the window held (see "Key decisions"). `sheets\` holds settings only.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -1520,6 +1568,10 @@ keeps no data of its own (an exported workbook carries its own bookkeeping, on i
 throwaway shared parameter file, `%TEMP%\VladTools-rowkey-<guid>.txt`, deleted again in a `finally`
 — it is not a setting and never outlives the read.
 
+`sheets\_settings.txt` — the "Sheets" window's settings: `KEY = value` — `FOLDER` (the folder of the
+last export) and `OPEN_AFTER` (`1`/`0` — open the exported file in Excel). Rewritten whenever the
+window closes. The button keeps no data: the folders come from the Project Browser every time.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -1595,7 +1647,9 @@ its `default` branch (read-only); a 2024-only member in a `case` would not compi
 other API the "Excel" button uses (`ViewSchedule.RefreshData`, `UnitFormatUtils.TryParse` with
 `ValueParsingOptions`, `ExternalDefinitionCreationOptions(string, ForgeTypeId)`,
 `BindingMap.Insert(Definition, Binding)`, `ScheduleField.GetSpecTypeId`/`DisplayType`) was checked
-against RevitAPI.xml of all three years — present in each, with the same signature.
+against RevitAPI.xml of all three years — present in each, with the same signature. The same goes
+for what "Sheets" uses: `BrowserOrganization.GetFolderItems`/`SortingParameterId`/`SortingOrder`,
+`FolderItemInfo`, `ImageInstance` (since 2020) and `PanelScheduleSheetInstance`.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

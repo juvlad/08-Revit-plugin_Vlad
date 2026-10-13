@@ -373,6 +373,24 @@ namespace VladTools
                     "the same as typing into the schedule in Revit. The import never creates or deletes elements.",
                 iconBaseName: "excel");
 
+            // ───────────────── Button 17: Sheets (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_Sheets",
+                text: "Sheets",
+                commandType: typeof(SheetsCommand),
+                tooltip: "Lists every sheet of the project with what is placed on it, and exports the list to Excel.",
+                longDescription:
+                    "One table for the whole sheet set: the sheet on the left, everything placed on it on the right —\n" +
+                    "views, legends, schedules, images and CAD, one line each.\n\n" +
+                    "The sheets sit in the same folders and the same order as in the Project Browser: the button\n" +
+                    "reads the sheet organization in use. A click on a folder folds it; a double click on a sheet\n" +
+                    "opens it. \"Find\" narrows the table by a sheet, a folder or a view placed on it.\n\n" +
+                    "\"Export to Excel…\" writes the table into an .xlsx — the folders become groups Excel can fold\n" +
+                    "with its +/− buttons. Sheets the browser's filter hides and placeholder sheets are listed too,\n" +
+                    "in folders of their own at the end. Nothing in the model is changed.",
+                iconBaseName: "sheets");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

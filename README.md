@@ -1072,6 +1072,36 @@ brings values edited in Excel back into a schedule — the pair ModPlus calls "E
   operation that is rolled back at once. The model is not changed by it, and nothing appears in Undo.
 - **Rows of elements from linked models** are exported, but cannot be written into.
 
+### Sheets (Project panel)
+
+Works **only in a project** (`.rvt`, and a template `.rte`). One table for the whole sheet set:
+every sheet on the left ("A101 - Floor Plan", as the Project Browser writes it), everything placed
+on it on the right, one line each.
+
+1. **The sheets sit in the same folders and in the same order as in the Project Browser** — the
+   button reads the sheet organization in use (View → User Interface → Browser Organization →
+   Sheets) and the parameter it sorts by. Click a folder to fold it; "Collapse all" / "Expand all"
+   fold every folder at once.
+2. **"On the sheet"** lists the views by kind ("Floor plan: Level 1", "Section: S-1"…), then
+   legends, schedules (a split schedule once, with its number of segments), panel schedules, images
+   and CAD files. The titleblock, text notes and other annotation are not listed.
+3. **"Find"** narrows the table by sheet number or name, by folder, or by what is placed — type a
+   view's name to see which sheet it is on.
+4. **Double-click a sheet** (or "Open sheet") to close the window and open the sheet.
+5. **"Export to Excel…"** writes the table into an .xlsx and opens it (a box below the table turns
+   that off). The folders become Excel row groups: the +/− buttons in the margin fold them the way
+   the browser does. What the search leaves in the table is written; a folded folder is written whole.
+
+**What is worth knowing.**
+
+- **Sheets the Project Browser does not show are listed too**, in folders of their own at the end:
+  the ones its filter hides, and placeholder sheets (they exist only in sheet lists — there is
+  nothing to open).
+- **The folders themselves are in alphabetical order** (A2 before A10): Revit says which folders a
+  sheet sits in, but not the order the browser lists the folders in — in practice it is the same.
+- A sheet whose grouping parameter is empty sits under "???", as in the browser.
+- **Nothing in the model is changed**: the button only reads.
+
 ## Structure
 
 ```
@@ -1097,6 +1127,7 @@ src/VladTools/
     TranslateCommand.cs               logic for the "Translate" button (project)
     MoveToWorksetCommand.cs           logic for the "Move to Workset" button (project)
     ExcelScheduleCommand.cs           logic for the "Excel" button (project): export and import
+    SheetsCommand.cs                  logic for the "Sheets" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1164,6 +1195,9 @@ src/VladTools/
     ExcelScheduleRow.cs              a row of that list (check box + schedule)
     ExcelImportWindow.cs             the "Import from Excel" window: sheet → schedule, pairing, the highlighted preview
     ExcelImportPreview.cs            what that window shows: the request, columns, rows and cells with their state
+    SheetsWindow.cs                  the "Sheets" window: the sheets in the Project Browser's folders, Find, Export to Excel
+    SheetListRow.cs                  a line of that table: a folder or a sheet
+    SheetInfo.cs                     a snapshot of one sheet: number, name, its folders, what is placed on it
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     Icons.cs                     loading icons from the assembly's resources
@@ -1207,6 +1241,7 @@ src/VladTools/
     ScheduleWorkbook.cs          how a schedule sits on an Excel sheet, both ways
     ScheduleImport.cs            comparing a sheet with a schedule: what would change, and why not
     ExcelPreferences.cs          the "Excel" button settings (%AppData%)
+    SheetPreferences.cs          the "Sheets" window settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

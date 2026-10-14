@@ -31,9 +31,6 @@ namespace VladTools.Commands
     {
         private const string DialogTitle = "Sheets";
 
-        /// <summary>What the browser itself shows for a sheet whose grouping parameter is empty.</summary>
-        private const string EmptyFolder = "???";
-        private const string FilteredFolder = "(Hidden by the Project Browser's filter)";
         private const string PlaceholderFolder = "(Placeholder sheets — in sheet lists only)";
 
         private const int ViewRank = 0;
@@ -42,8 +39,6 @@ namespace VladTools.Commands
         private const int PanelScheduleRank = 3;
         private const int ImageRank = 4;
         private const int CadRank = 5;
-
-        private static readonly IComparer<string> NaturalOrder = Comparer<string>.Create(Natural);
 
         private sealed class Placed
         {
@@ -159,7 +154,7 @@ namespace VladTools.Commands
                 // No organization means one flat list in sheet-number order — still the whole answer.
             }
 
-            organizationName = Name(organization);
+            organizationName = ProjectBrowser.Name(organization);
 
             var entries = new List<Entry>();
 
@@ -176,23 +171,23 @@ namespace VladTools.Commands
                     group = 2;
                     folders = new[] { PlaceholderFolder };
                 }
-                else if (organization != null && !Passes(organization, sheet.Id))
+                else if (organization != null && !ProjectBrowser.Passes(organization, sheet.Id))
                 {
                     group = 1;
-                    folders = new[] { FilteredFolder };
+                    folders = new[] { ProjectBrowser.FilteredFolder };
                 }
                 else
                 {
                     group = 0;
-                    folders = Folders(organization, sheet.Id);
+                    folders = ProjectBrowser.Folders(organization, sheet.Id);
                 }
 
                 var contents = placed.TryGetValue(sheet.Id, out var list)
-                    ? list.OrderBy(item => item.Rank).ThenBy(item => item.Text, NaturalOrder).Select(item => item.Text).ToList()
+                    ? list.OrderBy(item => item.Rank).ThenBy(item => item.Text, ProjectBrowser.NaturalOrder).Select(item => item.Text).ToList()
                     : new List<string>();
 
                 var info = new SheetInfo(sheet.UniqueId, sheet.SheetNumber, sheet.Name, folders, contents, !sheet.IsPlaceholder);
-                entries.Add(new Entry(info, group, group == 0 ? SortValue(sheet, sortingId) : sheet.SheetNumber));
+                entries.Add(new Entry(info, group, group == 0 ? ProjectBrowser.SortValue(sheet, sortingId, sheet.SheetNumber) : sheet.SheetNumber));
             }
 
             entries.Sort((a, b) => Compare(a, b, descending));
@@ -288,64 +283,6 @@ namespace VladTools.Commands
             }
         }
 
-        private static IReadOnlyList<string> Folders(BrowserOrganization organization, ElementId sheet)
-        {
-            if (organization == null)
-                return new string[0];
-
-            try
-            {
-                return organization.GetFolderItems(sheet)
-                    .Select(item => string.IsNullOrWhiteSpace(item.Name) ? EmptyFolder : item.Name)
-                    .ToList();
-            }
-            catch (Exception)
-            {
-                return new string[0];
-            }
-        }
-
-        /// <summary>A failed check counts as passing: a sheet must not end up under "hidden" because Revit threw.</summary>
-        private static bool Passes(BrowserOrganization organization, ElementId sheet)
-        {
-            try
-            {
-                return organization.AreFiltersSatisfied(sheet);
-            }
-            catch (Exception)
-            {
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// The value the browser sorts by — the sheet number unless the organization says otherwise.
-        /// The parameter is found by its id among the sheet's own, which covers built-in, project and
-        /// shared parameters alike.
-        /// </summary>
-        private static string SortValue(ViewSheet sheet, ElementId sortingId)
-        {
-            if (sortingId != null && sortingId != ElementId.InvalidElementId)
-            {
-                foreach (Parameter parameter in sheet.Parameters)
-                {
-                    if (parameter.Id != sortingId)
-                        continue;
-
-                    try
-                    {
-                        return (parameter.StorageType == StorageType.String ? parameter.AsString() : parameter.AsValueString()) ?? string.Empty;
-                    }
-                    catch (Exception)
-                    {
-                        break;
-                    }
-                }
-            }
-
-            return sheet.SheetNumber;
-        }
-
         private static int Compare(Entry a, Entry b, bool descending)
         {
             var result = a.Group.CompareTo(b.Group);
@@ -354,7 +291,7 @@ namespace VladTools.Commands
 
             for (var level = 0; level < Math.Min(a.Info.Folders.Count, b.Info.Folders.Count); level++)
             {
-                result = Natural(a.Info.Folders[level], b.Info.Folders[level]);
+                result = ProjectBrowser.Natural(a.Info.Folders[level], b.Info.Folders[level]);
                 if (result != 0)
                     return result;
             }
@@ -363,75 +300,11 @@ namespace VladTools.Commands
             if (result != 0)
                 return result;
 
-            result = Natural(a.SortValue, b.SortValue);
+            result = ProjectBrowser.Natural(a.SortValue, b.SortValue);
             if (result != 0)
                 return descending ? -result : result;
 
-            return Natural(a.Info.Number, b.Info.Number);
-        }
-
-        /// <summary>
-        /// "A2" before "A10": runs of digits compare as numbers, the rest ignoring case. Two texts equal
-        /// that way still compare ordinally at the end, so two folders differing only in case never
-        /// interleave — the window starts a new folder line wherever a name changes.
-        /// </summary>
-        private static int Natural(string a, string b)
-        {
-            a = a ?? string.Empty;
-            b = b ?? string.Empty;
-
-            int i = 0, j = 0;
-            while (i < a.Length && j < b.Length)
-            {
-                if (IsDigit(a[i]) && IsDigit(b[j]))
-                {
-                    var startA = i;
-                    while (i < a.Length && IsDigit(a[i]))
-                        i++;
-
-                    var startB = j;
-                    while (j < b.Length && IsDigit(b[j]))
-                        j++;
-
-                    var numberA = a.Substring(startA, i - startA).TrimStart('0');
-                    var numberB = b.Substring(startB, j - startB).TrimStart('0');
-
-                    var result = numberA.Length.CompareTo(numberB.Length);
-                    if (result == 0)
-                        result = string.CompareOrdinal(numberA, numberB);
-                    if (result != 0)
-                        return result;
-                }
-                else
-                {
-                    var result = string.Compare(a, i, b, j, 1, StringComparison.CurrentCultureIgnoreCase);
-                    if (result != 0)
-                        return result;
-
-                    i++;
-                    j++;
-                }
-            }
-
-            var rest = (a.Length - i).CompareTo(b.Length - j);
-            return rest != 0 ? rest : string.CompareOrdinal(a, b);
-        }
-
-        private static bool IsDigit(char character)
-        {
-            return character >= '0' && character <= '9';
-        }
-
-        private static string Name(Element element)
-        {
-            try
-            {
-                return element?.Name ?? string.Empty;
-            }
-            catch (Exception)
-            {
-                return string.Empty;
-            }
+            return ProjectBrowser.Natural(a.Info.Number, b.Info.Number);
         }
 
         // ───────────────────────────── opening ─────────────────────────────

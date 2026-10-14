@@ -368,7 +368,11 @@ nesting check box.
 **The worksets inside a link**, on the other hand, are shared across every link. At the bottom of
 the window — a name list with check boxes: the checked worksets will close in every link. The names
 come from last time, so "00_Shared levels and grids" is usually already checked when the window
-opens; the "Read Worksets" button reads the names from the models themselves without opening them.
+opens; the "Read Worksets" button reads the names from the models themselves without loading them.
+A BIM360 / Autodesk Docs model is the one exception: Revit cannot read a cloud model's worksets
+from outside, so the add-in opens it for a moment with every workset closed, reads the list and
+closes it again — that takes longer than for a file. The same happens on "Load", before the link is
+created; a cloud link already loaded in the project is read as it is, without opening anything.
 
 The "Found in" column is exactly the name check, and it is worth looking at whenever a workset
 "somehow did not close". "in N links" — the workset was found and will close. "in none of them" —
@@ -386,8 +390,9 @@ Afterwards — a report: what was linked, what failed, how the worksets turned o
 warnings were suppressed along the way.
 
 After loading, the add-in **checks on its own what became of the worksets in every link**, and the
-report reads one of four things: silence — everything closed as asked; "a reload fixed it" — Revit
-did not comply the first time; a line in "Could not be done" with the workset names — it did not
+report reads one of four things: silence — everything closed as asked; "took hold only on a second
+load" — Revit did not comply the first time, or the worksets could only be read once the link was
+already loaded; a line in "Could not be done" with the workset names — it did not
 comply the second time either; "Worksets were requested but could not be checked" — the link would
 not hand itself over for a re-read, and the worksets have to be looked at by eye. The last case
 used to look like a success, so unclosed worksets could go unnoticed.
@@ -409,9 +414,11 @@ Details:
 - **Sometimes Revit does not apply the workset setup the first time — the add-in fixes it on its
   own.** Revit may report success and still leave the worksets as they were. The add-in re-reads
   the already-loaded link and, if Revit did not comply, tries once more; it writes about this in
-  the report: "a reload fixed it" (that also wipes the undo history) — or, if it did not help the
-  second time either, an ordinary line in "Could not be done" with the names of the worksets that
-  are still wrong.
+  the report: "took hold only on a second load" (that also wipes the undo history) — or, if it did
+  not help the second time either, an ordinary line in "Could not be done" with the names of the
+  worksets that are still wrong. If a link's worksets could not be read at all, the report says so
+  ("could not read the worksets…, the link was loaded as is") and does not blame Revit for not
+  closing them: in that case no workset setup was sent to Revit.
 - **The worksets inside nested links cannot be closed.** That is a Revit limitation, not the
   add-in's: if a consultant's model has its own underlay linked inside it, its levels and grids
   stay visible no matter what is closed here. Only an edit on the consultant's side helps.
@@ -1102,6 +1109,160 @@ on it on the right, one line each.
 - A sheet whose grouping parameter is empty sits under "???", as in the browser.
 - **Nothing in the model is changed**: the button only reads.
 
+### Views to Sheets (Project panel)
+
+Works **only in a project** (`.rvt`, and a template `.rte`). Puts a whole batch of views on sheets at
+once: **one checked view — one new sheet**, named after the view, at the scale chosen, with the view
+centred in the titleblock's drawing area — or put exactly where a view placed by hand stands on a
+sample sheet, which also re-positions views already on sheets.
+
+1. **The views are listed the way the Project Browser lists them** — the view organization in use
+   (Discipline, Sub-Discipline…) and, under it, the view-type groups ("Floor Plans", "Sections
+   (Building Section)"…). A folder's check box takes every view in it; click a folder's name to fold
+   it. "Find" narrows the list by name, kind, folder or sheet — and a view it hides **keeps its check
+   mark**, so find one lot, tick it, then find the next; the line under the table says how many
+   checked views are out of sight. Views that cannot be checked are hidden; "Show the views that
+   cannot be checked" lists them too, without a check box — empty views, the sample itself, and views
+   already on a sheet (a view stands on one sheet only, so outside "Like a sample sheet" it cannot be
+   placed again; a legend is the exception and stays checkable).
+2. **Scale** — every view has its scale in a cell of its own: pick one from the list or type `1:250`
+   (or simply `250`). "Scale for the checked views … Set for checked" writes one scale into every
+   checked view at once; "Each view's own" puts them back. "On paper", the fit check and the preview
+   follow the new scale. A view whose **view template sets the scale** keeps it — the cell is locked
+   and "State" names the template. **To change the scale of views already on sheets, or of templated
+   views, use [Sheet Scale](#sheet-scale-project-panel)** — this window only scales the views it
+   places or moves. A **dependent view** shares its scale with
+   its primary and the other dependents — "State" says so, and giving two of them different scales is
+   refused. The scale is changed on the view itself, so it shows wherever the view is used; it is part
+   of the same operation and comes back with the same Ctrl+Z.
+3. **Titleblock** — the type every new sheet gets. Its size is not taken from the family's parameters
+   but measured: the button makes a sheet of every type and throws it away again, so the size shown is
+   what the titleblock actually draws.
+4. **Margins, mm** — from the titleblock's outer edge to the drawing area: take the title panel or the
+   stamp into the margin on its side (a panel along the right edge — a large right margin). The
+   margins are remembered **for every titleblock type separately**. The preview on the right shows the
+   sheet, the drawing area (dashed) and the highlighted view's size to scale.
+5. **Sheet numbers** — a prefix and a start number: `A-` and `101` give A-101, A-102… in the order of
+   the list. Leading zeros are kept (`001`). A number the project already has is skipped, and the
+   "Sheet" column shows each view's sheet before anything is made.
+6. **Position by** — four ways, the window asks rather than picks:
+
+   | Option | What goes where | For |
+   |---|---|---|
+   | **The whole viewport, its title included** | everything the sheet shows of the view — the crop region, annotation sticking out of it, the view title — in the middle of the drawing area | sections, details, 3D, one-off views |
+   | **The crop region** | the view's crop region in the middle, whatever annotation sticks out of it | plans sharing a crop region (a scope box) land in the same place on every sheet |
+   | **One model point in the same place on every sheet** | the same point of the model — the middle of all the checked views' crop regions together — in the middle | a stack of floor plans that must not jump as the sheets are flipped, even where their crop regions differ |
+   | **Like a sample sheet** | wherever the sample's view stands: a view looking the same way as the sample puts the same point of the model in the same place on its sheet; any other view puts the middle of its viewport where the sample's middle is | place one view by hand, move it where it belongs, and repeat that for the rest |
+
+   A view the chosen way cannot position — no crop region (drafting views, legends, crop off), a
+   perspective, a split crop region — goes by its viewport instead, and both the "State" column and
+   the report say so.
+7. **"Place"** makes the sheets and positions the views — one operation, one Ctrl+Z.
+
+**Like a sample sheet.** Move one view by hand to where it belongs on its sheet, then press the button
+with that viewport selected, or with that sheet open — the window offers it as the **Sample** on its
+own (any other viewport can be picked from the list). In this mode **views already on sheets can be
+checked too**: they stay on their sheets and are moved there ("Sheet" reads "stays on A102 - …"), so
+a set of floor plans placed earlier can be lined up with the one adjusted by hand. New sheets made in
+the same run are positioned the same way. The sample itself is never moved. The position is copied
+from the sheet's origin as it is — if the sample stands on a sheet of another titleblock type than
+the new sheets get, the window says so. A pinned viewport is unpinned for the move and pinned again.
+
+The report lists the sheets and, separately, every one that needs a look:
+
+- **sticking out of the drawing area** — the view is larger than it at this scale (the "On paper"
+  column warns before placing: it is estimated from the crop region and the scale); a moved view is
+  checked against its own sheet's titleblock and the margins remembered for that titleblock type;
+- **positioned by the viewport** rather than the way chosen, and why;
+- **scale not changed** — Revit refused the new scale, with its reason;
+- **not where it was asked to go** — every viewport is read back after the operation; for the crop
+  region and the model point, the crop region is measured again after the move;
+- **could not be placed** — Revit refused the view (it already stands on a sheet, or shows nothing),
+  or, in a workshared model, another user holds it or it was changed in the central model since the
+  last reload. The sheet made for a refused view is deleted again rather than left behind empty.
+
+**What is worth knowing.**
+
+- The size in "On paper" is the crop region over the scale. Annotation outside the crop region
+  (with "Annotation Crop" off) can make the viewport larger — the report checks the real outline.
+- **Measuring the crop region.** Revit 2022 has no API that says where a model point lands on a sheet,
+  so for the crop region, the model point and the sample the button shows the crop boundary and hides
+  the annotation for a moment, inside the same operation, reads the viewport's frame, and puts
+  everything back — the views come out of it exactly as they went in. If something besides the crop
+  region stays on the sheet, that view goes by its viewport instead, and the report says why.
+- **In a workshared model** the views (and the viewports to be moved) are checked out before anything
+  is changed; a view held by another user is named in the report and left out, rather than failing
+  the whole operation at the end.
+- A new viewport is never rotated; the viewport type is Revit's default.
+- Schedules are not in the list: they go on a sheet differently, and a sheet of its own per schedule
+  is not what this button is for.
+
+### Sheet Scale (Project panel)
+
+Works **only in a project** (`.rvt`, and a template `.rte`). Gives the views standing on the chosen
+sheets a new scale in one go — for example every 1:100 plan on thirty sheets to 1:200 — **including
+views whose view template sets the scale**, which Revit's own Properties palette refuses to change.
+Every view stays where it stands on its sheet.
+
+1. **Select the sheets in the Project Browser** (Ctrl/Shift+click), then press the button. Every view
+   on them starts checked, legends excepted. Viewports selected on a sheet, or views selected in the
+   browser, start checked too; with nothing selected, the sheet that is open.
+2. **The window** lists every sheet that holds a view, in the folders and the order of the Project
+   Browser, and under each sheet the views on it with their scale. A sheet's check box takes every
+   view on it, a folder's every view in it; click a sheet or a folder to fold it. Sheets with nothing
+   checked start folded. "Find" finds sheets, views and folders — a view it hides keeps its check mark,
+   and the line under the table says how many checked views are out of sight.
+3. **"Change the checked views at … to …"** — the first list narrows the change to one scale: with
+   "1:100" chosen, a 1:20 detail on the same sheet cannot be checked and is not swept along (a view
+   that stops being checkable loses its check mark). The second is the new scale: pick it or type
+   `1:250` (or simply `250`).
+4. **Views whose view template sets the scale** — a template with "View Scale" ticked in its
+   "Include" column decides the scale, and the view's own cannot be changed past it. Three answers:
+
+   | Option | What happens |
+   |---|---|
+   | **Stop the template setting the scale** (default) | "View Scale" is unticked in the template. Every view using it keeps the scale it has; the checked ones get the new one. Everything else the template sets stays as it is. |
+   | **Give the template the new scale** | The template itself gets the new scale, and every view using it follows — on sheets that are not checked and on no sheet as well. Right when the template is meant for one scale only. |
+   | **Leave such views as they are** | They cannot be checked; change the template by hand. |
+
+5. **"State"** says, for every view, what will happen: the template that stops setting the scale (and
+   how many other views use it), the views changing along with it, "already 1:200", or a warning
+   that the view **may stick out of the drawing area** at the new scale (estimated from the viewport's
+   size; the drawing area is the titleblock less the margins kept for its type in "Views to Sheets").
+   A sheet's line repeats a warning of its views, so a folded sheet does not hide it.
+6. **"Change scale"** — one operation, one Ctrl+Z. When the run reaches beyond the checked views (a
+   view template is edited, views on other sheets change along, checked views are out of sight, a
+   view may stick out) the button asks first and lists what is involved.
+
+**Changing along.** A **primary view and its dependents** share one scale: checking one changes them
+all, wherever they stand — "State" says "changes too" on the others. A **legend** standing on several
+sheets has one scale, so its check box is shared by all its lines and it changes on every sheet.
+
+**The view stays in place.** After the change the middle of every viewport of every changed view is
+put back exactly where it stood (a pinned viewport is unpinned for the move and pinned again).
+
+The report lists the views changed, with their old and new scale, and separately:
+
+- **changed along with them** — dependents, primaries, views of a template given the new scale;
+- **view templates** that no longer set the scale, or that got the new one;
+- **scale not changed** — every view is read back after the operation; Revit's refusal is quoted;
+- **changed although nobody checked it** — with "Stop the template setting the scale", the template's
+  other views are read back too: they are meant to keep their scale, and one that did not is listed;
+- **sticking out of the drawing area** — the real outline, title included, checked on every sheet;
+- **not where they stood** — every viewport is read back;
+- **could not be changed** — the view was deleted in the meantime, its template sets the scale and
+  "Leave" was chosen, or, in a workshared model, another user holds the view, its viewport or its
+  template, or it was changed in the central model since the last reload.
+
+**What is worth knowing.**
+
+- **In a workshared model** the views, their viewports and the templates to be edited are checked
+  out before anything is changed; a view whose elements somebody else holds is named and left out,
+  rather than failing the whole operation at the end.
+- A perspective 3D view has no scale and is listed without a check box. Schedules are not listed:
+  they have no scale.
+- The scale is changed on the view itself, so it shows wherever the view is used.
+
 ## Structure
 
 ```
@@ -1128,6 +1289,8 @@ src/VladTools/
     MoveToWorksetCommand.cs           logic for the "Move to Workset" button (project)
     ExcelScheduleCommand.cs           logic for the "Excel" button (project): export and import
     SheetsCommand.cs                  logic for the "Sheets" button (project)
+    ViewsToSheetsCommand.cs           logic for the "Views to Sheets" button (project)
+    SheetScaleCommand.cs              logic for the "Sheet Scale" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1198,6 +1361,20 @@ src/VladTools/
     SheetsWindow.cs                  the "Sheets" window: the sheets in the Project Browser's folders, Find, Export to Excel
     SheetListRow.cs                  a line of that table: a folder or a sheet
     SheetInfo.cs                     a snapshot of one sheet: number, name, its folders, what is placed on it
+    FlatTree.cs                      a tree laid flat into table rows — shared by "Sheets" and "Views to Sheets"
+    ViewsToSheetsWindow.cs           the "Views to Sheets" window: the views in the browser's folders, scales, titleblock,
+                                     margins, numbering, positioning, the sample, the sheet preview
+    ViewPlacementRow.cs              a line of that table: a folder or a view, its scale, its sheet and state
+    PlaceableViewInfo.cs             a snapshot of one view: folders, scale and what locks it, size on paper, where it stands
+    TitleblockInfo.cs                a snapshot of one titleblock type and the frame it draws, measured
+    ViewCentering.cs                 the four ways of positioning a view, with their captions
+    ViewPlacementRequest.cs          what the window hands back: the titleblock, the drawing area, the views, numbers, scales
+    SampleViewportInfo.cs            a snapshot of one viewport on a sheet — a possible sample to position like
+    SheetScaleWindow.cs              the "Sheet Scale" window: the sheets and their views, the scale, what to do with templates
+    SheetScaleRow.cs                 a line of that table: a folder, a sheet or a view, its new scale and state
+    ScaleSheetInfo.cs                snapshots of one sheet, one viewport on it and one view: scale, template, dependents
+    ScaleTemplateMode.cs             what to do with a view template that sets the scale, with captions
+    SheetScaleRequest.cs             what the window hands back: the scale, the template choice, the views
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     Icons.cs                     loading icons from the assembly's resources
@@ -1242,6 +1419,10 @@ src/VladTools/
     ScheduleImport.cs            comparing a sheet with a schedule: what would change, and why not
     ExcelPreferences.cs          the "Excel" button settings (%AppData%)
     SheetPreferences.cs          the "Sheets" window settings (%AppData%)
+    ProjectBrowser.cs            the Project Browser's folders, filter, sort value and natural order — shared
+    ViewsToSheetsPreferences.cs  the "Views to Sheets" window settings, margins per titleblock (%AppData%)
+    ViewScale.cs                 who decides a view's scale: a template that controls it, a primary view — shared
+    SheetScalePreferences.cs     the "Sheet Scale" window settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

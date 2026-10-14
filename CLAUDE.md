@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — thirteen buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — fifteen buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). There is no test
 project — checking is done by hand, in Revit.
 
@@ -175,6 +175,27 @@ UI/ExcelImportWindow.cs           the "Import from Excel" window: sheet → sche
 UI/SheetInfo.cs                   a snapshot of one sheet: number, name, its Project Browser folders, one line per thing placed
 UI/SheetListRow.cs                a line of the "Sheets" table: a browser folder (foldable, with a sheet count) or a sheet
 UI/SheetsWindow.cs                the "Sheets" window: the browser's folder tree laid flat, Find, Open sheet, Export to Excel
+UI/FlatTree.cs                    a tree laid flat into table rows: the one merge that folds without Clear(); shared by
+                                  "Sheets" and "Views to Sheets"
+UI/TitleblockInfo.cs              a snapshot of one titleblock type: "Family : Type" + the frame it draws, mm from the sheet origin
+UI/PlaceableViewInfo.cs           a snapshot of one view for "Views to Sheets": folders, scale and what locks it, the views
+                                  sharing its scale, size on paper, where it already stands, which views it lines up with
+UI/SampleViewportInfo.cs          a snapshot of one viewport on a sheet: a possible sample for "Like a sample sheet"
+UI/ViewCentering.cs               the four ways of positioning a view on its sheet (Viewport/CropRegion/ModelPoint/Sample) + captions
+UI/ViewPlacementRow.cs            a line of the "Views to Sheets" table: a browser folder (a check box over its views) or a
+                                  view with its scale cell
+UI/ViewPlacementRequest.cs        what that window hands back: titleblock, margins (per titleblock type too), positioning,
+                                  the sample, views with their sheet numbers (or a move) and scales
+UI/ViewsToSheetsWindow.cs         the "Views to Sheets" window: the views in the browser's folders, scales, titleblock,
+                                  margins, numbering, positioning, the sample, the sheet preview
+UI/ScaleSheetInfo.cs              "Sheet Scale" snapshots: ScaleSheetInfo (a sheet, its folders, its drawing area),
+                                  ScaleViewportInfo (a view on that sheet + its box), ScaleViewInfo (scale, template, dependents)
+UI/ScaleTemplateMode.cs           what to do with a view template that sets the scale (Release/ChangeTemplate/Leave) + captions
+UI/SheetScaleRow.cs               a line of the "Sheet Scale" table: a browser folder, a sheet (both foldable, a check box
+                                  over their views) or a view
+UI/SheetScaleRequest.cs           what that window hands back: the scale, the template choice, the checked views
+UI/SheetScaleWindow.cs            the "Sheet Scale" window: sheets and their views in the browser's folders, "at … to …",
+                                  the template choice, what changes along
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
@@ -188,6 +209,8 @@ Infrastructure/AccClient.cs       the BIM360/ACC tree via the Data Management AP
 Infrastructure/RevitServerClient.cs  Revit Server folders and models through its REST service
 Infrastructure/LinkCatalog.cs     the links and worksets of the open project; shared by both link commands
                                   plus HostModel — where the open project itself lives and what it is called
+                                  plus ModelWorksets → ModelWorkset — a model's worksets read without loading it
+                                  (a cloud one by a brief open); shared by "Link Manager" and the batch
 Infrastructure/ModelStore.cs      a model folder across the three stores: what is inside, what is above
 Infrastructure/ModelKit.cs        guessing a link kit by building number and discipline folders
 Infrastructure/LinkSetLibrary.cs  saved link sets, %AppData%\VladTools\links\<name>.txt
@@ -233,6 +256,13 @@ Infrastructure/ScheduleImport.cs  ScheduleImportPlanner: pairs sheet lines with 
                                   parameter on an element or its type, parsing/comparing a value in the column's units
 Infrastructure/ExcelPreferences.cs  the "Excel" button settings (%AppData%\VladTools\excel\_settings.txt)
 Infrastructure/SheetPreferences.cs  the "Sheets" window settings (%AppData%\VladTools\sheets\_settings.txt)
+Infrastructure/ProjectBrowser.cs  what the Project Browser says about an element: folders, filter, sort value, natural
+                                  order; shared by "Sheets" and "Views to Sheets"
+Infrastructure/ViewsToSheetsPreferences.cs  the "Views to Sheets" settings, margins per titleblock type
+                                  (%AppData%\VladTools\viewstosheets\_settings.txt)
+Infrastructure/ViewScale.cs       who decides a view's scale: whether a template controls it, releasing it, the primary
+                                  view that holds a dependent's scale; shared by "Views to Sheets" and "Sheet Scale"
+Infrastructure/SheetScalePreferences.cs  the "Sheet Scale" settings (%AppData%\VladTools\sheetscale\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -258,6 +288,8 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project                                                                                                                                                                                                                                                                                                                                     | "Move to Workset"          | `MoveToWorksetCommand`           | finds elements standing in the wrong workset — above all model elements in Revit's own worksets (project standards, views, families), where an AI tool or a script left them — and moves the checked ones into one user workset by writing `ELEM_PARTITION_PARAM`, in one transaction. The table is one row per workset × category, over the current selection or the whole model; rows in Revit's own worksets come first and are checked. The elements are checked out first (held / out-of-date ones are named, not attempted), every one is read back after the commit, and "Select in model" selects the checked elements instead of moving them |
 | Project | "Excel" | `ExcelScheduleCommand` | asks which way (a `TaskDialog` with two command links). **Export**: the checked schedules into one .xlsx, a sheet each, every value as text exactly as the schedule shows it — laid out "as in Revit" (title, headings, group lines, totals) or as a plain table with filters; every element row carries a hidden key to its elements. **Import**: a sheet of a workbook into a schedule — rows paired by those elements, by a key column or by order (the ModPlus way); a preview with every changed cell highlighted (yellow — will be written, red — cannot be, with the reason); the checked rows are written into the elements' parameters (instance → every element of the row, type → the type) in one transaction, read back, and the changed rows selected in the opened schedule |
 | Project | "Sheets" | `SheetsCommand` | a table of every sheet — "A101 - Name" on the left, one line per thing placed on it on the right (views by kind, legends, schedules, panel schedules, images, CAD) — in the folders and the order of the Project Browser's current sheet organization (`BrowserOrganization.GetFolderItems`, `SortingParameterId`/`SortingOrder`); sheets the browser's filter hides and placeholder sheets get folders of their own at the end. A click folds a folder, a double click opens the sheet (once the window has closed). "Export to Excel…" writes the table as the search leaves it (folding does not narrow it) into one .xlsx sheet whose folders are Excel row groups. Read-only — no transaction |
+| Project | "Views to Sheets" | `ViewsToSheetsCommand` | one new sheet per checked view (`ViewSheet.Create` of the titleblock type chosen in the window, named after the view, numbered prefix + counter, skipping taken numbers) and the view on it (`Viewport.Create`), at the scale chosen per view (`View.Scale`), centred in the titleblock's drawing area — the titleblock's measured frame minus margins kept per titleblock type. The views are picked in a tree laid out like the Project Browser's view organization (folders, then the view-type groups); a folder's box takes its views. Four ways to position, asked in the window: the whole viewport with its title (`GetBoxOutline` + `GetLabelOutline`), the crop region, one model point in the same place on every sheet for views looking the same way, or like a sample sheet — where a viewport placed by hand stands, for new sheets and for views already on sheets, which are then moved there (`SetBoxCenter`). Workshared: the views and viewports are checked out first. Everything in one transaction; every viewport and scale is read back after the commit, and the report lists sheets where the view sticks out of the drawing area |
+| Project | "Sheet Scale" | `SheetScaleCommand` | one new scale (`View.Scale`) for the views standing on the checked sheets — the sheets selected in the Project Browser start checked, every view on them but legends — laid out like the browser's sheet organization, a sheet's box taking its views. "Change the checked views at 1:100 to 1:200" narrows what can be checked to one scale. A view whose template sets the scale is handled as asked in the window: the template stops setting it (`SetNonControlledTemplateParameterIds`, every other view keeps its scale), the template gets the new scale (every view using it follows), or the view is left alone. A primary and its dependents change together; the primary is the one changed. Workshared: views, viewports and templates are checked out first. One transaction; the middle of every viewport is put back where it stood (`SetBoxCenter`); every scale and viewport is read back after the commit, and the report lists sheets where a view now sticks out of the drawing area |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -322,6 +354,15 @@ says which: open a sheet (a sheet opened behind a modal window could not be look
 sets `UIDocument.ActiveView` after `ShowDialog` returns) or export (the window hands back the lines
 as shown and a path; the command writes, like the "Excel" export). A dialog appears only when the
 write or the opening failed, or when the file was not opened in Excel.
+
+**Exception — `ViewsToSheetsCommand`, steps 3 and 5.** The snapshot needs a transaction: every
+titleblock type is measured on a sheet made for it in a transaction that is always rolled back (see
+"Key decisions"). Step 5 is one transaction as usual, but with passes inside it — create everything,
+regenerate, measure, move — and, for the crop-region, model-point and sample positioning, two
+sub-transactions that are always rolled back (measuring the crop regions before the move and again
+after it). Before the transaction, in a workshared model, the views and the viewports to be moved are
+checked out, as in "Move to Workset". Do not turn the passes into a loop of "create, regenerate,
+measure" per view: that is a regeneration per view.
 
 ## Key decisions
 
@@ -546,7 +587,9 @@ write or the opening failed, or when the file was not opened in Excel.
   **after** `Commit()` of the creation transaction (`LoadFrom` runs outside a transaction — see
   above), so `Apply` first gathers candidates into `toVerify` and heals them in a separate pass
   after the `using (transaction)` block. The final report reads: worked on the first try (silently),
-  worked on the second try (the "a reload fixed it" list — that also wipes undo history), did not
+  worked on the second try (the "took hold only on a second load" list, each line saying whether
+  Revit ignored the first request or the list could only be read after loading — that also wipes
+  undo history), did not
   work (a line in "Could not be done" with the workset names), or not checked (a section of its own).
 - **"The workset did not close" is really two different cases, and they must sound different.**
   Either Revit refused (the check above catches this), or **there is no workset with that name in
@@ -838,19 +881,31 @@ write or the opening failed, or when the file was not opened in Excel.
   names the worksets it actually has instead, and `Idle` tells four different "nothing was done"
   cases apart — nothing monitors a link, the link is not loaded, nothing this run was allowed to
   touch, and everything already in place.
-- **A cloud model's worksets cannot be listed without opening it — so the batch opens it twice.**
+- **A cloud model's worksets cannot be listed without opening it — so it is opened twice.**
   `WorksharingUtils.GetUserWorksetInfo` reads the worksets out of the file itself, and an Autodesk
   Docs model has no file to read: on a cloud path it throws `InternalException` with Revit's own "A
   managed exception was thrown by Revit or by one of its external applications" (seen on this
-  office's models — the whole batch failed on it, six models out of six). There is no other call
-  that answers the question, and without the ids a `WorksetConfiguration` cannot be built at all,
-  which would leave only "open a consultant's model whole" or "cloud models are not supported".
-  `BatchCoordination.Probe` takes the one way left: worksets are elements of the document and
-  `FilteredWorksetCollector` returns **every** one of them, closed included, so the model is opened
-  with `CloseAllWorksets` (it holds no model elements then, but knows all its worksets), the list is
-  read, the document is closed, and the real open follows with the ids. The second open is the
-  cheap one — the first loads nothing and Revit has the model in its local cache by then. Files and
-  Revit Server keep the short road (`Previews`): there the file is there to be read.
+  office's models — the batch failed on it six models out of six, and "Link Manager" loaded every
+  BIM360 link with its worksets untouched). There is no other call that answers the question, and
+  without the ids a `WorksetConfiguration` cannot be built at all, which would leave only "load a
+  consultant's model whole" or "cloud models are not supported". `LinkCatalog.ModelWorksets` — the
+  one reader both "Link Manager" and the batch use — takes the one way left: worksets are elements
+  of the document and `FilteredWorksetCollector` returns **every** one of them, closed included, so
+  the model is opened with `CloseAllWorksets` (it holds no model elements then, but knows all its
+  worksets), the list is read, the document is closed, and the real open or link follows with the
+  ids. The second open is the cheap one — the first loads nothing and Revit has the model in its
+  local cache by then. A cloud model already loaded as a link is not opened at all: its document is
+  in the session (`Application.Documents`), and it is read as it stands. Files and Revit Server keep
+  the short road: there the file is there to be read.
+  In "Link Manager" this has two consequences. **The worksets of new links are read before the
+  transaction opens** (`LinkManagerCommand.Prefetch`): whether a document may be opened and closed
+  while another has a transaction open is something the API does not promise, so it is not tried; a
+  failure is cached (`_unreadable`) as firmly as a success, so `Configuration` inside the
+  transaction does not try again. And **the retry after a mismatch re-reads the list first**
+  (`Reread`) — the link is loaded by then, so a cloud model whose open was refused is read from its
+  own link document, and the reload applies the real setup. A link that came in with the base mode
+  because nothing could be read is reported as exactly that, never as "Revit did not apply the
+  worksets": no workset setup was sent to Revit at all (`Account` takes the first load's notes).
 - **The batch never deletes, and this is not the same rule as the window's "Delete…" box.** In the
   open project a row that is gone from the coordination file can be deleted — behind its own switch,
   unchecked, with the count of what stands on the level in the confirmation. None of that can be
@@ -1394,7 +1449,7 @@ write or the opening failed, or when the file was not opened in Excel.
   contents one level deeper), not a WPF grouped collection view: the window's lines map one for one
   onto Excel rows, and a grouped view would have to be laid flat again for the export anyway.
   Folding removes and inserts lines with one merge over the ordered list
-  (`SheetsWindow.RebuildVisible`), never `Clear()`, so a fold keeps the scroll position and the
+  (`FlatTree.Sync`), never `Clear()`, so a fold keeps the scroll position and the
   selection. Column sorting is off: a click on a heading would scatter sheets out of their folders.
   The natural comparison falls back to an ordinal one on a tie, so two folders differing only in case
   never interleave — the window starts a new folder line wherever the name changes.
@@ -1412,6 +1467,141 @@ write or the opening failed, or when the file was not opened in Excel.
   `ImageInstance` and view-specific `ImportInstance` (`OwnerViewId`). Titleblocks, text notes and
   annotation are left out: they are on nearly every sheet and would bury what was placed. The word for
   a view's kind is `TextSiteCollector.ViewKind`, shared with "Translate" rather than copied.
+- **What the Project Browser says is read in one place, `ProjectBrowser`** — folders, filter, sort
+  value, the natural order — and laid out in one place, `FlatTree.Sync` (the merge that folds without
+  `Clear()`). "Sheets" reads the sheet organization through it, "Views to Sheets" the view one; do not
+  set up a third copy. The view organization differs in one thing: under the organization's own
+  folders the browser always adds a view-type group ("Floor Plans", "Sections (Building Section)"),
+  which `GetFolderItems` does not return — `ViewsToSheetsCommand.TypeGroup` adds it, and the groups
+  are ordered by `Placeable`, as far as the browser's own order can be seen (the API does not expose it).
+- **"Views to Sheets": one view, one new sheet, named after the view.** The numbers are worked out
+  in the window, in the order of the table, from a prefix and a counter whose leading zeros are kept;
+  a number the project already has (placeholder sheets included — they hold numbers too) is skipped,
+  never clashed with, and the "Sheet" column shows the result before "Place". A view Revit will
+  not put on a sheet (`Viewport.CanAddViewToSheet` — already on one, or empty) takes the sheet made for
+  it back with it: an empty sheet left behind is one more thing to clean up by hand. A view already on
+  a sheet (a view stands on one sheet only, a legend excepted) is checkable only "like a sample
+  sheet", and then it is moved on its own sheet, never given a new one; which lines can be checked is
+  worked out by the window per positioning (`ViewsToSheetsWindow.UpdateCheckable`), and a line that
+  stops being checkable loses its check mark — a switch of positioning must not leave a move behind
+  that nobody sees.
+- **The titleblock's frame is measured, never read from its parameters.** "Sheet Width"/"Sheet
+  Height" are whatever the family's author typed and say nothing about where the frame sits relative
+  to the sheet's origin. So when the window opens, a sheet of every titleblock type is made in a
+  transaction that is always rolled back (`SetClearAfterRollback(true)`, as `ScheduleTable.Probe`
+  does), and each titleblock's `get_BoundingBox(sheet)` is its frame. It is measured once more on the
+  first sheet of the real run, and that one wins. The margins are kept **per titleblock type**: where
+  the title panel sits is a property of the titleblock.
+- **Revit 2022 has no API from the model onto a sheet — and RevitAPI.xml 2022 says it has.**
+  `View.GetModelToProjectionTransforms`, `Viewport.GetProjectionToSheetTransform` and
+  `TransformWithBoundary.GetBoundary` are documented in the 2022 RevitAPI.xml, but RevitAPI.dll 2022
+  (22.1.80) does not have them; they arrived in 2024 (confirmed by reflection over both DLLs — and by
+  the first compile for 2022 failing on them). So "The crop region" and "One model point" centring
+  **measure** where the crop region lands instead (`ViewsToSheetsCommand.MeasureCrops`): in a
+  sub-transaction that is always rolled back, the view template comes off, `CropBoxVisible` goes on
+  and `AreAnnotationCategoriesHidden` goes on — what is left on the sheet is the model clipped by the
+  crop and the crop boundary drawn round it, so `GetBoxOutline` is the crop region. The drawing does
+  not move on the sheet when what the view shows changes, so the rectangle read is where the crop
+  region stays after the rollback. The measured box must match the crop box's size over the scale
+  (2 mm); otherwise something besides the crop region is still on the sheet, and that view is centred
+  by its viewport, with the reason in the report — never centred on a rectangle that is not its crop.
+  A model point is then carried onto the sheet through the crop box's own frame
+  (`CropBox.Transform.Inverse`, divided by the scale, offset from the measured crop centre) — exact for
+  an unrotated viewport, and a new one is never rotated. A split crop region is left out up front:
+  each region moves on the sheet by itself, and the crop box says nothing about where. When 2022
+  support is dropped, the transforms can replace the measuring; until then there is one code path
+  for every year, not two.
+- **"Views to Sheets" checks what the user asked for, not what the API accepted.** `SetBoxCenter`
+  is exact, so every viewport's box centre is read back after the commit; but for the crop region and
+  the model point the request rests on the measurement, so the crop regions are measured again after
+  the move, inside the same transaction (a sub-transaction needs one to hold it — after the commit
+  there is none), and one off by more than 1 mm goes into "not where it was asked to go". The real
+  outline, title included, is checked against the drawing area: a view larger than it is placed
+  anyway and listed — the button never picks a scale to make a view fit; the scale is the user's
+  choice in the window. A moved view is checked against its own sheet's titleblock with the margins
+  remembered for that type (`ViewPlacementRequest.MarginsFor`).
+- **The one-model-point centring lines a group up on the middle of all its crop regions**, not on
+  the first view's: the set as a whole should sit in the middle. A group is the views looking the
+  same way (`AlignGroup` — view and up directions, rounded), so floor plans line up with floor plans
+  and ceiling plans with ceiling plans, whatever their scale.
+- **The "Views to Sheets" table is a tree with check boxes on the folders**, and a folder's box is a
+  summary, not a value: `UpdateFolders` works it out from the views under it that the search shows
+  (checked, cleared, or partly — `null`), and a click on it goes to those views through
+  `ViewPlacementRow.Toggled`. A partly checked folder clears on a click, the same as the header box —
+  WPF's own `null → false` step, kept rather than overridden, so both boxes behave alike.
+- **The scale is set on the view, after it is on its sheet, and read back.** `View.Scale` is set in
+  `Prepare` once `Viewport.Create` has succeeded — a view Revit refuses to place must not be left with
+  a changed scale — and before the regeneration, so every measurement after it sees the new scale.
+  Two things decide the scale besides the user and are caught in the window first: a **view template
+  that controls it** (a scale parameter in `GetTemplateParameterIds` and not in
+  `GetNonControlledTemplateParameterIds` — the cell is locked and "State" names the template; asked
+  once per template), and **dependent views**, which share one scale with their primary
+  (`ScaleGroup`): the row says the others change too, and two of them given different scales block
+  "Place" — one of the two would lose silently. After the commit every changed view's `Scale` is read
+  back; a refusal goes into "Scale not changed", not into the success list.
+- **"Like a sample sheet" repeats a viewport placed by hand, and that is why it can move views already
+  on sheets.** The sample is a viewport the user adjusted; the window offers the selected viewport,
+  or the one on the open sheet (a model view before a legend), and lists every viewport on a sheet.
+  A view in the sample's `AlignGroup` puts the middle of the sample's crop region — a model point —
+  where it stands on the sample's sheet, through the same crop measuring as the model-point centring
+  (`SampleAimOf`); any other view, or every view when the sample has no crop region, puts its box
+  centre on the sample's box centre. Positions are sheet coordinates, from the sheet's origin — the
+  window warns when the sample's titleblock is not the new sheets' one. The sample itself is never
+  checkable. A moved viewport keeps its pin: it is unpinned for `SetBoxCenter` and pinned again.
+- **The views are checked out before the transaction** (`ViewsToSheetsCommand.Borrow`), every view
+  and every viewport to be moved — scale and placement are edits of the view. Held by another user or
+  changed in the central model, a view is named in "Could not be placed" and left out: left to the
+  commit, either one would fail the whole batch, not itself. The same recipe as "Move to Workset".
+- **"Sheet Scale" exists because "Views to Sheets" cannot rescale what is already placed — by
+  design.** That window is "one checked view, one new sheet": a view already on a sheet is checkable
+  only "like a sample sheet", which also moves it, and a view whose template sets the scale has its
+  cell locked. Both are right for that button and were exactly why "1:100 sheets to 1:200" did
+  nothing there (reported October 2026). Do not fold a rescale-in-place mode into "Views to Sheets":
+  its checkability rules are built round placing and moving. It points at "Sheet Scale" instead —
+  in "State" for placed views and for template locks.
+- **A view template that sets the scale is the usual blocker, and the window asks what to do with it
+  rather than refusing.** On a real sheet set nearly every view has a template, and most templates
+  tick "View Scale" in "Include"; the view's own scale cannot be changed past that. Three answers
+  (`ScaleTemplateMode`): **Release** (default) unticks the scale in the template —
+  `ViewScale.Release` adds the scale parameters to `GetNonControlledTemplateParameterIds` and writes
+  it back with `SetNonControlledTemplateParameterIds`; every view using the template keeps the scale
+  it has, and the checked ones get the new one — the only answer that changes exactly what was
+  checked. That the others keep theirs is how unticking "Include" behaves in Revit's own dialog, and
+  it is not taken on trust: their scales are recorded before and read back after the commit, and one
+  that moved goes into "Changed although nobody checked it". **ChangeTemplate** gives the template the
+  new scale (`View.Scale` on the template, `VIEW_SCALE` as a fallback), and every view using it
+  follows, checked or not — right when the template is meant for one scale; the window counts the
+  template's users and the confirmation lists the templates. **Leave** makes such views uncheckable.
+  Detaching the template from the view is deliberately not offered: it drops everything else the
+  template controls. The template edit is part of the same transaction and the same Ctrl+Z.
+- **The scale is changed on the view that holds it.** A dependent view shares its primary's scale
+  (`ViewScale.Owner` — the primary of a dependent, else the view), and so does every other dependent;
+  the template that matters is the primary's. The command groups the checked views by owner, changes
+  each owner once, and reads every member back — the ones nobody checked go into "Changed along with
+  them", never silently. The window shows the same as "changes too" on their lines. A legend standing
+  on several sheets has one scale, so all its lines share one check box (`SheetScaleWindow._byView`).
+- **What decides the scale is read again from the model at run time**, not taken from the window's
+  snapshot — a template's "Include" may have changed while the window was open. A template that
+  controls the scale under "Leave" becomes a "Could not be changed" line, not a silent skip.
+- **The middle of every viewport is put back where it stood.** How Revit grows or shrinks a viewport
+  round a new scale is not documented, and annotation that keeps its size on paper shifts the box
+  besides; a sheet set laid out by hand must not come back rearranged. So every viewport of every
+  view the run touches has `GetBoxCenter` recorded before, and after one regeneration any that moved
+  more than half a millimetre gets `SetBoxCenter` (unpinned and pinned again, as in "Views to
+  Sheets"). After the commit every centre is read back — "Not where they stood" otherwise.
+- **"Sheet Scale"'s drawing area is the titleblock less the margins "Views to Sheets" keeps for that
+  titleblock type** (`ViewsToSheetsPreferences.Margins`), read, never written: where a title panel
+  sits is a property of the titleblock, set once there. The window's "may stick out" is an estimate
+  (the box grown round its middle by old/new scale — text and tags keep their paper size); the
+  report checks the real outline, title included.
+- **"Change the checked views at" is a checkability rule, not a find filter.** A view at another
+  scale is greyed and loses its check mark — the "a line that stops being checkable loses its check
+  mark" rule of "Views to Sheets" — so a 1:20 detail on a 1:100 sheet cannot ride along unseen. It is
+  deliberately not remembered between runs: the next window would open with most views greyed for a
+  reason nobody chose that day. "Find" in the same window only finds (see "Conventions").
+- **Who decides a view's scale is answered in one place, `ViewScale`** — whether a template controls
+  it, releasing it, the owner of a dependent's scale. "Views to Sheets" (`ScaleLock`) and "Sheet
+  Scale" both use it; do not set up a third copy of the template check.
 
 ## Storing user settings
 
@@ -1430,7 +1620,8 @@ window closes, and a set itself only through its own "Save set" button — table
 binding, group) are not written until then. `coordination\` holds settings only, and has no sets of
 its own on purpose: the model list there is the same `LinkSetLibrary` one "Link Manager" uses.
 `translate\` is data, not settings: the dictionary there is rewritten whenever the "Translate" window
-closes, with every translation the window held (see "Key decisions"). `sheets\` holds settings only.
+closes, with every translation the window held (see "Key decisions"). `sheets\`, `viewstosheets\`
+and `sheetscale\` hold settings only.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -1572,6 +1763,24 @@ throwaway shared parameter file, `%TEMP%\VladTools-rowkey-<guid>.txt`, deleted a
 last export) and `OPEN_AFTER` (`1`/`0` — open the exported file in Excel). Rewritten whenever the
 window closes. The button keeps no data: the folders come from the Project Browser every time.
 
+`viewstosheets\_settings.txt` — the "Views to Sheets" window's settings: `KEY = value` —
+`TITLEBLOCK` (the titleblock type used last, `Family : Type`), `CENTER` (`Viewport` / `CropRegion` /
+`ModelPoint` / `Sample` — `Sample` falls back to `Viewport` in a project with no viewport on a sheet;
+the sample itself is not remembered, it belongs to one project), `PREFIX` and `START` (the sheet
+numbering; `START` is kept as text, so `001` keeps its zeros), `SHOW_PLACED` (`1`/`0` — show the
+views that cannot be checked), `SCALE` (the text last in "Scale for the checked views") and `MARGINS`
+lines, one per titleblock type ever used:
+`Family : Type | left | top | right | bottom`, millimetres, invariant decimal point; the name is
+everything before the last four fields, so a vertical bar in a type name does not break the line. A
+type with no line gets `ViewsToSheetsPreferences.DefaultMargins` (20 / 10 / 10 / 10). Rewritten
+whenever the window closes. "Sheet Scale" reads the `MARGINS` lines too (its drawing area), and
+never writes this file.
+
+`sheetscale\_settings.txt` — the "Sheet Scale" window's settings: `KEY = value` — `SCALE` (the new
+scale typed or picked last, as text) and `TEMPLATES` (`Release` / `ChangeTemplate` / `Leave` — what to
+do with a view whose template sets the scale; default `Release`). "Change the checked views at" is not
+kept, on purpose (see "Key decisions"). Rewritten whenever the window closes.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -1590,9 +1799,11 @@ window closes. The button keeps no data: the folders come from the Project Brows
   **is** the selection: a row that leaves the table through it loses its check mark. The
   exceptions are search boxes and lists that only ever *find*: `CategoryPickerWindow` (check "Walls", type
   "door" to reach the next one, and the box out of sight stays checked), `ExcelExportWindow` (the
-  same, over schedules), and `TranslateWindow` and `ExcelImportWindow`, whose search box and "Show"
+  same, over schedules), `ViewsToSheetsWindow` (find "Level", tick, find "Section", tick — the first
+  round must survive the second), `SheetScaleWindow` (the same, over sheets — its "at 1:100" list is
+  not a find filter but a checkability rule, and that one does uncheck), and `TranslateWindow` and `ExcelImportWindow`, whose search box and "Show"
   list find a row among hundreds without touching any other row's check mark — looking at the rows
-  that cannot be written must not uncheck the ones that can. Both confirmations say how many of the
+  that cannot be written must not uncheck the ones that can. Their confirmations say how many of the
   rows going in are out of sight. Adding a filter that selects for the user means the rule comes
   back with it.
 - **Name a WPF binding path with `nameof`, never a bare string**, and never rely on
@@ -1635,6 +1846,14 @@ release. Everything else this project uses predates it. The build takes its refe
 "Worksets" button fails to load, and the fix is Revit's own update, not a code change. Checked by
 reflection on 2022, 2024 and 2025 — identical signatures in all three.
 
+**RevitAPI.xml is not proof that a member exists — reflect over RevitAPI.dll.** The 2022 RevitAPI.xml
+documents `View.GetModelToProjectionTransforms`, `Viewport.GetProjectionToSheetTransform` and
+`TransformWithBoundary.GetBoundary`/`GetModelToProjectionTransform`, but RevitAPI.dll 2022 (22.1.80)
+has none of them — they are in 2024 (see "Key decisions", "Views to Sheets"). Check a new API in the
+DLL of every year (`Assembly.ReflectionOnlyLoadFrom` under Windows PowerShell works for 2022/2024;
+2025 is a .NET 8 assembly and needs `MetadataLoadContext` or simply a compile for 2025), or by
+compiling for every year — which `build.ps1` does anyway.
+
 Already done and no longer needing attention: `Definition.ParameterGroup` together with
 `LabelUtils.GetLabelFor(BuiltInParameterGroup)` (`GroupName` in both delete-parameters commands) —
 in Revit 2025 the `BuiltInParameterGroup` type itself is removed entirely; this was the one
@@ -1649,7 +1868,15 @@ other API the "Excel" button uses (`ViewSchedule.RefreshData`, `UnitFormatUtils.
 `BindingMap.Insert(Definition, Binding)`, `ScheduleField.GetSpecTypeId`/`DisplayType`) was checked
 against RevitAPI.xml of all three years — present in each, with the same signature. The same goes
 for what "Sheets" uses: `BrowserOrganization.GetFolderItems`/`SortingParameterId`/`SortingOrder`,
-`FolderItemInfo`, `ImageInstance` (since 2020) and `PanelScheduleSheetInstance`.
+`FolderItemInfo`, `ImageInstance` (since 2020) and `PanelScheduleSheetInstance`. What "Views to
+Sheets" uses — `ViewSheet.Create`, `Viewport.Create`/`CanAddViewToSheet`/`GetBoxOutline`/
+`GetLabelOutline`/`GetBoxCenter`/`SetBoxCenter`, `BrowserOrganization.GetCurrentBrowserOrganizationForViews`,
+`View.CropBoxVisible`/`AreAnnotationCategoriesHidden`/`Outline`/`Scale` (setter)/`GetPrimaryViewId`/
+`GetDependentViewIds`/`GetTemplateParameterIds`/`GetNonControlledTemplateParameterIds`,
+`BuiltInParameter.VIEW_SCALE_PULLDOWN_METRIC`/`_IMPERIAL`/`VIEW_SCALE`, `Element.Pinned`,
+`ViewCropRegionShapeManager.Split`, `SubTransaction` — was confirmed by reflection over RevitAPI.dll
+2022 and 2024 and by compiling for all three. "Sheet Scale" adds `View.SetNonControlledTemplateParameterIds`
+(`<since>2013</since>`), checked the same way.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

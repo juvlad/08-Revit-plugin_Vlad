@@ -111,7 +111,7 @@ namespace VladTools.UI
         /// A non-workshared project means an empty list, and the workset column is hidden.
         /// </param>
         /// <param name="readWorksets">
-        /// Reads the worksets of the chosen models without opening them.
+        /// Reads the worksets of the chosen models without loading them.
         /// All the work with Revit is done by the command — the window only calls it and shows the result.
         /// </param>
         /// <param name="host">Where the open project lives and what it is called; may be empty.</param>
@@ -238,7 +238,8 @@ namespace VladTools.UI
                 Margin = new Thickness(0, 0, 12, 0),
                 IsEnabled = _readWorksets != null,
                 ToolTip =
-                    "Reads the workset names of the checked models without opening them.\n" +
+                    "Reads the workset names of the checked models without loading them.\n" +
+                    "A BIM360 model is opened for a moment with every workset closed — that takes longer.\n" +
                     "This is only for seeing the name list: on load the worksets are read again\n" +
                     "regardless — the worksets themselves still have to be found by name."
             };

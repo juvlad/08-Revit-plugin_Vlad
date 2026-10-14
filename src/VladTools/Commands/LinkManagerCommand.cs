@@ -29,8 +29,17 @@ namespace VladTools.Commands
         /// Id". Every model has its own ids, so the names checked in the window are turned into
         /// ids separately for each link. Filled in when reading via the button, and topped up on load.
         /// </summary>
-        private readonly Dictionary<string, List<WorksetInfo>> _worksets =
-            new Dictionary<string, List<WorksetInfo>>(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<ModelWorkset>> _worksets =
+            new Dictionary<string, List<ModelWorkset>>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Why a row's worksets could not be read this run, keyed like <see cref="_worksets"/>. A
+        /// failure is remembered as firmly as a success: reading a cloud model means opening it, and
+        /// <see cref="Prefetch"/> does that before the transaction precisely so that nothing tries
+        /// again from inside it.
+        /// </summary>
+        private readonly Dictionary<string, string> _unreadable =
+            new Dictionary<string, string>(StringComparer.Ordinal);
 
         /// <summary>
         /// The workset names actually encountered in links during this load run. This exists for
@@ -63,7 +72,7 @@ namespace VladTools.Commands
                 var window = new LinkManagerWindow(
                     LinkCatalog.Existing(doc),
                     LinkCatalog.HostWorksets(doc),
-                    rows => ReadWorksets(rows),
+                    rows => ReadWorksets(doc, rows),
                     LinkCatalog.Host(doc));
                 new WindowInteropHelper(window).Owner = commandData.Application.MainWindowHandle;
 
@@ -78,6 +87,7 @@ namespace VladTools.Commands
                 // between "Read Worksets" and "Load". A stale WorksetId is silently ignored by both
                 // Open and Close — a failure that is impossible to find afterwards.
                 _worksets.Clear();
+                _unreadable.Clear();
                 _seenNames.Clear();
 
                 var created = new List<string>();
@@ -111,12 +121,13 @@ namespace VladTools.Commands
         // ───────────────────────────── worksets ─────────────────────────────
 
         /// <summary>
-        /// Reads the workset names of the checked models without opening them. It goes over the
-        /// network to every file, so in the window it sits behind a button rather than running on
-        /// its own. Along the way it fills <see cref="_worksets"/> — the same data will be needed
-        /// on load, to turn the checked names into every model's own ids.
+        /// Reads the workset names of the checked models without loading them (a cloud model is
+        /// opened with every workset closed — see <see cref="LinkCatalog.ModelWorksets"/>). It goes
+        /// over the network to every model, so in the window it sits behind a button rather than
+        /// running on its own. Along the way it fills <see cref="_worksets"/> — the same data will be
+        /// needed on load, to turn the checked names into every model's own ids.
         /// </summary>
-        private LinkWorksetScan ReadWorksets(IReadOnlyList<LinkRow> rows)
+        private LinkWorksetScan ReadWorksets(Document doc, IReadOnlyList<LinkRow> rows)
         {
             var names = new SortedSet<string>(StringComparer.CurrentCultureIgnoreCase);
             var failures = new List<string>();
@@ -126,7 +137,7 @@ namespace VladTools.Commands
             {
                 try
                 {
-                    var worksets = Worksets(row, true);
+                    var worksets = Worksets(doc, row, true);
                     row.WorksetNames = worksets.Select(workset => workset.Name).ToList();
                     row.Note = string.Empty;
 
@@ -152,22 +163,69 @@ namespace VladTools.Commands
         /// lives only for this run: <see cref="Execute"/> clears it before loading, because
         /// workset ids can change between the read and the load.
         /// </summary>
-        private List<WorksetInfo> Worksets(LinkRow row, bool refresh)
+        private List<ModelWorkset> Worksets(Document doc, LinkRow row, bool refresh)
         {
-            List<WorksetInfo> cached;
-            if (!refresh && _worksets.TryGetValue(row.Key, out cached))
-                return cached;
+            if (!refresh)
+            {
+                List<ModelWorkset> cached;
+                if (_worksets.TryGetValue(row.Key, out cached))
+                    return cached;
 
-            var worksets = WorksharingUtils.GetUserWorksetInfo(LinkCatalog.ToModelPath(row.Entry))
-                .Select(preview => new WorksetInfo(preview.Name, preview.Id))
-                .ToList();
+                string failure;
+                if (_unreadable.TryGetValue(row.Key, out failure))
+                    throw new InvalidOperationException(failure);
+            }
+
+            List<ModelWorkset> worksets;
+            try
+            {
+                worksets = LinkCatalog.ModelWorksets(doc.Application, row.Entry);
+            }
+            catch (Exception exception)
+            {
+                _worksets.Remove(row.Key);
+                _unreadable[row.Key] = exception.Message;
+                throw;
+            }
 
             _worksets[row.Key] = worksets;
+            _unreadable.Remove(row.Key);
 
             foreach (var workset in worksets)
                 _seenNames.Add(LinkPreferences.NormalizeWorkset(workset.Name));
 
             return worksets;
+        }
+
+        /// <summary>
+        /// Reads the worksets of the links about to be created, before their transaction opens.
+        /// For a cloud model reading means opening it (<see cref="LinkCatalog.ModelWorksets"/>), and
+        /// whether a document may be opened and closed while another one has a transaction open is
+        /// something the API documentation does not promise either way — so it is not tried. What
+        /// could not be read is remembered, and <see cref="Configuration"/> reports it from there.
+        /// </summary>
+        private void Prefetch(Document doc, IReadOnlyList<LinkRow> rows, LinkPreferences preferences)
+        {
+            if (!Requested(preferences))
+                return;
+
+            foreach (var row in rows)
+            {
+                try
+                {
+                    Worksets(doc, row, false);
+                }
+                catch (Exception)
+                {
+                    // Remembered in _unreadable; the report gets it through Configuration.
+                }
+            }
+        }
+
+        /// <summary>Whether any workset is asked for by name or by rule — otherwise there is nothing to read.</summary>
+        private static bool Requested(LinkPreferences preferences)
+        {
+            return preferences.Worksets.Count > 0 || !string.IsNullOrEmpty(preferences.WorksetPattern);
         }
 
         /// <summary>
@@ -188,19 +246,16 @@ namespace VladTools.Commands
         /// The worksets could not be read — we hand back a plain base mode: the link will still
         /// load, just without the selective closing.
         /// </summary>
-        private WorksetConfiguration Configuration(LinkRow row, LinkPreferences preferences, List<string> notes)
+        private WorksetConfiguration Configuration(Document doc, LinkRow row, LinkPreferences preferences, List<string> notes)
         {
-            var hasNames = preferences.Worksets.Count > 0;
-            var hasPattern = !string.IsNullOrEmpty(preferences.WorksetPattern);
-
             // Nothing is checked — no reason to go to the file for worksets.
-            if (!hasNames && !hasPattern)
+            if (!Requested(preferences))
                 return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
 
-            List<WorksetInfo> worksets;
+            List<ModelWorkset> worksets;
             try
             {
-                worksets = Worksets(row, false);
+                worksets = Worksets(doc, row, false);
             }
             catch (Exception exception)
             {
@@ -210,8 +265,8 @@ namespace VladTools.Commands
             }
 
             // An empty list after a successful read is suspicious: a workshared model always has
-            // at least the default workset. GetUserWorksetInfo most likely could not reach the
-            // file and simply did not throw. Failing to tell this apart from "no name matched"
+            // at least the default workset. The read most likely could not reach the model and
+            // simply did not throw. Failing to tell this apart from "no name matched"
             // would mean losing the only clue when Revit silently did not close what was asked.
             if (worksets.Count == 0)
             {
@@ -318,9 +373,7 @@ namespace VladTools.Commands
         /// </summary>
         private static WorksetCheck Check(Document linkDocument, LinkPreferences preferences)
         {
-            var hasNames = preferences.Worksets.Count > 0;
-            var hasPattern = !string.IsNullOrEmpty(preferences.WorksetPattern);
-            if (!hasNames && !hasPattern)
+            if (!Requested(preferences))
                 return WorksetCheck.NotRequested();
 
             if (linkDocument == null)
@@ -377,6 +430,11 @@ namespace VladTools.Commands
         /// sent: the mismatch shows up in what actually loaded, not in what was requested. Files
         /// and the cloud were never seen to behave this way.
         ///
+        /// The other way to arrive here is a link loaded without a workset list at all — its worksets
+        /// could not be read beforehand (a cloud model Revit would not open), so it came in with the
+        /// base mode. Once loaded, its own document is where the list is read from
+        /// (<see cref="LinkCatalog.ModelWorksets"/>), and the same reload applies the real setup.
+        ///
         /// This can only be called outside a transaction: `LoadFrom` refuses to work inside an open one.
         /// </summary>
         /// <param name="retried">Whether a second attempt was needed — if not, the report has nothing to say.</param>
@@ -396,16 +454,18 @@ namespace VladTools.Commands
             if (type == null)
                 return check;
 
+            Reread(doc, row);
+
             var notes = new List<string>();
 
             try
             {
-                using (var configuration = Configuration(row, preferences, notes))
+                using (var configuration = Configuration(doc, row, preferences, notes))
                 {
                     // Retrying only makes sense with a full configuration. If Configuration could
-                    // not read the link's worksets, it handed back the base mode: such a LoadFrom
-                    // would change nothing, yet it would still wipe the undo history. The reason
-                    // already went into the report from Create/Reload — we report the mismatch as it is.
+                    // not read the link's worksets even now, it handed back the base mode: such a
+                    // LoadFrom would change nothing, yet it would still wipe the undo history.
+                    // Account reports why the link came in as it is.
                     if (notes.Count > 0)
                         return check;
 
@@ -425,18 +485,55 @@ namespace VladTools.Commands
         }
 
         /// <summary>
+        /// Reads a row's worksets again once its link has loaded: for a cloud model whose list could
+        /// not be read beforehand this is the moment it can be, and for any model the ids are then
+        /// those of the version just loaded. A failure here keeps the earlier list — it is still a
+        /// better basis for the second attempt than none.
+        /// </summary>
+        private void Reread(Document doc, LinkRow row)
+        {
+            List<ModelWorkset> earlier;
+            _worksets.TryGetValue(row.Key, out earlier);
+
+            try
+            {
+                Worksets(doc, row, true);
+            }
+            catch (Exception)
+            {
+                if (earlier != null)
+                {
+                    _worksets[row.Key] = earlier;
+                    _unreadable.Remove(row.Key);
+                }
+            }
+        }
+
+        /// <summary>
         /// Sorts the check's outcome into the report's lists. "Could not be checked" also lands
         /// here as a line of its own: staying quiet about it would mean going back to how
         /// unclosed worksets went unnoticed in the first place.
+        ///
+        /// <paramref name="notes"/> are what <see cref="Configuration"/> said on the first load:
+        /// the worksets could not be read, so the link came in with the base mode. That is the
+        /// explanation, and it goes into the report unless a reload fixed it after all. A mismatch
+        /// on top of it is not reported as Revit failing to apply the worksets: no workset setup
+        /// was sent to Revit in the first place.
         /// </summary>
         private static void Account(
             LinkRow row,
+            IReadOnlyList<string> notes,
             WorksetCheck check,
             bool retried,
             List<string> healed,
             List<string> unverified,
             List<string> failures)
         {
+            var unread = notes.Count > 0;
+
+            if (unread && !(check.Verdict == WorksetVerdict.Satisfied && retried))
+                failures.AddRange(notes);
+
             switch (check.Verdict)
             {
                 case WorksetVerdict.Unknown:
@@ -444,15 +541,19 @@ namespace VladTools.Commands
                     break;
 
                 case WorksetVerdict.Mismatched:
-                    failures.Add(row.Name + (retried
-                                     ? " — the worksets did not apply even after reloading: "
-                                     : " — Revit did not apply the worksets: ") +
-                                 string.Join(", ", check.Names));
+                    if (retried)
+                        failures.Add(row.Name + " — the worksets did not apply even after reloading: " +
+                                     string.Join(", ", check.Names));
+                    else if (!unread)
+                        failures.Add(row.Name + " — Revit did not apply the worksets: " +
+                                     string.Join(", ", check.Names));
                     break;
 
                 case WorksetVerdict.Satisfied:
                     if (retried)
-                        healed.Add(row.Name);
+                        healed.Add(row.Name + (unread
+                                       ? " — the worksets could not be read before loading, only after it"
+                                       : " — Revit ignored the first request"));
                     break;
             }
         }
@@ -505,7 +606,9 @@ namespace VladTools.Commands
 
             // Who to check and, if needed, heal through LoadFrom — that must happen outside the
             // transaction, so the list is gathered inside and processed outside.
-            var toVerify = new List<KeyValuePair<LinkRow, ElementId>>();
+            var toVerify = new List<PendingCheck>();
+
+            Prefetch(doc, fresh, preferences);
 
             using (var transaction = new Transaction(doc, "Loading links"))
             {
@@ -521,9 +624,10 @@ namespace VladTools.Commands
                 {
                     try
                     {
-                        var typeId = Create(doc, row, preferences, placement, worksets, created, failures);
+                        var notes = new List<string>();
+                        var typeId = Create(doc, row, preferences, placement, worksets, created, notes, failures);
                         if (typeId != ElementId.InvalidElementId)
-                            toVerify.Add(new KeyValuePair<LinkRow, ElementId>(row, typeId));
+                            toVerify.Add(new PendingCheck(row, typeId, notes));
                     }
                     catch (Exception exception)
                     {
@@ -549,17 +653,18 @@ namespace VladTools.Commands
                     transaction.Commit();
             }
 
-            foreach (var pair in toVerify)
+            foreach (var pending in toVerify)
             {
                 try
                 {
                     bool retried;
-                    var check = EnsureWorksets(doc, pair.Key, pair.Value, preferences, out retried);
-                    Account(pair.Key, check, retried, healed, unverified, failures);
+                    var check = EnsureWorksets(doc, pending.Row, pending.TypeId, preferences, out retried);
+                    Account(pending.Row, pending.Notes, check, retried, healed, unverified, failures);
                 }
                 catch (Exception exception)
                 {
-                    failures.Add(pair.Key.Name + " — " + LinkCatalog.Short(exception.Message));
+                    failures.AddRange(pending.Notes);
+                    failures.Add(pending.Row.Name + " — " + LinkCatalog.Short(exception.Message));
                 }
             }
         }
@@ -596,7 +701,11 @@ namespace VladTools.Commands
             }
         }
 
-        /// <summary>Returns the id of a new link — or <c>InvalidElementId</c> if it did not work out.</summary>
+        /// <summary>
+        /// Returns the id of a new link — or <c>InvalidElementId</c> if it did not work out.
+        /// <paramref name="notes"/> gets what <see cref="Configuration"/> said about the worksets;
+        /// they are reported once the link has been checked (<see cref="Account"/>), not here.
+        /// </summary>
         private ElementId Create(
             Document doc,
             LinkRow row,
@@ -604,11 +713,10 @@ namespace VladTools.Commands
             ImportPlacement placement,
             Dictionary<string, WorksetId> worksets,
             List<string> created,
+            List<string> notes,
             List<string> failures)
         {
-            var notes = new List<string>();
-
-            using (var configuration = Configuration(row, preferences, notes))
+            using (var configuration = Configuration(doc, row, preferences, notes))
             {
                 // A relative path exists only for a file: for Revit Server and the cloud the path
                 // is always absolute, and Revit simply will not accept a relative one there.
@@ -663,7 +771,6 @@ namespace VladTools.Commands
 
                     row.Note = "Loaded";
                     created.Add(row.Name);
-                    failures.AddRange(notes);
 
                     // The link's worksets are checked and, if needed, healed later, outside the
                     // transaction (Apply.toVerify) — LoadFrom refuses to work inside one.
@@ -702,7 +809,7 @@ namespace VladTools.Commands
 
                     var notes = new List<string>();
 
-                    using (var configuration = Configuration(row, preferences, notes))
+                    using (var configuration = Configuration(doc, row, preferences, notes))
                     {
                         var result = type.LoadFrom(LinkCatalog.ToModelPath(row.Entry), configuration);
 
@@ -716,13 +823,12 @@ namespace VladTools.Commands
 
                     row.Note = "Reloaded";
                     reloaded.Add(row.Name);
-                    failures.AddRange(notes);
 
                     // Reload already runs outside a transaction, so healing (EnsureWorksets →
                     // LoadFrom) can happen right away, without waiting for a separate pass as new links need.
                     bool retried;
                     var check = EnsureWorksets(doc, row, row.ExistingId, preferences, out retried);
-                    Account(row, check, retried, healed, unverified, failures);
+                    Account(row, notes, check, retried, healed, unverified, failures);
                 }
                 catch (Exception exception)
                 {
@@ -773,7 +879,7 @@ namespace VladTools.Commands
                         (created.Count > limit ? "\n… and " + (created.Count - limit) + " more" : string.Empty);
 
             if (healed.Count > 0)
-                text += "\n\nRevit did not close the worksets as asked on the first try, a reload fixed it " +
+                text += "\n\nThe worksets took hold only on a second load " +
                         "(that also wipes the document's undo history):\n• " +
                         string.Join("\n• ", healed.Take(limit)) +
                         (healed.Count > limit ? "\n… and " + (healed.Count - limit) + " more" : string.Empty);
@@ -880,17 +986,22 @@ namespace VladTools.Commands
             }
         }
 
-        /// <summary>A link's workset: the name checked in the window, and its id in this model.</summary>
-        private sealed class WorksetInfo
+        /// <summary>A link just created, waiting to be checked once its transaction has committed.</summary>
+        private sealed class PendingCheck
         {
-            public WorksetInfo(string name, WorksetId id)
+            public PendingCheck(LinkRow row, ElementId typeId, IReadOnlyList<string> notes)
             {
-                Name = name ?? string.Empty;
-                Id = id;
+                Row = row;
+                TypeId = typeId;
+                Notes = notes;
             }
 
-            public string Name { get; }
-            public WorksetId Id { get; }
+            public LinkRow Row { get; }
+
+            public ElementId TypeId { get; }
+
+            /// <summary>What <see cref="Configuration"/> said about the worksets when the link was created.</summary>
+            public IReadOnlyList<string> Notes { get; }
         }
     }
 }

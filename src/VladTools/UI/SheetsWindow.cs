@@ -382,32 +382,9 @@ namespace VladTools.UI
             return true;
         }
 
-        /// <summary>
-        /// Brings the table in line by removing and inserting only the lines that changed, rather than
-        /// clearing it: folding one folder must not throw the scroll position and the selection away.
-        /// Both lists keep the order of <see cref="_all"/>, so one merge pass is enough — a line that is
-        /// not wanted any more goes, a wanted line not there yet goes in where the merge has got to.
-        /// </summary>
         private void RebuildVisible()
         {
-            var target = Shown(false);
-            var wanted = new HashSet<SheetListRow>(target);
-
-            var position = 0;
-            foreach (var row in target)
-            {
-                while (position < _visible.Count && _visible[position] != row && !wanted.Contains(_visible[position]))
-                    _visible.RemoveAt(position);
-
-                if (position < _visible.Count && _visible[position] == row)
-                    position++;
-                else
-                    _visible.Insert(position++, row);
-            }
-
-            while (_visible.Count > position)
-                _visible.RemoveAt(position);
-
+            FlatTree.Sync(_visible, Shown(false));
             UpdateStatus();
         }
 

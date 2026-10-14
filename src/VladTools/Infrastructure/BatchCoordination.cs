@@ -63,7 +63,7 @@ namespace VladTools.Infrastructure
     /// opened names being reported per model: a model where nothing matched is a model where
     /// nothing could have been found.
     ///
-    /// **A cloud model's worksets cannot be listed without opening it** — see <see cref="Probe"/>.
+    /// **A cloud model's worksets cannot be listed without opening it** — see <see cref="LinkCatalog.ModelWorksets"/>.
     /// There the list is fetched by opening the model with every workset closed and closing it
     /// again: an extra open, and the same selective loading as everywhere else.
     /// </summary>
@@ -142,7 +142,7 @@ namespace VladTools.Infrastructure
             }
 
             string trouble;
-            var worksets = Worksets(app, entry, path, out trouble);
+            var worksets = Worksets(app, entry, out trouble);
 
             if (worksets == null)
             {
@@ -159,7 +159,7 @@ namespace VladTools.Infrastructure
                     return null;
                 }
 
-                worksets = new List<WorksetHandle>();
+                worksets = new List<ModelWorkset>();
             }
 
             var wanted = worksets.Where(workset => Matches(workset.Name, prefixes)).ToList();
@@ -320,117 +320,27 @@ namespace VladTools.Infrastructure
                    string.Equals(first, second, StringComparison.CurrentCultureIgnoreCase);
         }
 
-        /// <summary>A workset of a model that is not open yet: the name to match on and the id to open by.</summary>
-        private sealed class WorksetHandle
-        {
-            public WorksetHandle(string name, WorksetId id)
-            {
-                Name = name ?? string.Empty;
-                Id = id;
-            }
-
-            public string Name { get; }
-
-            public WorksetId Id { get; }
-        }
-
         /// <summary>
-        /// The model's worksets — by two different roads, because the short one has no cloud lane.
+        /// The model's worksets — read without opening it where the store allows, and by opening it
+        /// with every workset closed where it does not (the cloud): see <see cref="LinkCatalog.ModelWorksets"/>.
         ///
         /// **Null is not an empty list**: a model that is not workshared honestly has no worksets,
         /// while null means the question could not be asked at all — and treating the second as the
         /// first would open the model with every workset in it.
         /// </summary>
-        private static List<WorksetHandle> Worksets(
-            Application app,
-            LinkEntry entry,
-            ModelPath path,
-            out string trouble)
-        {
-            return entry.Origin == LinkOrigin.Cloud ? Probe(app, path, out trouble) : Previews(path, out trouble);
-        }
-
-        /// <summary>
-        /// The worksets of a file or a Revit Server model, read without opening it at all:
-        /// <c>WorksharingUtils.GetUserWorksetInfo</c> reads them out of the file itself.
-        /// </summary>
-        private static List<WorksetHandle> Previews(ModelPath path, out string trouble)
+        private static List<ModelWorkset> Worksets(Application app, LinkEntry entry, out string trouble)
         {
             trouble = string.Empty;
 
             try
             {
-                return WorksharingUtils.GetUserWorksetInfo(path)
-                    .Select(preview => new WorksetHandle(preview.Name, preview.Id))
-                    .ToList();
+                return LinkCatalog.ModelWorksets(app, entry);
             }
             catch (Exception exception)
             {
                 // The type name matters more than the message here — see Diagnose.
                 trouble = exception.GetType().Name + ": " + LinkCatalog.Short(exception.Message);
                 return null;
-            }
-        }
-
-        /// <summary>
-        /// The worksets of a **cloud** model: opening it with every workset closed, reading the list,
-        /// closing it again.
-        ///
-        /// <c>GetUserWorksetInfo</c> reads a model's worksets out of the file without opening it, and
-        /// a cloud model has no file to read — on an Autodesk Docs path it throws an
-        /// <c>InternalException</c> carrying Revit's own "A managed exception was thrown…" (seen on
-        /// this office's models; there is no other call that answers the question). Without the ids a
-        /// <c>WorksetConfiguration</c> cannot be built at all, and that would leave only two ways out:
-        /// open a consultant's model whole, or refuse to work on cloud models.
-        ///
-        /// So the list is fetched the one way left. Worksets are elements of the document, and
-        /// <c>FilteredWorksetCollector</c> returns **every** one of them, closed included: a document
-        /// opened with <c>CloseAllWorksets</c> holds no model elements but knows all its worksets.
-        /// The price is a second open, and it is the cheaper half — the first loads nothing, and by
-        /// the time the second runs Revit has the model in its local cache.
-        /// </summary>
-        private static List<WorksetHandle> Probe(Application app, ModelPath path, out string trouble)
-        {
-            trouble = string.Empty;
-
-            Document doc = null;
-
-            try
-            {
-                var options = new OpenOptions();
-                options.SetOpenWorksetsConfiguration(
-                    new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets));
-
-                doc = app.OpenDocumentFile(path, options);
-
-                if (!doc.IsWorkshared)
-                    return new List<WorksetHandle>();
-
-                return new FilteredWorksetCollector(doc)
-                    .OfKind(WorksetKind.UserWorkset)
-                    .ToWorksets()
-                    .Select(workset => new WorksetHandle(workset.Name, workset.Id))
-                    .ToList();
-            }
-            catch (Exception exception)
-            {
-                trouble = exception.GetType().Name + ": " + LinkCatalog.Short(exception.Message);
-                return null;
-            }
-            finally
-            {
-                if (doc != null)
-                {
-                    try
-                    {
-                        doc.Close(false);
-                    }
-                    catch (Exception)
-                    {
-                        // Nothing to tell the user here: the work is about to open this model again,
-                        // and if Revit is still holding it, that attempt says so itself.
-                    }
-                }
             }
         }
 

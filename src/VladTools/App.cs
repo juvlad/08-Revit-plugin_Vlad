@@ -391,6 +391,52 @@ namespace VladTools
                     "in folders of their own at the end. Nothing in the model is changed.",
                 iconBaseName: "sheets");
 
+            // ───────────────── Button 18: Views to Sheets (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_ViewsToSheets",
+                text: "Views to\nSheets",
+                commandType: typeof(ViewsToSheetsCommand),
+                tooltip: "Puts every checked view on a new sheet of its own, at the scale chosen, centred — or positioned like a sample sheet.",
+                longDescription:
+                    "Revit places views one at a time: make a sheet, drag the view on, nudge it into the middle by eye.\n" +
+                    "Here the views are checked in a list laid out like the Project Browser — a folder's box takes\n" +
+                    "every view in it — and each one goes on a new sheet named after the view.\n\n" +
+                    "Choose the titleblock type and the margins of its drawing area (the title panel or stamp goes into\n" +
+                    "the margin on its side; remembered per titleblock). The sheets are numbered from a prefix and a\n" +
+                    "start number, skipping numbers the project already has. Every view can get a new scale — one\n" +
+                    "at a time, or one scale for all the checked ones.\n\n" +
+                    "Position by:\n" +
+                    "• the whole viewport — the view and its title in the middle of the sheet;\n" +
+                    "• the crop region — plans sharing a scope box land in the same place on every sheet;\n" +
+                    "• one model point — floor plans line up from sheet to sheet even where their crop regions differ;\n" +
+                    "• like a sample sheet — move one view by hand, then put the others, new or already on sheets,\n" +
+                    "  exactly where it stands.\n\n" +
+                    "Everything goes in as one operation and rolls back with a single Ctrl+Z. The report lists any view\n" +
+                    "larger than the drawing area.",
+                iconBaseName: "viewstosheets");
+
+            // ───────────────── Button 19: Sheet Scale (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_SheetScale",
+                text: "Sheet\nScale",
+                commandType: typeof(SheetScaleCommand),
+                tooltip: "Gives the views on the selected sheets a new scale — templated views included — and keeps each where it stands on its sheet.",
+                longDescription:
+                    "Select the sheets in the Project Browser and press the button: every view on them starts checked\n" +
+                    "(legends excepted), in a list laid out like the browser. Pick the new scale; \"Change the checked views\n" +
+                    "at 1:100\" leaves a 1:20 detail on the same sheet alone.\n\n" +
+                    "A view whose view template sets the scale cannot be changed in Revit's properties at all — the\n" +
+                    "template decides. Choose what to do with such templates:\n" +
+                    "• stop the template setting the scale — every view keeps its scale, the checked ones get the new one;\n" +
+                    "• give the template the new scale — every view using it follows;\n" +
+                    "• leave such views as they are.\n\n" +
+                    "A primary view and its dependents share one scale and change together. The middle of every viewport\n" +
+                    "stays where it stood on its sheet. Everything goes in one operation — one Ctrl+Z; the report lists\n" +
+                    "the sheets where a view now sticks out of the drawing area.",
+                iconBaseName: "sheetscale");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

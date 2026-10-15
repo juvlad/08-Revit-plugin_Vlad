@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using VladTools.UI;
 
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// The "Sheets" windows' settings: where the last export went and whether to open it in Excel, and
-    /// for a batch — where the last summary went and the model list from last time.
+    /// The "Sheets" windows' settings: which parameter is a sheet's number, where the last export went
+    /// and whether to open it in Excel, and for a batch — where the last summary went and the model list
+    /// from last time.
     ///
     /// The list is remembered for the same reason as in "Accept Changes → Other models…": a sheet report
     /// over a project's models is run again and again over the same models. A saved set
@@ -24,6 +26,8 @@ namespace VladTools.Infrastructure
         private static readonly string[] FileHeader =
         {
             "# \"Sheets\" button settings — the Project panel.",
+            "# NUMBER — the shared parameter shown as a sheet's number: GUID | name; empty — Revit's own Sheet Number",
+            "# NUMBER_FILE — the shared parameter file it was last picked from",
             "# FOLDER — the folder of the last export to Excel",
             "# OPEN_AFTER — 1/0: open the exported file in Excel",
             "# BATCH_FOLDER — the folder of the last batch summary (\"Several models…\")",
@@ -32,6 +36,12 @@ namespace VladTools.Infrastructure
             "#   FILE | path · SERVER | RSN://… · CLOUD | region | project GUID | model GUID | name",
             "# The file is rewritten every time the window closes."
         };
+
+        /// <summary>The parameter shown as a sheet's number, in the window, the export and a batch's reports alike.</summary>
+        public SheetNumberParameter Number { get; set; } = SheetNumberParameter.Revit;
+
+        /// <summary>The shared parameter file the number parameter was last picked from — opened again by the picker.</summary>
+        public string NumberFile { get; set; } = string.Empty;
 
         public string Folder { get; set; } = string.Empty;
 
@@ -87,6 +97,8 @@ namespace VladTools.Infrastructure
                 var lines = new List<string>(FileHeader)
                 {
                     string.Empty,
+                    Line("NUMBER", (Number ?? SheetNumberParameter.Revit).Format()),
+                    Line("NUMBER_FILE", NumberFile ?? string.Empty),
                     Line("FOLDER", Folder ?? string.Empty),
                     Line("OPEN_AFTER", OpenAfter ? "1" : "0"),
                     Line("BATCH_FOLDER", BatchFolder ?? string.Empty),
@@ -138,6 +150,12 @@ namespace VladTools.Infrastructure
 
             switch (key)
             {
+                case "NUMBER":
+                    Number = SheetNumberParameter.Parse(value);
+                    break;
+                case "NUMBER_FILE":
+                    NumberFile = value;
+                    break;
                 case "FOLDER":
                     Folder = value;
                     break;

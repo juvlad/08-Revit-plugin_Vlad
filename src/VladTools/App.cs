@@ -441,6 +441,27 @@ namespace VladTools
                     "the sheets where a view now sticks out of the drawing area.",
                 iconBaseName: "sheetscale");
 
+            // ───────────────── Button 20: Copy Parameters (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_CopyParameters",
+                text: "Copy\nParameters",
+                commandType: typeof(CopyParameterValuesCommand),
+                tooltip: "Copies the value of one parameter into another on every element of a category — even when one holds a number and the other a text.",
+                longDescription:
+                    "Pick a category, the parameter to copy from on the left and the one to copy into on the right. It works on the\n" +
+                    "elements selected before pressing the button, on the active view, or on the whole model.\n\n" +
+                    "The two parameters do not have to hold the same kind of value:\n" +
+                    "• a number into a text — exactly as Revit shows it (\"1200 mm\"), or without the unit symbol;\n" +
+                    "• a text into a number — read the way Revit reads a typed value (\"1200\", \"1.2 m\"); optionally the first number\n" +
+                    "  in the text (\"DN 50\" → 50);\n" +
+                    "• a length into a plain number — the figure the length shows; into a whole number — rounded;\n" +
+                    "• anything into Yes/No — zero or \"no\" is No, anything else Yes; an element choice into a text — its name.\n" +
+                    "Read-only parameters (reporting, computed by Revit, set by a formula) can be copied from, never into.\n\n" +
+                    "The preview shows every element — source, target now, target after — before anything changes; a value that\n" +
+                    "cannot be converted says why. \"Copy\" writes them all in one operation — one Ctrl+Z.",
+                iconBaseName: "copyparams");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

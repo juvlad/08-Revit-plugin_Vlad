@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — fifteen buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — sixteen buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). The one exception is the "Sheets"
 batch ("Several models…"), which opens its models itself and so also runs from a family or with no
 document open at all. There is no test project — checking is done by hand, in Revit.
@@ -182,9 +182,14 @@ UI/SheetInfo.cs                   a snapshot of one sheet: number, name, its Pro
 UI/SheetListRow.cs                a line of the "Sheets" table: a browser folder (foldable, with a sheet count) or a sheet;
                                   Tree — the sheets laid out as these lines, for the window and a batch's reports alike
 UI/SheetsWindow.cs                the "Sheets" window: the browser's folder tree laid flat, the "Changed" column, Find,
-                                  Show (changed since the previous check / 7 / 30 days), Open sheet, Export to Excel,
-                                  Several models…
-UI/SheetsBatchWindow.cs           "Sheets → Several models…": the model list and where the summary goes
+                                  Show (changed since the previous check / 7 / 30 days), Number, Open sheet, Export to
+                                  Excel, Several models…
+UI/SheetsBatchWindow.cs           "Sheets → Several models…": the sheet number, the model list and where the summary goes
+UI/SheetNumberParameter.cs        the "Sheets" number: SheetNumberParameter (Revit's own / a shared GUID + name),
+                                  SheetNumbering (what one model's numbers came out as), NumberedSheets, SheetParameterUse
+                                  (a shared parameter on the project's sheets, how filled), SheetNumberSource (the call-backs)
+UI/SheetNumberWindow.cs           "Sheets → Number": Revit's own or a shared parameter out of a file (Browse… for another),
+                                  with what the open project's sheets and titleblocks have
 UI/FlatTree.cs                    a tree laid flat into table rows: the one merge that folds without Clear(); shared by
                                   "Sheets" and "Views to Sheets"
 UI/TitleblockInfo.cs              a snapshot of one titleblock type: "Family : Type" + the frame it draws, mm from the sheet origin
@@ -206,6 +211,12 @@ UI/SheetScaleRow.cs               a line of the "Sheet Scale" table: a browser f
 UI/SheetScaleRequest.cs           what that window hands back: the scale, the template choice, the checked views
 UI/SheetScaleWindow.cs            the "Sheet Scale" window: sheets and their views in the browser's folders, "at … to …",
                                   the template choice, what changes along
+UI/CopyParameterInfo.cs           "Copy Parameters" snapshots: CopyScope (selection / active view / model), CopyCategoryInfo,
+                                  CopyParameterInfo (key, name, instance/type, kind, value kind, how many have it / can take it)
+UI/CopyParameterPreview.cs        CopyParameterRequest (what the window asks for), CopyPreviewRow + CopyRowState (one line:
+                                  source, target now, target after, Write/Same/Skipped/Blocked), CopyParameterPreview
+UI/CopyParametersWindow.cs        the "Copy Parameters" window: scope, category, "Copy from" / "Copy into" lists, the four
+                                  options, the conversion rule, the preview; everything Revit comes through three call-backs
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/AlwaysAvailable.cs an IExternalCommandAvailability saying "yes" — a button pressable with no document open
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
@@ -250,6 +261,8 @@ Infrastructure/ScheduleLibrary.cs        the schedule cache: sets as .rvt files,
 Infrastructure/SchedulePreferences.cs    the "Schedule Library" window settings (%AppData%\VladTools\schedules\_settings.txt)
 Infrastructure/ParameterSetLibrary.cs    saved parameter sets, %AppData%\VladTools\parameters\<name>.txt; also ParameterEntry, ParameterBindingKind
 Infrastructure/ParameterSetPreferences.cs  the "Parameter Sets" window settings (%AppData%\VladTools\parameters\_settings.txt)
+Infrastructure/SharedParameterFile.cs  reading any shared parameter file's definitions (the SharedParametersFilename
+                                  swap); shared by "Parameter Sets" and "Sheets"
 Infrastructure/TextSite.cs        one place holding typed text — a name, a parameter value, a column heading, a header
                                   cell, a schedule filter value, a view filter rule, a text note, a workset name — with
                                   its own read and write; FixedTextSite for what the API cannot change
@@ -273,6 +286,8 @@ Infrastructure/ExcelPreferences.cs  the "Excel" button settings (%AppData%\VladT
 Infrastructure/SheetPreferences.cs  the "Sheets" windows' settings, the batch's model list too (%AppData%\VladTools\sheets\_settings.txt)
 Infrastructure/SheetReport.cs     the "Sheets" batch summary: SheetModelResult (one model read, or why not) → the "Models" and
                                   "All sheets" Excel sheets; the reports folder and file names
+Infrastructure/SheetNumbers.cs    the number "Sheets" shows: Revit's own, or a shared parameter off the sheet, else off its
+                                  titleblock; Revit's own when no sheet has it; Uses — what the picker shows beside a file
 Infrastructure/SheetHistory.cs    the "Sheets" change history: per sheet and per placed view a fingerprint and the check
                                   that last found it changed (%AppData%\VladTools\sheets\history\<model>_<hash>.txt)
 Infrastructure/ViewFingerprint.cs a digest of a view: its VersionGuid, template, primary, and every element it owns —
@@ -284,6 +299,11 @@ Infrastructure/ViewsToSheetsPreferences.cs  the "Views to Sheets" settings, marg
 Infrastructure/ViewScale.cs       who decides a view's scale: whether a template controls it, releasing it, the primary
                                   view that holds a dependent's scale; shared by "Views to Sheets" and "Sheet Scale"
 Infrastructure/SheetScalePreferences.cs  the "Sheet Scale" settings (%AppData%\VladTools\sheetscale\_settings.txt)
+Infrastructure/ParameterValueConverter.cs  ParameterKey — a parameter as the same one across families (built-in id / shared
+                                  GUID / name, plus instance or type) and found on any element; SourceValue — a value read
+                                  once in every form; ParameterValueConverter — converting it into a target of another
+                                  storage type, writing, the read-back check, the rule in words (see "Key decisions")
+Infrastructure/CopyParameterPreferences.cs  the "Copy Parameters" settings (%AppData%\VladTools\copyparams\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -308,9 +328,10 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project                                                                                                                                                                                                                                                                                                                                     | "Translate"                | `TranslateCommand`               | replaces the Russian typed into a project or template with English through one dictionary: every distinct text with Cyrillic in it is one row (with where it is used), and a translation replaces it in every place at once — element names (views, templates, sheets, schedules, families, types, materials, filters, levels, worksets…), text parameter values, schedule column headings, header cells and filter values, view filter rule strings, text notes — in one transaction. Translations come from the dictionary (`%AppData%\VladTools\translate\`), from a TAB-separated file ("Export…" for a translator or an AI, "Import…" back), or by hand; the window catches name clashes and forbidden characters first. What the API cannot change (shared parameter names, line styles, subcategories) is shown and reported, not skipped |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Move to Workset"          | `MoveToWorksetCommand`           | finds elements standing in the wrong workset — above all model elements in Revit's own worksets (project standards, views, families), where an AI tool or a script left them — and moves the checked ones into one user workset by writing `ELEM_PARTITION_PARAM`, in one transaction. The table is one row per workset × category, over the current selection or the whole model; rows in Revit's own worksets come first and are checked. The elements are checked out first (held / out-of-date ones are named, not attempted), every one is read back after the commit, and "Select in model" selects the checked elements instead of moving them |
 | Project | "Excel" | `ExcelScheduleCommand` | asks which way (a `TaskDialog` with two command links). **Export**: the checked schedules into one .xlsx, a sheet each, every value as text exactly as the schedule shows it — laid out "as in Revit" (title, headings, group lines, totals) or as a plain table with filters; every element row carries a hidden key to its elements. **Import**: a sheet of a workbook into a schedule — rows paired by those elements, by a key column or by order (the ModPlus way); a preview with every changed cell highlighted (yellow — will be written, red — cannot be, with the reason); the checked rows are written into the elements' parameters (instance → every element of the row, type → the type) in one transaction, read back, and the changed rows selected in the opened schedule |
-| Project | "Sheets" | `SheetsCommand` | a table of every sheet — "A101 - Name" on the left, one line per thing placed on it on the right (views by kind, legends, schedules, panel schedules, images, CAD) — in the folders and the order of the Project Browser's current sheet organization (`BrowserOrganization.GetFolderItems`, `SortingParameterId`/`SortingOrder`); sheets the browser's filter hides and placeholder sheets get folders of their own at the end. Between them, "Changed": the day of the check that last found a change in the sheet or a view on it, and every view line carries its own ("— changed 2026-10-07") — Revit keeps no such date, so every opening of the window is a check against the previous one (`SheetHistory`, `ViewFingerprint`); "Show" narrows to what changed since the previous check or in the last 7/30 days. A click folds a folder, a double click opens the sheet (once the window has closed). "Export to Excel…" writes the table as the search and "Show" leave it (folding does not narrow it) into one .xlsx sheet — Number, Sheet name, Changed, On the sheet — whose folders are Excel row groups. "Several models…" (also offered from a family, a project with no sheets, and with no document open — `AlwaysAvailable`) does the same for a batch from `ModelListPanel` (a folder in any store, files, Revit Server, BIM360, a saved set): every model is opened detached with every workset closed (`BatchCoordination.OpenToRead`), read exactly as the window reads it (the change check only where it opened the model itself — a detached copy just reads the history), its table written into a report of its own, and a summary (`SheetReport`: "Models" with counts and a link to each report, "All sheets" across every model with notes — nothing placed, placeholder, hidden, number also in another model) written next to the folder of reports. Read-only — no transaction; the history is a file in `%AppData%` |
+| Project | "Sheets" | `SheetsCommand` | a table of every sheet — "A101 - Name" on the left, one line per thing placed on it on the right (views by kind, legends, schedules, panel schedules, images, CAD) — in the folders and the order of the Project Browser's current sheet organization (`BrowserOrganization.GetFolderItems`, `SortingParameterId`/`SortingOrder`); sheets the browser's filter hides and placeholder sheets get folders of their own at the end. Between them, "Changed": the day of the check that last found a change in the sheet or a view on it, and every view line carries its own ("— changed 2026-10-07") — Revit keeps no such date, so every opening of the window is a check against the previous one (`SheetHistory`, `ViewFingerprint`); "Show" narrows to what changed since the previous check or in the last 7/30 days. A click folds a folder, a double click opens the sheet (once the window has closed). "Number" picks what a sheet's number is: Revit's own Sheet Number, or a shared parameter out of a shared parameter file (any file — "Browse…"; GUID kept in the settings), read off the sheet, else off its titleblock (`SheetNumbers`); Revit's own then gets a column of its own beside it, and a model with no sheet or titleblock holding the parameter falls back to Revit's, saying so. "Export to Excel…" writes the table as the search and "Show" leave it (folding does not narrow it) into one .xlsx sheet — Number (headed by the parameter's name), Sheet Number when a parameter is the number, Sheet name, Changed, On the sheet — whose folders are Excel row groups. "Several models…" (also offered from a family, a project with no sheets, and with no document open — `AlwaysAvailable`) does the same for a batch from `ModelListPanel` (a folder in any store, files, Revit Server, BIM360, a saved set): every model is opened detached with every workset closed (`BatchCoordination.OpenToRead`), read exactly as the window reads it (the change check only where it opened the model itself — a detached copy just reads the history), its table written into a report of its own, and a summary (`SheetReport`: "Models" with counts and a link to each report, "All sheets" across every model with notes — nothing placed, placeholder, hidden, number also in another model) written next to the folder of reports. Read-only — no transaction; the history is a file in `%AppData%` |
 | Project | "Views to Sheets" | `ViewsToSheetsCommand` | one new sheet per checked view (`ViewSheet.Create` of the titleblock type chosen in the window, named after the view, numbered prefix + counter, skipping taken numbers) and the view on it (`Viewport.Create`), at the scale chosen per view (`View.Scale`), centred in the titleblock's drawing area — the titleblock's measured frame minus margins kept per titleblock type. The views are picked in a tree laid out like the Project Browser's view organization (folders, then the view-type groups); a folder's box takes its views. Four ways to position, asked in the window: the whole viewport with its title (`GetBoxOutline` + `GetLabelOutline`), the crop region, one model point in the same place on every sheet for views looking the same way, or like a sample sheet — where a viewport placed by hand stands, for new sheets and for views already on sheets, which are then moved there (`SetBoxCenter`). Workshared: the views and viewports are checked out first. Everything in one transaction; every viewport and scale is read back after the commit, and the report lists sheets where the view sticks out of the drawing area |
 | Project | "Sheet Scale" | `SheetScaleCommand` | one new scale (`View.Scale`) for the views standing on the checked sheets — the sheets selected in the Project Browser start checked, every view on them but legends — laid out like the browser's sheet organization, a sheet's box taking its views. "Change the checked views at 1:100 to 1:200" narrows what can be checked to one scale. A view whose template sets the scale is handled as asked in the window: the template stops setting it (`SetNonControlledTemplateParameterIds`, every other view keeps its scale), the template gets the new scale (every view using it follows), or the view is left alone. A primary and its dependents change together; the primary is the one changed. Workshared: views, viewports and templates are checked out first. One transaction; the middle of every viewport is put back where it stood (`SetBoxCenter`); every scale and viewport is read back after the commit, and the report lists sheets where a view now sticks out of the drawing area |
+| Project | "Copy Parameters" | `CopyParameterValuesCommand` | writes the value of one parameter into another on every element of one category — the selection, the active view (`FilteredElementCollector(doc, viewId)`) or the whole model; the categories are those with `AllowsBoundParameters`. Both lists are the category's parameters read off one element of each type and that type (`GetOrderedParameters`), keyed across families by `ParameterKey`; read-only ones (reporting, computed, formula-driven) are sources only. The two may store different kinds of value — `ParameterValueConverter` turns a number into text as Revit shows it, text into a number the way Revit parses a typed value (`UnitFormatUtils.TryParse`), anything into Yes/No, a length into a plain number by its displayed figure. A preview line per element (per type for a type parameter, whose elements in scope must agree) shows source, target now, target after and why not; options: only empty targets, an empty source empties a text, no unit symbol, the first number out of a text. Workshared: checked out first. One transaction; every value is read back after the commit |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -377,7 +398,12 @@ as shown and a path; the command writes, like the "Excel" export) or the batch (
 A dialog appears only when the write or the opening failed, or when the file was not opened in Excel.
 Step 3 does one thing besides reading: the snapshot is also the change check — the history file is
 compared and rewritten **before** the window opens, so opening is the check whatever the window is
-closed with (see "Key decisions"). It is a file in `%AppData%`, never the model.
+closed with (see "Key decisions"). It is a file in `%AppData%`, never the model. The snapshot is
+also taken in two layers: `Collect` reads everything but the number into a `Reading`, and
+`Reading.Number` numbers and orders the sheets on top — the window's "Number" button asks for that
+again through a call-back while it is open. Do not turn the button into closing and reopening the
+window: a second `Collect` would be a second check the same day, and it would find nothing changed —
+wiping out what the first one had just found.
 Step 2 is not a refusal here: with no document open (the button names `AlwaysAvailable`, so Revit
 lets it be pressed) the command goes straight to the batch window, and a family or a project with no
 sheets gets a `TaskDialog` that says so **and** offers "Several models…". The batch itself is steps
@@ -393,6 +419,15 @@ sub-transactions that are always rolled back (measuring the crop regions before 
 after it). Before the transaction, in a workshared model, the views and the viewports to be moved are
 checked out, as in "Move to Workset". Do not turn the passes into a loop of "create, regenerate,
 measure" per view: that is a regeneration per view.
+
+**Exception — `CopyParameterValuesCommand`, steps 3–4.** The snapshot is not taken once before the
+window: what it needs depends on what is picked in it, so the window gets three call-backs — the
+categories of a scope, the parameters of a category, the preview of a request — and the command's
+`Session` answers them while the modal window is open, caching each scope and each category's
+parameters (a whole-model scope is a pass over every element). The plan behind the last preview is
+kept, and the command writes the plan behind exactly the preview the window hands back
+(`CopyParametersWindow.Confirmed`) — the same shape as the "Excel" import. Steps 5–8 as usual, with the
+"Move to Workset" checkout before the transaction and a read-back after the commit.
 
 ## Key decisions
 
@@ -1191,7 +1226,8 @@ measure" per view: that is a regeneration per view.
   read, and always restored.** The API has no way to open an arbitrary `.txt` path directly —
   `Application.OpenSharedParameterFile()` always reads whatever `SharedParametersFilename` currently
   points at — so browsing to a different file means setting the property, reading, and setting it
-  back in a `finally`. This is an application-wide Revit setting, not something a single button
+  back in a `finally` (`SharedParameterFile.Read`, which the "Sheets" number picker reads through as
+  well). This is an application-wide Revit setting, not something a single button
   should leave changed behind it. **Applying swaps it too, and must:** a parameter missing from the
   project can only be created out of the file the set was actually built from (remembered in
   `parameters\_settings.txt` as `FILE`), which is often not the one Revit is pointed at — without
@@ -1602,6 +1638,32 @@ measure" per view: that is a regeneration per view.
   error: a building split into discipline models usually wants numbers unique across them, but a
   project that numbers every model from 1 will see every sheet there — that is why it is a note and a
   count, not a red result.
+- **The number "Sheets" shows can be a shared parameter, and Revit's own then stays beside it.**
+  Revit's Sheet Number has to be unique in a model, so offices keep the number printed on the sheet in
+  a shared parameter of their own (a series per volume, "1" in every one) and Revit's turns into a
+  technical key. `SheetNumbers` reads the chosen parameter by GUID — never by name, the "Parameter
+  Sets" rule — off the sheet, and off its titleblock when the sheet gives no value: offices bind it
+  either way, to the Sheets category or inside the titleblock family. What it gives is
+  `SheetInfo.Number` — what the window shows, what the groups outside the browser and every tie are
+  sorted by, what the export heads with the parameter's name and what the batch compares across
+  models (`Repeats`); `SheetInfo.SheetNumber` keeps Revit's own for a column of its own, the one a
+  sheet is found by in Revit. Three cases are kept apart. A sheet with no value shows an empty number
+  and is counted (the window's note, the summary's "No … value"): a sheet to fix, not one to cover
+  with another number. A model where **no** sheet and no titleblock has the parameter falls back to
+  Revit's numbers as a whole and says so (`SheetNumbering.Problem`: the window's red line, the
+  highlighted "Result" in "Models"): an all-empty column would make the table unreadable for a model
+  that simply numbers the other way. And the browser's order is never re-sorted by the chosen number:
+  the table follows the browser, which can be told to sort by the parameter in Revit itself. The
+  history is untouched — it keys sheets by UniqueId, so renumbering is never a "new sheet".
+- **The number picker lists a shared parameter file, with the project's use beside it**
+  (`SheetNumberWindow`). The file is read by `SharedParameterFile.Read` — the `SharedParametersFilename`
+  swap "Parameter Sets" makes, one copy for both; "Browse…" loads any other file, and the one picked
+  from is remembered (`NUMBER_FILE`). Beside every definition: on how many of the open project's sheets
+  and titleblocks it stands and how many give a value (`SheetNumbers.Uses`, read once, on the first
+  opening of the picker) — the right one is found by looking, not by trying. A shared parameter the
+  sheets carry that the file does not hold is listed too: the number is what is on the sheets, and the
+  right file is not always at hand. A project parameter that is not shared cannot be picked: it has no
+  identity across projects but its name.
 - **What the Project Browser says is read in one place, `ProjectBrowser`** — folders, filter, sort
   value, the natural order — and laid out in one place, `FlatTree.Sync` (the merge that folds without
   `Clear()`). "Sheets" reads the sheet organization through it, "Views to Sheets" the view one; do not
@@ -1737,6 +1799,58 @@ measure" per view: that is a regeneration per view.
 - **Who decides a view's scale is answered in one place, `ViewScale`** — whether a template controls
   it, releasing it, the owner of a dependent's scale. "Views to Sheets" (`ScaleLock`) and "Sheet
   Scale" both use it; do not set up a third copy of the template check.
+- **"Copy Parameters" knows a parameter across families by `ParameterKey`, and a family parameter only
+  by its name.** A built-in parameter is the same everywhere by its `BuiltInParameter` value, a shared
+  one by its GUID; a project parameter, or a family parameter that is not shared, has no identity across
+  families but its name — "Width" in two door families are two definitions with nothing in common except
+  what somebody called them, and that is exactly what "the Width of every door" means. A name is matched
+  only among parameters that are neither built-in nor shared (`ParameterKey.On`), so a family's own
+  "Comments" is never taken for Revit's. The instance/type level is part of the key: a parameter that is
+  an instance one in one family and a type one in another is two list entries, because it is written in
+  two different places. The key is text (`I|BIP|-1010106`, `T|GUID|…`, `I|NAME|Width`) — what the
+  settings remember, so the next window opens on the same pair in another project.
+- **The lists are read off one element of each type, not off every element.** `GetOrderedParameters`
+  (what the Properties palette shows — the same choice "Translate" makes) on a few hundred
+  representatives costs nothing; on fifty thousand pipes it would cost seconds for counts nobody needs
+  exact. So "Elements" counts the elements of the types that have the parameter; the preview then asks
+  every element for real, and an element that turns out not to have it is a line "left as it is".
+- **A value changes kind by "what a person would have typed", never by Revit's internal number.**
+  `Parameter.Set` refuses a value of the wrong storage type, so every pair needs a rule, and all of them
+  live in `ParameterValueConverter.TryConvert`: into text — the value exactly as Revit shows it
+  (`AsValueString`: the project's units and rounding, Yes/No in Revit's own word, an element by its
+  name), optionally without the unit symbol (the project's `FormatOptions` copied with
+  `SetSymbolTypeId(new ForgeTypeId())` — the unit and the rounding stay, only the symbol goes); text into
+  a number — Revit's own parser with the project's units (`UnitFormatUtils.TryParse`: "1200", "1200 mm",
+  "1.2 m"), then a bare number, then, only if asked, the first number in the text; a number into a number
+  of the same spec — copied exactly; of another spec — the **figure the source displays**, converted
+  through the project's display unit of each (`ConvertFromInternalUnits` / `ConvertToInternalUnits`): a
+  length showing 1200 mm gives a plain number 1200, not the 3.937 feet Revit keeps inside, which no user
+  has ever meant; into a whole number — rounded, and the line says so; into Yes/No — zero / "no" is No
+  (`ScheduleValues.TryYesNo`, shared with the "Excel" import, Russian words included). An element choice
+  is written only from another element choice: a name says nothing about which kind of element the
+  target chooses, so guessing a level or a material by name is deliberately not attempted. A value that
+  cannot be converted is never guessed at — its line is red with the reason, and the report groups the
+  reasons (the converter returns one of a few fixed sentences for exactly that).
+- **A read-only parameter is a source, never a target.** Reporting parameters, formula-driven ones and
+  what Revit computes (area, volume) all come out of the API as `IsReadOnly`, and copying *from* them is
+  half of what the button is for (a reporting width into a shared parameter a schedule can show). The
+  "Copy into" list hides them unless asked, and shows them greyed then; there is no way to tell a
+  reporting parameter from a formula from the API in a project, so the wording names all three.
+- **A type parameter as the target is written per type, and the elements of the type in scope must
+  agree.** A type holds one value; when it comes from an instance parameter and two elements of the type
+  give two values, the line is "cannot be written" with both values and their counts — letting whichever
+  element came last in the collector win would be a silent, order-dependent choice. Elements that give no
+  value (an empty source) do not block the others; the line says how many they are. Writing a type changes
+  its elements outside the scope too, so the window asks before copying, and the report says so.
+- **An element in a model group is not written unless the target varies by group instance** — the
+  "Excel" import's rule, for the same reason: left to the commit, Revit's refusal of a group edit rolls
+  back the whole batch, not just that element.
+- **The "Copy Parameters" preview has no check boxes.** The scope (selection / active view / model) is
+  the choice of elements; a line per element with a box of its own would be a second selection over the
+  first one, on tables of thousands of lines. "Show" above the preview therefore only finds — "Copy"
+  writes every line that will be written, and the status line says how many of those are out of sight
+  (see "Conventions"). "Find" over each parameter list is different: the parameter it hides is no longer
+  the chosen one (the preview clears) — the choice comes back when it is shown again.
 
 ## Storing user settings
 
@@ -1760,7 +1874,7 @@ closes, with every translation the window held (see "Key decisions"). `sheets\` 
 history, rewritten at every opening of the window, before it is shown, and for every model a batch
 opens as itself (never for a detached copy — see "Key decisions"). The batch's reports themselves are
 not kept here: they go wherever the user saves the summary.
-`viewstosheets\` and `sheetscale\` hold settings only.
+`viewstosheets\`, `sheetscale\` and `copyparams\` hold settings only.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -1898,7 +2012,10 @@ keeps no data of its own (an exported workbook carries its own bookkeeping, on i
 throwaway shared parameter file, `%TEMP%\VladTools-rowkey-<guid>.txt`, deleted again in a `finally`
 — it is not a setting and never outlives the read.
 
-`sheets\_settings.txt` — the "Sheets" windows' settings: `KEY = value` — `FOLDER` (the folder of the
+`sheets\_settings.txt` — the "Sheets" windows' settings: `KEY = value` — `NUMBER` (the shared
+parameter shown as a sheet's number: `GUID | name`, the name a label only; empty or unreadable means
+Revit's own Sheet Number; both windows read and write it), `NUMBER_FILE` (the shared parameter file it
+was last picked from), `FOLDER` (the folder of the
 last export), `OPEN_AFTER` (`1`/`0` — open the exported file in Excel), and for "Several models…":
 `BATCH_FOLDER` (the folder of the last summary), `SET` (the link set worked with last) and `MODEL`
 lines (may repeat — the batch's model list from last time, in the same line format as a link set,
@@ -1938,6 +2055,14 @@ scale typed or picked last, as text) and `TEMPLATES` (`Release` / `ChangeTemplat
 do with a view whose template sets the scale; default `Release`). "Change the checked views at" is not
 kept, on purpose (see "Key decisions"). Rewritten whenever the window closes.
 
+`copyparams\_settings.txt` — the "Copy Parameters" window's settings: `KEY = value` — `CATEGORY` (the
+category used last, by its name), `FROM` and `TO` (the two parameters as `ParameterKey` text:
+`I|…` instance / `T|…` type, then `BIP|<built-in id>`, `GUID|<shared GUID>` or `NAME|<name>`; the line
+splits at its first `=`, so a name may hold one), and the check boxes `ONLY_EMPTY`, `EMPTY_CLEARS`,
+`NO_SYMBOL`, `NUMBER_FROM_TEXT`, `SHOW_READONLY` (`1`/`0`). A remembered category or parameter missing
+from the open project is simply not preselected. The scope is not kept: it follows the selection.
+Rewritten whenever the window closes.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -1961,8 +2086,10 @@ kept, on purpose (see "Key decisions"). Rewritten whenever the window closes.
   not a find filter but a checkability rule, and that one does uncheck), and `TranslateWindow` and `ExcelImportWindow`, whose search box and "Show"
   list find a row among hundreds without touching any other row's check mark — looking at the rows
   that cannot be written must not uncheck the ones that can. Their confirmations say how many of the
-  rows going in are out of sight. Adding a filter that selects for the user means the rule comes
-  back with it.
+  rows going in are out of sight. `CopyParametersWindow`'s "Show" above the preview is the same kind:
+  the preview has no check boxes (the scope is the selection), "Copy" writes every line that will be
+  written, and the status line says how many of those are out of sight. Adding a filter that selects
+  for the user means the rule comes back with it.
 - **Name a WPF binding path with `nameof`, never a bare string**, and never rely on
   `GridBuilder.CheckBoxTemplate()`'s default path for a row whose flag is not called `IsSelected`.
   A binding to a property that does not exist fails **silently**: an unbound `IsChecked` still ticks
@@ -2038,7 +2165,14 @@ Sheets" uses — `ViewSheet.Create`, `Viewport.Create`/`CanAddViewToSheet`/`GetB
 in RevitAPI.xml 2022, and compiled for all three years. Its batch adds
 `OpenOptions.DetachFromCentralOption` (`DetachAndPreserveWorksets`, `<since>2013</since>`),
 `WorksetConfigurationOption.CloseAllWorksets`, `PushButtonData.AvailabilityClassName` and
-`IExternalCommandAvailability` — long-standing API, compiled for all three years.
+`IExternalCommandAvailability` — long-standing API, compiled for all three years. Its number
+parameter reads `Element.get_Parameter(Guid)`, `Parameter.IsShared`/`GUID`,
+`SharedParameterElement.Lookup` and `Definition.GetDataType` — compiled for all three years too. "Copy Parameters"
+uses `LabelUtils.GetLabelForSpec`, `FormatOptions(FormatOptions)` with `CanHaveSymbol` /
+`SetSymbolTypeId`, `Parameter.AsValueString(FormatOptions)`, `Element.GetParameters(string)`,
+`Category.AllowsBoundParameters` and `UnitFormatUtils.TryParse`/`Format` — all in RevitAPI.xml of the
+three years with the same signatures, and compiled for all three. Its value class is `SourceValue`, not
+`ParameterValue`: `Autodesk.Revit.DB.ParameterValue` exists, and the name clashes (CS0104).
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

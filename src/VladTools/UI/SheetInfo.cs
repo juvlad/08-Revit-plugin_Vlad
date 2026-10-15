@@ -40,7 +40,8 @@ namespace VladTools.UI
             DateTime? changed, string changeNote, bool changedAtThisCheck, bool isHiddenByFilter, SheetCounts counts)
         {
             UniqueId = uniqueId;
-            Number = number ?? string.Empty;
+            SheetNumber = number ?? string.Empty;
+            Number = SheetNumber;
             Name = name ?? string.Empty;
             Folders = folders;
             Contents = contents;
@@ -52,10 +53,39 @@ namespace VladTools.UI
             Counts = counts ?? SheetCounts.None;
         }
 
+        private SheetInfo(SheetInfo source, string number)
+        {
+            UniqueId = source.UniqueId;
+            SheetNumber = source.SheetNumber;
+            Number = number ?? string.Empty;
+            Name = source.Name;
+            Folders = source.Folders;
+            Contents = source.Contents;
+            CanOpen = source.CanOpen;
+            Changed = source.Changed;
+            ChangeNote = source.ChangeNote;
+            ChangedAtThisCheck = source.ChangedAtThisCheck;
+            IsHiddenByFilter = source.IsHiddenByFilter;
+            Counts = source.Counts;
+        }
+
+        /// <summary>The same sheet shown under another number — the one the window's "Number" parameter gives.</summary>
+        public SheetInfo WithNumber(string number)
+        {
+            return new SheetInfo(this, number);
+        }
+
         /// <summary>The way back to the element — a UniqueId rather than an ElementId, which the window has no type for.</summary>
         public string UniqueId { get; }
 
+        /// <summary>
+        /// The number shown — Revit's own Sheet Number, or the shared parameter chosen in the window
+        /// (see <see cref="SheetNumbering"/>); empty when the sheet gives that parameter no value.
+        /// </summary>
         public string Number { get; }
+
+        /// <summary>Revit's own Sheet Number, whatever is shown as <see cref="Number"/>: the one Revit keeps unique in the model.</summary>
+        public string SheetNumber { get; }
 
         public string Name { get; }
 

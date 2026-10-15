@@ -32,6 +32,9 @@ namespace VladTools.Infrastructure
 
         public SheetTracking Tracking { get; set; }
 
+        /// <summary>Which parameter the numbers in <see cref="Sheets"/> are, and whether the model had the one asked for.</summary>
+        public SheetNumbering Numbering { get; set; } = SheetNumbering.Revit;
+
         /// <summary>
         /// This run compared the model with its history and saved the result. False for a model opened
         /// detached: its dates are the ones the history already held, as of its last check.
@@ -135,7 +138,7 @@ namespace VladTools.Infrastructure
                 sheet.Set(line, 1, Source(result.Entry));
                 sheet.Set(line, 2, Location(result.Entry));
 
-                var problem = !result.IsRead || result.ReportError.Length > 0;
+                var problem = !result.IsRead || result.ReportError.Length > 0 || result.Numbering.Problem.Length > 0;
                 sheet.Set(line, resultColumn, Outcome(result), problem ? XlsxStyle.Attention : XlsxStyle.Cell);
 
                 if (result.IsRead)
@@ -263,18 +266,38 @@ namespace VladTools.Infrastructure
             if (result.Tracking != null && result.Tracking.Problem.Length > 0)
                 text += "; " + result.Tracking.Problem;
 
+            if (result.Numbering.Problem.Length > 0)
+                text += "; " + result.Numbering.Problem;
+
             return text;
         }
 
         // ───────────────────────────── the "All sheets" sheet ─────────────────────────────
 
+        /// <summary>
+        /// With a shared parameter as the number, "Number" is that parameter, headed by its name, and
+        /// Revit's own Sheet Number gets a column of its own after it — the same as a model's own report.
+        /// A model that did not have the parameter shows Revit's numbers in both, and says so in "Models".
+        /// </summary>
         private static XlsxSheet AllSheets(IReadOnlyList<SheetModelResult> results, Dictionary<SheetInfo, List<string>> repeats)
         {
-            var headings = new[] { "Model", "Number", "Sheet name", "Browser folder", "Changed", "On the sheet", "Notes" };
-            const int notesColumn = 6;
+            var numbering = results.Where(result => result.IsRead).Select(result => result.Numbering).FirstOrDefault(item => item.UsesParameter);
+            var withSheetNumber = numbering != null;
+
+            var headings = new List<string> { "Model", numbering?.Heading ?? "Number" };
+            if (withSheetNumber)
+                headings.Add(SheetNumberParameter.RevitName);
+            headings.AddRange(new[] { "Sheet name", "Browser folder", "Changed", "On the sheet", "Notes" });
+
+            var shift = withSheetNumber ? 1 : 0;
+            var nameColumn = 2 + shift;
+            var folderColumn = 3 + shift;
+            var changedColumn = 4 + shift;
+            var contentsColumn = 5 + shift;
+            var notesColumn = 6 + shift;
 
             var sheet = new XlsxSheet("All sheets") { FrozenRows = 1 };
-            for (var column = 0; column < headings.Length; column++)
+            for (var column = 0; column < headings.Count; column++)
                 sheet.Set(0, column, headings[column], XlsxStyle.Heading);
 
             var line = 1;
@@ -291,12 +314,14 @@ namespace VladTools.Infrastructure
 
                     sheet.Set(line, 0, result.Name);
                     sheet.Set(line, 1, info.Number);
-                    sheet.Set(line, 2, info.Name);
-                    sheet.Set(line, 3, folder);
-                    sheet.Set(line, 4, info.ChangedText);
-                    sheet.Set(line, 5, contents);
+                    if (withSheetNumber)
+                        sheet.Set(line, 2, info.SheetNumber);
+                    sheet.Set(line, nameColumn, info.Name);
+                    sheet.Set(line, folderColumn, folder);
+                    sheet.Set(line, changedColumn, info.ChangedText);
+                    sheet.Set(line, contentsColumn, contents);
 
-                    var notes = Notes(info, repeats);
+                    var notes = Notes(info, result.Numbering, repeats);
                     sheet.Set(line, notesColumn, notes, notes.Length > 0 ? XlsxStyle.Attention : XlsxStyle.Cell);
 
                     folderWidth = Math.Max(folderWidth, folder.Length);
@@ -308,10 +333,12 @@ namespace VladTools.Infrastructure
             var sheets = results.Where(result => result.IsRead).SelectMany(result => result.Sheets).ToList();
             sheet.ColumnWidths[0] = Width(results.Where(result => result.IsRead).Select(result => result.Name), 16, 40);
             sheet.ColumnWidths[1] = Width(sheets.Select(info => info.Number), 10, 24);
-            sheet.ColumnWidths[2] = Width(sheets.Select(info => info.Name), 24, 60);
-            sheet.ColumnWidths[3] = Math.Max(16, Math.Min(50, folderWidth + 4));
-            sheet.ColumnWidths[4] = 12;
-            sheet.ColumnWidths[5] = Math.Max(30, Math.Min(90, contentsWidth + 4));
+            if (withSheetNumber)
+                sheet.ColumnWidths[2] = Width(sheets.Select(info => info.SheetNumber), 14, 24);
+            sheet.ColumnWidths[nameColumn] = Width(sheets.Select(info => info.Name), 24, 60);
+            sheet.ColumnWidths[folderColumn] = Math.Max(16, Math.Min(50, folderWidth + 4));
+            sheet.ColumnWidths[changedColumn] = 12;
+            sheet.ColumnWidths[contentsColumn] = Math.Max(30, Math.Min(90, contentsWidth + 4));
             sheet.ColumnWidths[notesColumn] = 36;
 
             sheet.AutoFilter = new XlsxRange(0, 0, Math.Max(0, line - 1), notesColumn);
@@ -319,7 +346,7 @@ namespace VladTools.Infrastructure
             return sheet;
         }
 
-        private static string Notes(SheetInfo info, Dictionary<SheetInfo, List<string>> repeats)
+        private static string Notes(SheetInfo info, SheetNumbering numbering, Dictionary<SheetInfo, List<string>> repeats)
         {
             var notes = new List<string>();
 
@@ -327,6 +354,9 @@ namespace VladTools.Infrastructure
                 notes.Add(Placeholder);
             else if (info.IsEmpty)
                 notes.Add(NothingPlaced);
+
+            if (numbering.UsesParameter && info.Number.Length == 0)
+                notes.Add("No " + numbering.Parameter.Name + " value");
 
             if (info.IsHiddenByFilter)
                 notes.Add(Hidden);

@@ -30,8 +30,10 @@ namespace VladTools.UI
 
         private readonly SheetPreferences _preferences;
         private readonly LinkPreferences _linkPreferences;
+        private readonly SheetNumberSource _numberSource;
 
         private readonly ModelListPanel _models;
+        private readonly Button _numberButton;
         private readonly TextBlock _status;
         private readonly Button _runButton;
 
@@ -41,10 +43,14 @@ namespace VladTools.UI
         /// <summary>Where the summary goes; the models' own reports go into <see cref="SheetReport.ReportsFolder"/> of it.</summary>
         public string FilePath { get; private set; } = string.Empty;
 
-        public SheetsBatchWindow(SheetPreferences preferences, LinkPreferences linkPreferences)
+        /// <summary>The parameter every report shows as a sheet's number — the one the "Sheets" window uses.</summary>
+        public SheetNumberParameter NumberParameter => _preferences.Number ?? SheetNumberParameter.Revit;
+
+        public SheetsBatchWindow(SheetPreferences preferences, LinkPreferences linkPreferences, SheetNumberSource numberSource)
         {
             _preferences = preferences ?? new SheetPreferences();
             _linkPreferences = linkPreferences ?? new LinkPreferences();
+            _numberSource = numberSource;
 
             Title = WindowTitle;
             Width = 980;
@@ -55,6 +61,21 @@ namespace VladTools.UI
             SnapsToDevicePixels = true;
 
             _models = new ModelListPanel(WindowTitle, _linkPreferences, _preferences.Set);
+
+            _numberButton = new Button
+            {
+                Padding = new Thickness(10, 2, 10, 2),
+                MinWidth = 160,
+                ToolTip = "Which parameter the reports show as a sheet's number: Revit's own Sheet Number, or a shared parameter\n" +
+                          "picked out of a shared parameter file. The same choice as in the \"Sheets\" window; a model that has\n" +
+                          "no such parameter is reported with Revit's own numbers, and the summary says so."
+            };
+            _numberButton.Click += (s, e) =>
+            {
+                if (_numberSource != null && SheetNumberWindow.Choose(this, _preferences, _numberSource))
+                    _numberButton.Content = NumberParameter.Label + "…";
+            };
+            _numberButton.Content = NumberParameter.Label + "…";
 
             _status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
 
@@ -96,6 +117,7 @@ namespace VladTools.UI
         {
             var root = new Grid { Margin = new Thickness(12) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // the sheet number
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // the models
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
@@ -114,7 +136,13 @@ namespace VladTools.UI
             Grid.SetRow(hint, 0);
             root.Children.Add(hint);
 
-            Grid.SetRow(_models, 1);
+            var number = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            number.Children.Add(new TextBlock { Text = "Sheet number in the reports:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+            number.Children.Add(_numberButton);
+            Grid.SetRow(number, 1);
+            root.Children.Add(number);
+
+            Grid.SetRow(_models, 2);
             root.Children.Add(_models);
 
             var bottom = new Grid { Margin = new Thickness(0, 8, 0, 0) };
@@ -130,7 +158,7 @@ namespace VladTools.UI
             Grid.SetColumn(buttons, 1);
             bottom.Children.Add(buttons);
 
-            Grid.SetRow(bottom, 2);
+            Grid.SetRow(bottom, 3);
             root.Children.Add(bottom);
 
             return root;

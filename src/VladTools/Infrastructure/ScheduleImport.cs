@@ -1191,7 +1191,8 @@ namespace VladTools.Infrastructure
             }
         }
 
-        private static bool TryYesNo(string text, out bool value)
+        /// <summary>Yes/no in the words people type and Revit shows, Russian included — shared with "Copy Parameters".</summary>
+        internal static bool TryYesNo(string text, out bool value)
         {
             var clean = (text ?? string.Empty).Trim().ToLowerInvariant();
             value = Yes.Contains(clean);

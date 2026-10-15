@@ -47,6 +47,10 @@ namespace VladTools.UI
     /// The "Changed" column is the date of the check that found the latest change on a sheet — Revit
     /// keeps no date of its own; the command keeps the history and hands the dates over ready.
     ///
+    /// The number shown is Revit's own Sheet Number or a shared parameter picked with the "Number"
+    /// button (<see cref="SheetNumberWindow"/>); the sheets come back renumbered through a call-back,
+    /// and the table is laid out again with its folds and selection kept.
+    ///
     /// The window knows nothing about the Revit API: it is handed <see cref="SheetInfo"/> snapshots,
     /// already in the browser's order, and lays their folders out itself.
     /// </summary>
@@ -62,10 +66,15 @@ namespace VladTools.UI
         private readonly SheetTracking _tracking;
         private readonly string _projectName;
         private readonly int _sheetCount;
+        private readonly Func<SheetNumberParameter, NumberedSheets> _renumber;
+        private readonly SheetNumberSource _numberSource;
 
         private readonly TextBox _searchBox;
         private readonly ComboBox _showBox;
+        private readonly Button _numberButton;
+        private readonly TextBlock _numberNote;
         private readonly DataGrid _grid;
+        private DataGridTextColumn _sheetNumberColumn;
         private readonly CheckBox _openAfter;
         private readonly TextBlock _status;
         private readonly Button _openButton;
@@ -84,19 +93,28 @@ namespace VladTools.UI
 
         public bool OpenAfter => _openAfter.IsChecked == true;
 
-        /// <param name="sheets">Every sheet of the project, in the order the Project Browser lists them.</param>
+        /// <summary>Which parameter the numbers are — the export heads its columns by it.</summary>
+        public SheetNumbering Numbering { get; private set; }
+
+        /// <param name="sheets">Every sheet of the project, numbered, in the order the Project Browser lists them.</param>
         /// <param name="organization">The name of the browser organization the folders come from; empty when unknown.</param>
         /// <param name="tracking">Where the change history stands: since when, the previous check, what went wrong.</param>
         /// <param name="activeSheet">The UniqueId of the sheet open on screen, selected from the start; null when the active view is not a sheet.</param>
         /// <param name="projectName">The project's title — part of the suggested file name.</param>
-        public SheetsWindow(IReadOnlyList<SheetInfo> sheets, string organization, SheetTracking tracking, string activeSheet, string projectName, SheetPreferences preferences)
+        /// <param name="renumber">The same sheets numbered by another parameter, in order — read from the model while the window is open.</param>
+        /// <param name="numberSource">What the "Number" button's picker reads the shared parameter file and the project through.</param>
+        public SheetsWindow(NumberedSheets sheets, string organization, SheetTracking tracking, string activeSheet, string projectName, SheetPreferences preferences,
+            Func<SheetNumberParameter, NumberedSheets> renumber, SheetNumberSource numberSource)
         {
             _preferences = preferences;
             _tracking = tracking;
             _projectName = projectName ?? string.Empty;
-            _sheetCount = sheets.Count;
+            _sheetCount = sheets.Sheets.Count;
+            _renumber = renumber;
+            _numberSource = numberSource;
+            Numbering = sheets.Numbering;
 
-            _all.AddRange(SheetListRow.Tree(sheets));
+            _all.AddRange(SheetListRow.Tree(sheets.Sheets));
 
             Title = WindowTitle;
             Width = 1060;
@@ -123,6 +141,18 @@ namespace VladTools.UI
 
             var expandAll = new Button { Content = "Expand all", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(6, 0, 0, 0) };
             expandAll.Click += (s, e) => SetAllExpanded(true);
+
+            _numberButton = new Button
+            {
+                Padding = new Thickness(8, 2, 8, 2),
+                MinWidth = 150,
+                ToolTip = "Which parameter is a sheet's number — in \"A101 - Name\", in the export and in a batch's reports:\n" +
+                          "Revit's own Sheet Number, or a shared parameter picked out of a shared parameter file\n" +
+                          "(read off the sheet, or off its titleblock). The choice is remembered."
+            };
+            _numberButton.Click += (s, e) => ChooseNumber();
+
+            _numberNote = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
 
             _grid = BuildGrid();
 
@@ -183,6 +213,7 @@ namespace VladTools.UI
             Content = BuildLayout(organization, collapseAll, expandAll, closeButton);
 
             _grid.ItemsSource = _visible;
+            ShowNumbering();
             RebuildVisible();
 
             Loaded += (s, e) =>
@@ -202,12 +233,13 @@ namespace VladTools.UI
         private UIElement BuildLayout(string organization, Button collapseAll, Button expandAll, Button closeButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // tracking
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // tools
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // the number's note
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // the table
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // open after
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // status + buttons
 
             var hint = new TextBlock
             {
@@ -230,20 +262,27 @@ namespace VladTools.UI
             Grid.SetRow(tracking, 1);
             root.Children.Add(tracking);
 
-            var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
-            tools.Children.Add(new TextBlock { Text = "Find:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
-            tools.Children.Add(_searchBox);
-            tools.Children.Add(new TextBlock { Text = "Show:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
-            tools.Children.Add(_showBox);
-            tools.Children.Add(collapseAll);
-            tools.Children.Add(expandAll);
+            // Wrapping, so a narrow window moves the last group to a second line rather than cutting it off.
+            var tools = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            tools.Children.Add(Labelled("Find:", _searchBox, 0));
+            tools.Children.Add(Labelled("Show:", _showBox, 12));
+
+            var folds = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+            folds.Children.Add(collapseAll);
+            folds.Children.Add(expandAll);
+            tools.Children.Add(folds);
+
+            tools.Children.Add(Labelled("Number:", _numberButton, 12));
             Grid.SetRow(tools, 2);
             root.Children.Add(tools);
 
-            Grid.SetRow(_grid, 3);
+            Grid.SetRow(_numberNote, 3);
+            root.Children.Add(_numberNote);
+
+            Grid.SetRow(_grid, 4);
             root.Children.Add(_grid);
 
-            Grid.SetRow(_openAfter, 4);
+            Grid.SetRow(_openAfter, 5);
             root.Children.Add(_openAfter);
 
             var bottom = new Grid { Margin = new Thickness(0, 10, 0, 0) };
@@ -261,10 +300,19 @@ namespace VladTools.UI
             Grid.SetColumn(buttons, 1);
             bottom.Children.Add(buttons);
 
-            Grid.SetRow(bottom, 5);
+            Grid.SetRow(bottom, 6);
             root.Children.Add(bottom);
 
             return root;
+        }
+
+        /// <summary>A caption and its control kept on one line when the tools wrap.</summary>
+        private static StackPanel Labelled(string caption, FrameworkElement control, double left)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(left, 2, 0, 2) };
+            panel.Children.Add(new TextBlock { Text = caption, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+            panel.Children.Add(control);
+            return panel;
         }
 
         /// <summary>What a date in the "Changed" column means — said once, above the table, rather than left to be guessed.</summary>
@@ -347,6 +395,20 @@ namespace VladTools.UI
                 Binding = new Binding(nameof(SheetListRow.SheetText)),
                 ElementStyle = sheetStyle
             });
+
+            var sheetNumberStyle = CellStyle();
+            sheetNumberStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 3, 4, 3)));
+            sheetNumberStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, SystemColors.GrayTextBrush));
+
+            // Shown only while a shared parameter is the number: Revit's own is the one a sheet is found by in Revit.
+            _sheetNumberColumn = new DataGridTextColumn
+            {
+                Header = SheetNumberParameter.RevitName,
+                Width = new DataGridLength(110),
+                Binding = new Binding(nameof(SheetListRow.SheetNumberText)),
+                ElementStyle = sheetNumberStyle
+            };
+            grid.Columns.Add(_sheetNumberColumn);
 
             var changedStyle = CellStyle();
             changedStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 3, 4, 3)));
@@ -446,7 +508,8 @@ namespace VladTools.UI
             if (query.Length == 0)
                 return true;
 
-            if (Contains(row.Sheet.Title, query) || Contains(row.Sheet.ChangedText, query) || row.Sheet.Contents.Any(line => Contains(line, query)))
+            if (Contains(row.Sheet.Title, query) || Contains(row.Sheet.SheetNumber, query) || Contains(row.Sheet.ChangedText, query) ||
+                row.Sheet.Contents.Any(line => Contains(line, query)))
                 return true;
 
             for (var folder = row.Parent; folder != null; folder = folder.Parent)
@@ -541,16 +604,116 @@ namespace VladTools.UI
             var empty = _all.Count(row => !row.IsFolder && row.Sheet.IsEmpty);
             var changed = _all.Count(row => !row.IsFolder && row.Sheet.ChangedAtThisCheck);
 
+            var unnumbered = Numbering.UsesParameter ? Numbering.WithoutValue : 0;
+
             _status.Text = "Sheets: " + _sheetCount +
                            (IsNarrowed ? ". Shown: " + shown : string.Empty) +
                            (_tracking.HasDates ? ". Changed since the previous check: " + changed : string.Empty) +
-                           (empty > 0 ? ". With nothing placed: " + empty : string.Empty) + ".";
+                           (empty > 0 ? ". With nothing placed: " + empty : string.Empty) +
+                           (unnumbered > 0 ? ". Without " + Numbering.Parameter.Name + ": " + unnumbered : string.Empty) + ".";
 
             _exportButton.IsEnabled = shown > 0;
             _exportButton.Content = IsNarrowed && shown < _sheetCount ? "Export " + shown + " to Excel…" : "Export to Excel…";
 
             var selected = _grid.SelectedItem as SheetListRow;
             _openButton.IsEnabled = selected != null && !selected.IsFolder && selected.Sheet.CanOpen;
+        }
+
+        // ───────────────────────────── the number ─────────────────────────────
+
+        /// <summary>The "Number" button, Revit's own number's column, and the line saying what the numbers are.</summary>
+        private void ShowNumbering()
+        {
+            _numberButton.Content = Numbering.Parameter.Label + "…";
+            _sheetNumberColumn.Visibility = Numbering.UsesParameter ? Visibility.Visible : Visibility.Collapsed;
+
+            var note = string.Empty;
+            _numberNote.Foreground = SystemColors.GrayTextBrush;
+
+            if (Numbering.Problem.Length > 0)
+            {
+                note = Numbering.Problem;
+                _numberNote.Foreground = Brushes.DarkRed;
+            }
+            else if (Numbering.UsesParameter)
+            {
+                note = "The number shown is \"" + Numbering.Parameter.Name + "\", read off the sheet or off its titleblock; " +
+                       "Revit's own Sheet Number is in the column beside it.";
+
+                if (Numbering.WithoutValue > 0)
+                {
+                    note += " " + SheetListRow.Count(Numbering.WithoutValue) + " give it no value and show the name alone — " +
+                            "type \"" + Numbering.Parameter.Name + "\" in their properties.";
+                    _numberNote.Foreground = Brushes.DarkRed;
+                }
+            }
+
+            _numberNote.Text = note;
+            _numberNote.Visibility = note.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ChooseNumber()
+        {
+            if (_numberSource == null || _renumber == null || !SheetNumberWindow.Choose(this, _preferences, _numberSource))
+                return;
+
+            NumberedSheets numbered;
+            var previous = Mouse.OverrideCursor;
+
+            try
+            {
+                Mouse.OverrideCursor = Cursors.Wait;
+                numbered = _renumber(_preferences.Number);
+            }
+            catch (Exception exception)
+            {
+                Mouse.OverrideCursor = previous;
+                MessageBox.Show(this, "The sheet numbers could not be read:\n\n" + exception.Message, WindowTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            finally
+            {
+                Mouse.OverrideCursor = previous;
+            }
+
+            Renumber(numbered);
+        }
+
+        /// <summary>
+        /// The same sheets under other numbers, laid out again. The folders are the browser's and do not
+        /// change with the number, so what was folded stays folded, and the selected sheet stays selected.
+        /// </summary>
+        private void Renumber(NumberedSheets numbered)
+        {
+            var folded = new HashSet<string>(_all.Where(row => row.IsFolder && !row.IsExpanded).Select(FolderKey), StringComparer.Ordinal);
+            var selected = (_grid.SelectedItem as SheetListRow)?.Sheet?.UniqueId;
+
+            _all.Clear();
+            _all.AddRange(SheetListRow.Tree(numbered.Sheets));
+
+            foreach (var row in _all.Where(row => row.IsFolder && folded.Contains(FolderKey(row))))
+                row.IsExpanded = false;
+
+            Numbering = numbered.Numbering;
+            ShowNumbering();
+            RebuildVisible();
+
+            var again = selected == null ? null : _all.FirstOrDefault(row => !row.IsFolder && string.Equals(row.Sheet.UniqueId, selected, StringComparison.Ordinal));
+            if (again != null && _visible.Contains(again))
+            {
+                _grid.SelectedItem = again;
+                _grid.ScrollIntoView(again);
+            }
+        }
+
+        /// <summary>A folder by its whole path — two folders of one name under different parents are different folders.</summary>
+        private static string FolderKey(SheetListRow row)
+        {
+            var parts = new List<string>();
+            for (var folder = row; folder != null; folder = folder.Parent)
+                parts.Insert(0, folder.FolderName);
+
+            return string.Join("\u001F", parts);
         }
 
         // ───────────────────────────── the mouse and the keys ─────────────────────────────

@@ -64,8 +64,8 @@ namespace VladTools.Commands
                     categories,
                     groups,
                     entries => DescribeStatus(doc, available, labels, entries),
-                    path => ReadSharedParameterFile(uiApp.Application, path),
-                    () => SafeCurrentFile(uiApp.Application),
+                    path => SharedParameterFile.Read(uiApp.Application, path),
+                    () => SharedParameterFile.CurrentPath(uiApp.Application),
                     doc.Title);
 
                 new WindowInteropHelper(window).Owner = uiApp.MainWindowHandle;
@@ -84,7 +84,7 @@ namespace VladTools.Commands
                 // Revit happens to be pointed at right now. The property is swapped for the whole
                 // run (the ExternalDefinitions read out of it stay valid only while it is) and put
                 // back in the finally: it is an application-wide setting, not this button's to keep.
-                var originalFile = SafeCurrentFile(uiApp.Application);
+                var originalFile = SharedParameterFile.CurrentPath(uiApp.Application);
                 var setFile = window.SharedParameterFile;
                 var swapped = false;
 
@@ -422,69 +422,6 @@ namespace VladTools.Commands
         }
 
         // ───────────────────────────── the shared parameter file ─────────────────────────────
-
-        /// <summary>
-        /// Reads a shared parameter file's definitions, flattened out of its groups. The file Revit is
-        /// already configured with is swapped out for the duration and restored right after — the API
-        /// gives no way to open an arbitrary path directly, only "the current one", and this is an
-        /// application-wide Revit setting that is not this button's to keep changed.
-        /// </summary>
-        private static IReadOnlyList<SharedParameterInfo> ReadSharedParameterFile(Application app, string path)
-        {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                throw new FileNotFoundException("The shared parameter file was not found.", path);
-
-            var original = app.SharedParametersFilename;
-
-            try
-            {
-                app.SharedParametersFilename = path;
-                var file = app.OpenSharedParameterFile();
-
-                if (file == null)
-                    throw new InvalidOperationException("Revit could not open this file as a shared parameter file.");
-
-                var result = new List<SharedParameterInfo>();
-
-                foreach (DefinitionGroup group in file.Groups)
-                {
-                    foreach (Definition definition in group.Definitions)
-                    {
-                        var external = definition as ExternalDefinition;
-                        if (external == null)
-                            continue;
-
-                        result.Add(new SharedParameterInfo(external.GUID, external.Name, group.Name, DataTypeLabel(external)));
-                    }
-                }
-
-                return result;
-            }
-            finally
-            {
-                try { app.SharedParametersFilename = original; }
-                catch (Exception) { }
-            }
-        }
-
-        private static string DataTypeLabel(ExternalDefinition external)
-        {
-            try
-            {
-                var dataType = external.GetDataType();
-                return dataType != null && SpecUtils.IsSpec(dataType) ? LabelUtils.GetLabelForSpec(dataType) : string.Empty;
-            }
-            catch (Exception)
-            {
-                return string.Empty;
-            }
-        }
-
-        private static string SafeCurrentFile(Application app)
-        {
-            try { return app.SharedParametersFilename ?? string.Empty; }
-            catch (Exception) { return string.Empty; }
-        }
 
         /// <summary>
         /// Every definition of the shared parameter file Revit is pointed at right now, keyed by GUID —

@@ -121,6 +121,9 @@ namespace VladTools.UI
 
         public string SheetText => IsFolder ? (IsExpanded ? "▾  " : "▸  ") + FolderName : Sheet.Title;
 
+        /// <summary>Revit's own Sheet Number — a column of its own while another parameter is the number shown.</summary>
+        public string SheetNumberText => IsFolder ? string.Empty : Sheet.SheetNumber;
+
         public string ContentsText => IsFolder
             ? Count(ShownSheets)
             : Sheet.Contents.Count == 0 ? NothingPlaced : string.Join("\n", Sheet.Contents);

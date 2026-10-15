@@ -1107,12 +1107,36 @@ latest change found on it, and everything placed on it on the right, one line ea
 5. **"Find"** narrows the table by sheet number or name, by folder, by what is placed — type a
    view's name to see which sheet it is on — or by a date ("2026-10" finds every sheet changed in
    October 2026).
-6. **Double-click a sheet** (or "Open sheet") to close the window and open the sheet.
-7. **"Export to Excel…"** writes the table into an .xlsx and opens it (a box below the table turns
+6. **"Number"** chooses what a sheet's number is (see "The sheet number" below): Revit's own Sheet
+   Number, or your own shared parameter — `ADSK_Номер листа`, say.
+7. **Double-click a sheet** (or "Open sheet") to close the window and open the sheet.
+8. **"Export to Excel…"** writes the table into an .xlsx and opens it (a box below the table turns
    that off): "Number", "Sheet name", "Changed" and "On the sheet" columns — the number in a column
    of its own, so one week's file can be matched against the next one's. The folders become Excel
    row groups: the +/− buttons in the margin fold them the way the browser does. What the search and
    "Show" leave in the table is written; a folded folder is written whole.
+
+**The sheet number.** Revit's own Sheet Number has to be unique in a model, so many offices keep the
+number printed on the sheet in a shared parameter of their own. The **"Number"** button (above the
+table, and "Sheet number in the reports" in the "Several models" window) lets you pick it:
+
+- Choose **"Revit's own Sheet Number"**, or **a shared parameter** from the list. The list is a
+  shared parameter file — the one Revit is set up with at first; **"Browse…"** loads any other. Next
+  to every parameter you see whether this project's sheets or titleblocks have it and how many give
+  it a value ("on 48 of 50 sheets, 45 with a value"); shared parameters the sheets carry that the
+  file does not hold are listed too.
+- The value is read **from the sheet**, and **from its titleblock** when the sheet gives none — so
+  it works whether the parameter is on the Sheets category or inside the titleblock family.
+- The table then reads "<your number> - Name", and **Revit's own Sheet Number gets a column of its
+  own** next to it — in the window and in Excel. The Excel "Number" column is headed with the
+  parameter's name.
+- **A sheet with no value** shows the name alone, and the window says how many there are — fill
+  them in on the sheets. **A model with no sheet or titleblock having the parameter** is shown with
+  Revit's own numbers, and a red line (or the batch summary) says so.
+- The order stays the Project Browser's. To have the browser itself sort by your parameter, set it
+  in View → User Interface → Browser Organization → Sheets.
+- The choice is remembered, for the window and the batch alike. A parameter is kept by its GUID, so
+  it is found in any project, whatever its name there.
 
 **How the change dates come about.** Revit keeps no date of a change — not for a view, not for any
 element — so the button keeps its own record. **Every opening of the window is a check**: the button
@@ -1154,7 +1178,8 @@ model open, in a family, or in a project with no sheets) opens a list of models 
 checked model is read in turn, and you get:
 
 - **a report per model** — exactly the file "Export to Excel…" writes for an open model: the
-  browser's folders as Excel groups, "Number", "Sheet name", "Changed", "On the sheet";
+  browser's folders as Excel groups, "Number", "Sheet name", "Changed", "On the sheet" (plus
+  "Sheet Number" when your own parameter is the number — see "The sheet number" above);
 - **one summary** with two sheets:
   - **"Models"** — a line per model: whether it was read (and if not, why), its sheet organization,
     how many sheets, hidden by the browser's filter, placeholders, sheets with nothing placed,
@@ -1163,7 +1188,8 @@ checked model is read in turn, and you get:
     report**. A totals line closes the table.
   - **"All sheets"** — every sheet of every model in one table with filter buttons: model, number,
     name, browser folder, "Changed", what is on it, and **"Notes"** (highlighted): nothing placed,
-    placeholder, hidden by the browser's filter, "Number also in …". One filter answers a question
+    placeholder, hidden by the browser's filter, "Number also in …", and "No … value" for a sheet
+    your number parameter is empty on. One filter answers a question
     about the whole set — which sheets are empty, where A101 occurs, what changed this week.
 
 **How the models are gathered** — the same list as in "Accept Changes → Other models…":
@@ -1360,6 +1386,63 @@ The report lists the views changed, with their old and new scale, and separately
   they have no scale.
 - The scale is changed on the view itself, so it shows wherever the view is used.
 
+### Copy Parameters (Project panel)
+
+Works **only in a project** (`.rvt`, and a template `.rte`). Writes the value of one parameter into
+another on every element of a category — **even when the two hold different kinds of value**: a
+number into a text, a text into a number, a family's reporting parameter into a shared one.
+
+1. **The scope** — the elements selected before pressing the button, the elements of the active view
+   (on a schedule — the schedule's own elements), or the whole model.
+2. **The category** — every category with elements in the scope, with how many (the categories Revit's
+   own "Project Parameters" dialog offers; types themselves are not listed — a type parameter is
+   reached through its elements).
+3. **Copy from** (left) and **Copy into** (right) — the category's parameters: instance and type ones,
+   built-in, shared, project and family ones, each with the kind of value it holds ("Text", "Length",
+   "Yes/No"…). "Find" finds one by a part of its name; "⇄" swaps the two. Read-only parameters —
+   reporting ones, ones Revit computes (area, volume), ones a formula sets — can be copied **from**; on the
+   right they are hidden unless "Show read-only parameters too" is on, and greyed.
+4. **How** — four options:
+   - *Only where the target is empty* — fill gaps, never overwrite;
+   - *An empty source empties a text target* — off by default: an empty source leaves the target alone;
+   - *Numbers into text without the unit symbol* — "1200" rather than "1200 mm";
+   - *A text that is not a number gives the first number in it* — "DN 50" → 50 (check the preview:
+     "Floor 2 - 1200" gives 2).
+5. **The preview** — every element (or every type, for a type parameter): the source, the target now
+   and the target after, and the state — *will be written* (green), *already holds this value*, *left as
+   it is* (empty source, target already filled, no such parameter) or *cannot be written* (red, with the
+   reason). The line above the preview states the conversion rule for the chosen pair. "Show" narrows the
+   table only — "Copy" writes every line that will be written.
+6. **"Copy"** — everything in one operation, one Ctrl+Z.
+
+**How a value changes kind on the way.** The rule is always "what a person would have typed":
+
+| From → into | What is written |
+|---|---|
+| anything → Text | the value exactly as Revit shows it: the project's units and rounding ("1 200 mm"), Yes/No as Revit's own word, an element choice (a level, a material) by its name |
+| Text → a number (length, area, plain number…) | read the way Revit reads a value typed into Properties — "1200", "1200 mm", "1.2 m"; a text that is not a number is not written (unless the "first number" option is on) |
+| a number → a number of the same kind | copied exactly |
+| a number → a number of another kind | the figure the source shows, taken in the target's units: a length showing 1200 gives a plain number 1200 |
+| a number → a whole number | the figure shown, rounded (the line says so) |
+| anything → Yes/No | zero, "No", "Нет", "0" give No; any other number, "Yes", "Да", "1" give Yes |
+| an element choice → an element choice | the same element, where Revit accepts it |
+| anything else → an element choice | not written: a name says nothing about which kind of element the target chooses |
+
+**Type parameters.** A type parameter as the target is written per type, and every element of that
+type changes with it — wherever it stands, not only in the scope; the button asks before copying. When
+its value comes from an instance parameter, the elements of the type in the scope must agree: a type
+that would get two different values is listed as "cannot be written" with both values. A type
+parameter as the source gives every element its own type's value.
+
+**What is worth knowing.**
+
+- **Elements inside model groups** are not written when the target does not vary by group instance —
+  Revit would refuse the whole operation; they are listed with the reason. Change them with "Edit Group".
+- **In a workshared model** the elements (or types) are checked out first; ones held by another user, or
+  changed in the central model since the last reload, are counted in the report and left out.
+- **Every value is read back** after the copy, and the report counts only what the model really holds.
+- The category, the two parameters and the options are remembered for the next time.
+
 ## Structure
 
 ```
@@ -1388,6 +1471,7 @@ src/VladTools/
     SheetsCommand.cs                  logic for the "Sheets" button (project)
     ViewsToSheetsCommand.cs           logic for the "Views to Sheets" button (project)
     SheetScaleCommand.cs              logic for the "Sheet Scale" button (project)
+    CopyParameterValuesCommand.cs     logic for the "Copy Parameters" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1459,6 +1543,8 @@ src/VladTools/
     ExcelImportPreview.cs            what that window shows: the request, columns, rows and cells with their state
     SheetsWindow.cs                  the "Sheets" window: the sheets in the Project Browser's folders, Find, Export to Excel
     SheetsBatchWindow.cs             "Sheets → Several models…": the model list and where the summary goes
+    SheetNumberWindow.cs             "Sheets → Number": Revit's own Sheet Number or a shared parameter from a file
+    SheetNumberParameter.cs          which parameter is a sheet's number, and how one model's numbers came out
     SheetListRow.cs                  a line of that table: a folder or a sheet
     SheetInfo.cs                     a snapshot of one sheet: number, name, its folders, what is placed on it, its change date
     FlatTree.cs                      a tree laid flat into table rows — shared by "Sheets" and "Views to Sheets"
@@ -1475,6 +1561,9 @@ src/VladTools/
     ScaleSheetInfo.cs                snapshots of one sheet, one viewport on it and one view: scale, template, dependents
     ScaleTemplateMode.cs             what to do with a view template that sets the scale, with captions
     SheetScaleRequest.cs             what the window hands back: the scale, the template choice, the views
+    CopyParametersWindow.cs          the "Copy Parameters" window: scope, category, the two parameter lists, the preview
+    CopyParameterInfo.cs             snapshots for that window: a category, a parameter; the scopes
+    CopyParameterPreview.cs          what that window asks for and what the preview shows, line by line
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets", for its batch)
@@ -1511,6 +1600,7 @@ src/VladTools/
     SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
     ParameterSetLibrary.cs       saved parameter sets (%AppData%)
     ParameterSetPreferences.cs   the "Parameter Sets" window settings (%AppData%)
+    SharedParameterFile.cs       reading any shared parameter file — "Parameter Sets" and the "Sheets" number
     TextSite.cs                  one place holding typed text (a name, a parameter value, a filter rule…): read and write it
     TextSiteCollector.cs         finds every place with Cyrillic text in the open project
     TranslationDictionary.cs     the translation dictionary and the export/import file format (%AppData%)
@@ -1520,7 +1610,8 @@ src/VladTools/
     ScheduleWorkbook.cs          how a schedule sits on an Excel sheet, both ways
     ScheduleImport.cs            comparing a sheet with a schedule: what would change, and why not
     ExcelPreferences.cs          the "Excel" button settings (%AppData%)
-    SheetPreferences.cs          the "Sheets" window settings and the batch's model list (%AppData%)
+    SheetPreferences.cs          the "Sheets" window settings, the number parameter and the batch's model list (%AppData%)
+    SheetNumbers.cs              the number "Sheets" shows: Revit's own, or a shared parameter off the sheet or its titleblock
     SheetReport.cs               the "Sheets" batch summary: the "Models" and "All sheets" Excel sheets
     SheetHistory.cs              the "Sheets" change history: when a change was found on each sheet and view (%AppData%)
     ViewFingerprint.cs           a digest of a view and everything it owns — what the change history compares
@@ -1528,6 +1619,8 @@ src/VladTools/
     ViewsToSheetsPreferences.cs  the "Views to Sheets" window settings, margins per titleblock (%AppData%)
     ViewScale.cs                 who decides a view's scale: a template that controls it, a primary view — shared
     SheetScalePreferences.cs     the "Sheet Scale" window settings (%AppData%)
+    ParameterValueConverter.cs   a parameter's identity across families, and a value converted between kinds (text, number, yes/no…)
+    CopyParameterPreferences.cs  the "Copy Parameters" window settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

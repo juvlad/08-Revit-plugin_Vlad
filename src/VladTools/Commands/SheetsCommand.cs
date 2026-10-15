@@ -28,6 +28,10 @@ namespace VladTools.Commands
     /// Every opening is also a check of what changed since the previous one: Revit keeps no date of a
     /// change, so the button keeps its own (<see cref="SheetHistory"/>, <see cref="ViewFingerprint"/>).
     ///
+    /// The number shown is Revit's own Sheet Number or a shared parameter chosen in the window
+    /// (<see cref="SheetNumbers"/>); it is worked out on top of the read, so choosing another one reads
+    /// the numbers again and nothing else — the history above is never checked twice in one opening.
+    ///
     /// "Several models…" does the same for a batch: every model is read in turn
     /// (<see cref="BatchCoordination.OpenToRead"/>), its table is written into a report of its own,
     /// and one summary covers them all (<see cref="SheetReport"/>). With no document open, or in a
@@ -69,19 +73,72 @@ namespace VladTools.Commands
         /// <summary>A sheet on its way to the window, with what it is sorted by.</summary>
         private sealed class Entry
         {
-            public Entry(SheetInfo info, int group, string sortValue)
+            public Entry(ViewSheet sheet, SheetInfo info, int group, string sortValue)
             {
+                Sheet = sheet;
                 Info = info;
                 Group = group;
-                SortValue = sortValue ?? string.Empty;
+                SortValue = sortValue;
             }
+
+            public ViewSheet Sheet { get; }
 
             public SheetInfo Info { get; }
 
             /// <summary>0 — in the browser; 1 — hidden by its filter; 2 — a placeholder. The last two follow the first.</summary>
             public int Group { get; }
 
+            /// <summary>The value the browser sorts by; null outside the browser (hidden, placeholder) — sorted by the number shown.</summary>
             public string SortValue { get; }
+
+            public Entry WithNumber(string number)
+            {
+                return new Entry(Sheet, Info.WithNumber(number), Group, SortValue);
+            }
+        }
+
+        /// <summary>
+        /// The sheets of a model, read once — everything but the number shown, which <see cref="Number"/>
+        /// works out on top and can be asked for again: the window's "Number" button changes the
+        /// parameter without reading the sheets, or checking their history, a second time.
+        /// </summary>
+        private sealed class Reading
+        {
+            private readonly Document _doc;
+            private readonly List<Entry> _entries;
+            private readonly bool _descending;
+
+            public Reading(Document doc, List<Entry> entries, bool descending, string organization, SheetTracking tracking)
+            {
+                _doc = doc;
+                _entries = entries;
+                _descending = descending;
+                Organization = organization;
+                Tracking = tracking;
+            }
+
+            public string Organization { get; }
+
+            public SheetTracking Tracking { get; }
+
+            public int Count => _entries.Count;
+
+            public IReadOnlyList<ViewSheet> Sheets => _entries.Select(entry => entry.Sheet).ToList();
+
+            /// <summary>The sheets numbered by <paramref name="parameter"/>, in the order the Project Browser lists them.</summary>
+            public NumberedSheets Number(SheetNumberParameter parameter)
+            {
+                var numbers = SheetNumbers.Read(_doc, Sheets, parameter, out var numbering);
+
+                var numbered = _entries
+                    .Select(entry => entry.WithNumber(numbers.TryGetValue(entry.Sheet.Id, out var number) ? number : entry.Info.SheetNumber))
+                    .ToList();
+
+                // The browser's own order does not follow the number, but the order outside it does,
+                // and so does every tie inside it.
+                numbered.Sort((a, b) => Compare(a, b, _descending));
+                return new NumberedSheets(numbered.Select(entry => entry.Info).ToList(), numbering);
+            }
         }
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -106,12 +163,15 @@ namespace VladTools.Commands
                         "Sheets live in a project, not in a family.");
                 }
 
-                var sheets = Collect(doc, LinkCatalog.VisiblePath(doc), true, out var organization, out var tracking);
-                if (sheets.Count == 0)
+                var reading = Collect(doc, LinkCatalog.VisiblePath(doc), true);
+                if (reading.Count == 0)
                     return Offer(application, "The project has no sheets.");
 
                 var preferences = SheetPreferences.Load();
-                var window = new SheetsWindow(sheets, organization, tracking, (uidoc.ActiveView as ViewSheet)?.UniqueId, doc.Title, preferences);
+                var numberSource = NumberSource(application, () => SheetNumbers.Uses(doc, reading.Sheets));
+
+                var window = new SheetsWindow(reading.Number(preferences.Number), reading.Organization, reading.Tracking,
+                    (uidoc.ActiveView as ViewSheet)?.UniqueId, doc.Title, preferences, reading.Number, numberSource);
                 new WindowInteropHelper(window).Owner = application.MainWindowHandle;
 
                 if (window.ShowDialog() != true)
@@ -123,7 +183,7 @@ namespace VladTools.Commands
                         Open(uidoc, window.SheetToOpen);
                         return Result.Succeeded;
                     case SheetsWindowAction.Export:
-                        Export(window.ExportRows, window.FilePath, window.OpenAfter);
+                        Export(window.ExportRows, window.Numbering, window.FilePath, window.OpenAfter);
                         return Result.Succeeded;
                     case SheetsWindowAction.Batch:
                         return Batch(application);
@@ -141,8 +201,22 @@ namespace VladTools.Commands
         // ───────────────────────────── reading ─────────────────────────────
 
         /// <summary>
-        /// Every sheet of the project, in the order the Project Browser lists them, each with the dates
-        /// of the changes found in it — and the check that found them saved for the next one.
+        /// Choosing the number parameter: reading a shared parameter file needs Revit's application, and
+        /// the windows know nothing about Revit. <paramref name="uses"/> is null for a batch — there is no
+        /// project to count.
+        /// </summary>
+        private static SheetNumberSource NumberSource(UIApplication application, Func<IReadOnlyList<SheetParameterUse>> uses)
+        {
+            return new SheetNumberSource(
+                path => SharedParameterFile.Read(application.Application, path),
+                () => SharedParameterFile.CurrentPath(application.Application),
+                uses);
+        }
+
+        /// <summary>
+        /// Every sheet of the project, each with the dates of the changes found in it — and the check
+        /// that found them saved for the next one. The number shown and the order follow from
+        /// <see cref="Reading.Number"/>.
         /// </summary>
         /// <param name="historyKey">
         /// The model the change history is kept under — its central model's path. Given rather than read
@@ -155,7 +229,7 @@ namespace VladTools.Commands
         /// detaching gave the elements new ones, every batch run would date every view "changed" and the
         /// model's own window would date them all again the next time — each check undoing the last.
         /// </param>
-        private static List<SheetInfo> Collect(Document doc, string historyKey, bool check, out string organizationName, out SheetTracking tracking)
+        private static Reading Collect(Document doc, string historyKey, bool check)
         {
             var sheets = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewSheet))
@@ -188,8 +262,6 @@ namespace VladTools.Commands
             {
                 // No organization means one flat list in sheet-number order — still the whole answer.
             }
-
-            organizationName = ProjectBrowser.Name(organization);
 
             var entries = new List<Entry>();
 
@@ -235,17 +307,14 @@ namespace VladTools.Commands
                 var latest = found.Max(pair => pair.Value?.FoundOn);
                 var info = new SheetInfo(sheet.UniqueId, sheet.SheetNumber, sheet.Name, folders, contents, !sheet.IsPlaceholder,
                     latest, Note(history, found, latest), found.Any(pair => pair.Value?.FoundNow == true), group == 1, Count(items));
-                entries.Add(new Entry(info, group, group == 0 ? ProjectBrowser.SortValue(sheet, sortingId, sheet.SheetNumber) : sheet.SheetNumber));
+                entries.Add(new Entry(sheet, info, group, group == 0 ? ProjectBrowser.SortValue(sheet, sortingId, sheet.SheetNumber) : null));
             }
 
             // Saved before the window opens: looking is the check, whatever the window is closed with.
             if (check)
                 history?.Save();
 
-            tracking = Tracking(history);
-
-            entries.Sort((a, b) => Compare(a, b, descending));
-            return entries.Select(entry => entry.Info).ToList();
+            return new Reading(doc, entries, descending, ProjectBrowser.Name(organization), Tracking(history));
         }
 
         /// <summary>What stands on a sheet, counted by kind — a batch's summary adds these up.</summary>
@@ -426,11 +495,12 @@ namespace VladTools.Commands
             if (result != 0)
                 return result;
 
-            result = ProjectBrowser.Natural(a.SortValue, b.SortValue);
+            result = ProjectBrowser.Natural(a.SortValue ?? a.Info.Number, b.SortValue ?? b.Info.Number);
             if (result != 0)
                 return descending ? -result : result;
 
-            return ProjectBrowser.Natural(a.Info.Number, b.Info.Number);
+            result = ProjectBrowser.Natural(a.Info.Number, b.Info.Number);
+            return result != 0 ? result : ProjectBrowser.Natural(a.Info.SheetNumber, b.Info.SheetNumber);
         }
 
         // ───────────────────────────── opening ─────────────────────────────
@@ -458,11 +528,11 @@ namespace VladTools.Commands
 
         // ───────────────────────────── export ─────────────────────────────
 
-        private static void Export(IReadOnlyList<SheetListRow> rows, string path, bool openAfter)
+        private static void Export(IReadOnlyList<SheetListRow> rows, SheetNumbering numbering, string path, bool openAfter)
         {
             try
             {
-                XlsxWriter.Write(path, new[] { Workbook(rows) });
+                XlsxWriter.Write(path, new[] { Workbook(rows, numbering) });
             }
             catch (Exception exception)
             {
@@ -497,16 +567,25 @@ namespace VladTools.Commands
         /// date, and everything under it is an Excel row group, so the folders fold in Excel the way
         /// they fold in the Project Browser. Filter buttons go on only where there are no folder lines:
         /// sorting through them would scatter the sheets out of their folders.
+        ///
+        /// With a shared parameter as the number, the "Number" column is that parameter (and is headed by
+        /// its name), and Revit's own Sheet Number stands beside it: the one Revit keeps unique, and the
+        /// one a sheet is found by in Revit.
         /// </summary>
-        private static XlsxSheet Workbook(IReadOnlyList<SheetListRow> rows)
+        private static XlsxSheet Workbook(IReadOnlyList<SheetListRow> rows, SheetNumbering numbering)
         {
+            var withSheetNumber = numbering != null && numbering.UsesParameter;
+
             const int numberColumn = 0;
-            const int nameColumn = 1;
-            const int changedColumn = 2;
-            const int contentsColumn = 3;
+            const int sheetNumberColumn = 1;
+            var nameColumn = withSheetNumber ? 2 : 1;
+            var changedColumn = nameColumn + 1;
+            var contentsColumn = changedColumn + 1;
 
             var sheet = new XlsxSheet("Sheets") { FrozenRows = 1 };
-            sheet.Set(0, numberColumn, "Number", XlsxStyle.Heading);
+            sheet.Set(0, numberColumn, numbering?.Heading ?? "Number", XlsxStyle.Heading);
+            if (withSheetNumber)
+                sheet.Set(0, sheetNumberColumn, SheetNumberParameter.RevitName, XlsxStyle.Heading);
             sheet.Set(0, nameColumn, "Sheet name", XlsxStyle.Heading);
             sheet.Set(0, changedColumn, "Changed", XlsxStyle.Heading);
             sheet.Set(0, contentsColumn, "On the sheet", XlsxStyle.Heading);
@@ -517,14 +596,16 @@ namespace VladTools.Commands
                 if (row.IsFolder)
                 {
                     sheet.Set(line, numberColumn, new string(' ', 4 * row.Level) + row.FolderName, XlsxStyle.Group);
-                    sheet.Set(line, nameColumn, string.Empty, XlsxStyle.Group);
-                    sheet.Set(line, changedColumn, string.Empty, XlsxStyle.Group);
+                    for (var column = numberColumn + 1; column <= changedColumn; column++)
+                        sheet.Set(line, column, string.Empty, XlsxStyle.Group);
                     sheet.Set(line, contentsColumn, SheetListRow.Count(row.ShownSheets), XlsxStyle.Group);
                     sheet.Merges.Add(new XlsxRange(line, numberColumn, line, changedColumn));
                 }
                 else
                 {
                     sheet.Set(line, numberColumn, row.Sheet.Number);
+                    if (withSheetNumber)
+                        sheet.Set(line, sheetNumberColumn, row.Sheet.SheetNumber);
                     sheet.Set(line, nameColumn, row.Sheet.Name);
                     sheet.Set(line, changedColumn, row.Sheet.ChangedText);
                     sheet.Set(line, contentsColumn, row.ContentsText);
@@ -541,6 +622,8 @@ namespace VladTools.Commands
             var names = sheets.Select(row => row.Sheet.Name.Length).DefaultIfEmpty(0).Max();
             var contents = sheets.SelectMany(row => row.ContentsText.Split('\n')).Select(text => text.Length).DefaultIfEmpty(0).Max();
             sheet.ColumnWidths[numberColumn] = Math.Max(10, Math.Min(24, numbers + 4));
+            if (withSheetNumber)
+                sheet.ColumnWidths[sheetNumberColumn] = Math.Max(14, Math.Min(24, sheets.Select(row => row.Sheet.SheetNumber.Length).DefaultIfEmpty(0).Max() + 4));
             sheet.ColumnWidths[nameColumn] = Math.Max(30, Math.Min(70, names + 4));
             sheet.ColumnWidths[changedColumn] = 13;
             sheet.ColumnWidths[contentsColumn] = Math.Max(30, Math.Min(100, contents + 4));
@@ -585,13 +668,14 @@ namespace VladTools.Commands
         /// </summary>
         private static Result Batch(UIApplication application)
         {
-            var window = new SheetsBatchWindow(SheetPreferences.Load(), LinkPreferences.Load());
+            var window = new SheetsBatchWindow(SheetPreferences.Load(), LinkPreferences.Load(), NumberSource(application, null));
             new WindowInteropHelper(window).Owner = application.MainWindowHandle;
 
             if (window.ShowDialog() != true)
                 return Result.Cancelled;
 
             var summary = window.FilePath;
+            var number = window.NumberParameter;
             var folder = SheetReport.ReportsFolder(summary);
 
             try
@@ -608,7 +692,7 @@ namespace VladTools.Commands
             var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var row in window.Selected)
-                results.Add(ReadOne(application.Application, row.Entry, folder, taken));
+                results.Add(ReadOne(application.Application, row.Entry, number, folder, taken));
 
             var summaryError = string.Empty;
 
@@ -633,6 +717,7 @@ namespace VladTools.Commands
         private static SheetModelResult ReadOne(
             Autodesk.Revit.ApplicationServices.Application app,
             LinkEntry entry,
+            SheetNumberParameter number,
             string folder,
             ISet<string> taken)
         {
@@ -653,9 +738,12 @@ namespace VladTools.Commands
                 // A detached copy only reads the history: whether detaching keeps the central's element
                 // versions is not confirmed, and a check against new ones would date every view.
                 result.Checked = !model.IsDetached;
-                result.Sheets = Collect(doc, HistoryKey(doc, entry), result.Checked, out var organization, out var tracking);
-                result.Organization = organization;
-                result.Tracking = tracking;
+                var reading = Collect(doc, HistoryKey(doc, entry), result.Checked);
+                var numbered = reading.Number(number);
+                result.Sheets = numbered.Sheets;
+                result.Numbering = numbered.Numbering;
+                result.Organization = reading.Organization;
+                result.Tracking = reading.Tracking;
 
                 if (result.Sheets.Count > 0)
                 {
@@ -663,7 +751,7 @@ namespace VladTools.Commands
 
                     try
                     {
-                        XlsxWriter.Write(file, new[] { Workbook(SheetListRow.Tree(result.Sheets)) });
+                        XlsxWriter.Write(file, new[] { Workbook(SheetListRow.Tree(result.Sheets), result.Numbering) });
                         result.ReportFile = file;
                     }
                     catch (Exception exception)
@@ -727,6 +815,9 @@ namespace VladTools.Commands
             text += Section("Change history",
                 read.Where(result => result.Tracking != null && result.Tracking.Problem.Length > 0)
                     .Select(result => result.Name + " — " + result.Tracking.Problem).ToList());
+            text += Section("Sheet number",
+                read.Where(result => result.Numbering.Problem.Length > 0)
+                    .Select(result => result.Name + " — " + result.Numbering.Problem).ToList());
 
             var dialog = new TaskDialog(DialogTitle)
             {
@@ -761,6 +852,9 @@ namespace VladTools.Commands
             var empty = result.Sheets.Count(info => info.IsEmpty);
             if (empty > 0)
                 parts.Add(empty + " with nothing placed");
+
+            if (result.Numbering.UsesParameter && result.Numbering.WithoutValue > 0)
+                parts.Add(result.Numbering.WithoutValue + " without " + result.Numbering.Parameter.Name);
 
             if (result.HasDates)
                 parts.Add(result.Sheets.Count(info => info.ChangedAtThisCheck) + " changed since the previous check");

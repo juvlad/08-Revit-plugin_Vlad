@@ -1108,7 +1108,7 @@ latest change found on it, and everything placed on it on the right, one line ea
    view's name to see which sheet it is on — or by a date ("2026-10" finds every sheet changed in
    October 2026).
 6. **"Number"** chooses what a sheet's number is (see "The sheet number" below): Revit's own Sheet
-   Number, or your own shared parameter — `ADSK_Номер листа`, say.
+   Number, or your own parameter — `ADSK_Номер листа`, say.
 7. **Double-click a sheet** (or "Open sheet") to close the window and open the sheet.
 8. **"Export to Excel…"** writes the table into an .xlsx and opens it (a box below the table turns
    that off): "Number", "Sheet name", "Changed" and "On the sheet" columns — the number in a column
@@ -1120,23 +1120,26 @@ latest change found on it, and everything placed on it on the right, one line ea
 number printed on the sheet in a shared parameter of their own. The **"Number"** button (above the
 table, and "Sheet number in the reports" in the "Several models" window) lets you pick it:
 
-- Choose **"Revit's own Sheet Number"**, or **a shared parameter** from the list. The list is a
-  shared parameter file — the one Revit is set up with at first; **"Browse…"** loads any other. Next
-  to every parameter you see whether this project's sheets or titleblocks have it and how many give
-  it a value ("on 48 of 50 sheets, 45 with a value"); shared parameters the sheets carry that the
-  file does not hold are listed too.
-- The value is read **from the sheet**, and **from its titleblock** when the sheet gives none — so
-  it works whether the parameter is on the Sheets category or inside the titleblock family.
-- The table then reads "<your number> - Name", and **Revit's own Sheet Number gets a column of its
-  own** next to it — in the window and in Excel. The Excel "Number" column is headed with the
-  parameter's name.
+- Choose **"Revit's own Sheet Number"**, or **another parameter** from the list. The list holds
+  every parameter this project's sheets and titleblocks carry — shared or not, a project parameter,
+  a titleblock family's own — plus a shared parameter file (the one Revit is set up with at first;
+  **"Browse…"** loads any other). Next to every one you see how many sheets have it and how many give
+  it a value ("on 48 of 50 sheets, 45 with a value"), and **the ones holding values are at the top** —
+  that is the parameter your numbers are in. A parameter standing on the sheets with no value on any
+  of them is flagged red before you press "OK".
+- The value is read **from the sheet**, then **from its titleblock**, then from the **titleblock's
+  type** — so it works wherever the parameter lives. A shared parameter is found by its GUID, one
+  that is not shared by its name.
+- The table then reads "<your number> - Name" under the heading "<parameter> - Sheet name", and the
+  Excel "Number" column is headed with the parameter's name. **Revit's own Sheet Number is left out**
+  — in the window and in Excel; "Find" still finds a sheet by it.
 - **A sheet with no value** shows the name alone, and the window says how many there are — fill
   them in on the sheets. **A model with no sheet or titleblock having the parameter** is shown with
   Revit's own numbers, and a red line (or the batch summary) says so.
 - The order stays the Project Browser's. To have the browser itself sort by your parameter, set it
   in View → User Interface → Browser Organization → Sheets.
-- The choice is remembered, for the window and the batch alike. A parameter is kept by its GUID, so
-  it is found in any project, whatever its name there.
+- The choice is remembered, for the window and the batch alike. A shared parameter is kept by its
+  GUID, so it is found in any project whatever its name there; one that is not shared, by its name.
 
 **How the change dates come about.** Revit keeps no date of a change — not for a view, not for any
 element — so the button keeps its own record. **Every opening of the window is a check**: the button
@@ -1178,8 +1181,8 @@ model open, in a family, or in a project with no sheets) opens a list of models 
 checked model is read in turn, and you get:
 
 - **a report per model** — exactly the file "Export to Excel…" writes for an open model: the
-  browser's folders as Excel groups, "Number", "Sheet name", "Changed", "On the sheet" (plus
-  "Sheet Number" when your own parameter is the number — see "The sheet number" above);
+  browser's folders as Excel groups, "Number" (headed with your parameter's name when it is the
+  number — see "The sheet number" above), "Sheet name", "Changed", "On the sheet";
 - **one summary** with two sheets:
   - **"Models"** — a line per model: whether it was read (and if not, why), its sheet organization,
     how many sheets, hidden by the browser's filter, placeholders, sheets with nothing placed,

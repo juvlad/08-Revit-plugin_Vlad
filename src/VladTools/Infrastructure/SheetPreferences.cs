@@ -26,7 +26,8 @@ namespace VladTools.Infrastructure
         private static readonly string[] FileHeader =
         {
             "# \"Sheets\" button settings — the Project panel.",
-            "# NUMBER — the shared parameter shown as a sheet's number: GUID | name; empty — Revit's own Sheet Number",
+            "# NUMBER — the parameter shown as a sheet's number: GUID | name for a shared one, NAME | name for one that is not;",
+            "#   empty — Revit's own Sheet Number",
             "# NUMBER_FILE — the shared parameter file it was last picked from",
             "# FOLDER — the folder of the last export to Excel",
             "# OPEN_AFTER — 1/0: open the exported file in Excel",

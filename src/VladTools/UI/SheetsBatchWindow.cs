@@ -66,16 +66,16 @@ namespace VladTools.UI
             {
                 Padding = new Thickness(10, 2, 10, 2),
                 MinWidth = 160,
-                ToolTip = "Which parameter the reports show as a sheet's number: Revit's own Sheet Number, or a shared parameter\n" +
-                          "picked out of a shared parameter file. The same choice as in the \"Sheets\" window; a model that has\n" +
-                          "no such parameter is reported with Revit's own numbers, and the summary says so."
+                ToolTip = "Which parameter the reports show as a sheet's number: Revit's own Sheet Number, or another one —\n" +
+                          "best picked in the \"Sheets\" window of an open model, where the list shows what its sheets hold.\n" +
+                          "A model that has no such parameter is reported with Revit's own numbers, and the summary says so."
             };
             _numberButton.Click += (s, e) =>
             {
                 if (_numberSource != null && SheetNumberWindow.Choose(this, _preferences, _numberSource))
-                    _numberButton.Content = NumberParameter.Label + "…";
+                    _numberButton.Content = SheetNumberWindow.ButtonContent(NumberParameter);
             };
-            _numberButton.Content = NumberParameter.Label + "…";
+            _numberButton.Content = SheetNumberWindow.ButtonContent(NumberParameter);
 
             _status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
 

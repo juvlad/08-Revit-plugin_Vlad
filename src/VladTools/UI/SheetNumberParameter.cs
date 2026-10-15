@@ -4,42 +4,67 @@ using System.Collections.Generic;
 namespace VladTools.UI
 {
     /// <summary>
-    /// The parameter "Sheets" shows as a sheet's number: Revit's own Sheet Number, or a shared parameter
+    /// The parameter "Sheets" shows as a sheet's number: Revit's own Sheet Number; a shared parameter,
     /// known by its GUID — the one identity a shared parameter keeps across projects and files, the same
-    /// rule as "Parameter Sets". The name is a label only: for the button, the column heading, and for
-    /// saying which parameter a model is missing.
+    /// rule as "Parameter Sets", the name a label only; or a parameter that is not shared — a project
+    /// parameter, a titleblock family's own — which has nothing but its name to be known by.
     /// </summary>
     internal sealed class SheetNumberParameter
     {
         public const string RevitName = "Sheet Number";
 
-        public static readonly SheetNumberParameter Revit = new SheetNumberParameter(Guid.Empty, RevitName);
+        private const string NameKey = "NAME";
+
+        public static readonly SheetNumberParameter Revit = new SheetNumberParameter(Guid.Empty, RevitName, false);
 
         public SheetNumberParameter(Guid guid, string name)
+            : this(guid, name, false)
         {
-            Guid = guid;
+        }
+
+        private SheetNumberParameter(Guid guid, string name, bool isByName)
+        {
+            Guid = isByName ? Guid.Empty : guid;
+            IsByName = isByName;
             Name = string.IsNullOrWhiteSpace(name) ? (guid == Guid.Empty ? RevitName : guid.ToString("D")) : name.Trim();
         }
 
-        /// <summary>Empty for Revit's own Sheet Number.</summary>
+        /// <summary>A parameter that is not shared, found on a sheet or a titleblock by its name.</summary>
+        public static SheetNumberParameter ByName(string name)
+        {
+            return string.IsNullOrWhiteSpace(name) ? Revit : new SheetNumberParameter(Guid.Empty, name, true);
+        }
+
+        /// <summary>Empty for Revit's own Sheet Number and for a parameter known by its name.</summary>
         public Guid Guid { get; }
 
         public string Name { get; }
 
-        public bool IsRevit => Guid == Guid.Empty;
+        /// <summary>Not shared: a project parameter, or a titleblock family's own — the name is all there is to find it by.</summary>
+        public bool IsByName { get; }
+
+        public bool IsShared => Guid != Guid.Empty;
+
+        public bool IsRevit => !IsShared && !IsByName;
 
         /// <summary>What the windows' "Number" button reads.</summary>
         public string Label => IsRevit ? RevitName + " (Revit)" : Name;
 
+        /// <summary>One string per parameter — a GUID, or the name for one known by it; what lists are keyed by.</summary>
+        public string Key => IsByName ? NameKey + "|" + Name : Guid.ToString("D");
+
         public bool Same(SheetNumberParameter other)
         {
-            return other != null && other.Guid == Guid;
+            return other != null && string.Equals(other.Key, Key, StringComparison.Ordinal);
         }
 
-        /// <summary>"GUID | name", or empty for Revit's own — the settings file's form.</summary>
+        /// <summary>"GUID | name", "NAME | name", or empty for Revit's own — the settings file's form.</summary>
         public string Format()
         {
-            return IsRevit ? string.Empty : Guid.ToString("D") + " | " + Name;
+            if (IsRevit)
+                return string.Empty;
+
+            return (IsByName ? NameKey : Guid.ToString("D")) + " | " + Name;
         }
 
         /// <summary>Reads <see cref="Format"/> back; anything unreadable is Revit's own Sheet Number.</summary>
@@ -50,12 +75,16 @@ namespace VladTools.UI
                 return Revit;
 
             var bar = value.IndexOf('|');
-            var guidText = bar < 0 ? value : value.Substring(0, bar);
+            var head = (bar < 0 ? value : value.Substring(0, bar)).Trim();
+            var name = bar < 0 ? string.Empty : value.Substring(bar + 1);
 
-            if (!Guid.TryParse(guidText.Trim(), out var guid) || guid == Guid.Empty)
+            if (string.Equals(head, NameKey, StringComparison.OrdinalIgnoreCase))
+                return ByName(name);
+
+            if (!Guid.TryParse(head, out var guid) || guid == Guid.Empty)
                 return Revit;
 
-            return new SheetNumberParameter(guid, bar < 0 ? string.Empty : value.Substring(bar + 1));
+            return new SheetNumberParameter(guid, name);
         }
     }
 
@@ -78,10 +107,7 @@ namespace VladTools.UI
         /// <summary>False when no sheet and no titleblock of the model has the parameter asked for: Revit's own numbers stand in.</summary>
         public bool IsInModel { get; }
 
-        /// <summary>
-        /// The numbers are the shared parameter's — so Revit's own goes in a column of its own beside
-        /// them: it is the one Revit keeps unique, and the one a sheet is found by in Revit.
-        /// </summary>
+        /// <summary>The numbers are the parameter's, and the table and the reports are headed by its name.</summary>
         public bool UsesParameter => !Parameter.IsRevit && IsInModel;
 
         /// <summary>Sheets the parameter gives no value on — on the sheet or on its titleblock.</summary>
@@ -108,25 +134,29 @@ namespace VladTools.UI
         public SheetNumbering Numbering { get; }
     }
 
-    /// <summary>One shared parameter found on the open project's sheets or their titleblocks — so the picker can say which of a file's parameters are in use, and how filled.</summary>
+    /// <summary>
+    /// One parameter found on the open project's sheets or their titleblocks, shared or not — so the
+    /// picker can say which parameters are in use and which of them actually hold the numbers.
+    /// </summary>
     internal sealed class SheetParameterUse
     {
-        public SheetParameterUse(Guid guid, string name, string dataType, string text)
+        public SheetParameterUse(SheetNumberParameter parameter, string dataType, string text, int filled)
         {
-            Guid = guid;
-            Name = name ?? string.Empty;
+            Parameter = parameter;
             DataType = dataType ?? string.Empty;
             Text = text ?? string.Empty;
+            Filled = filled;
         }
 
-        public Guid Guid { get; }
-
-        public string Name { get; }
+        public SheetNumberParameter Parameter { get; }
 
         public string DataType { get; }
 
         /// <summary>"on 48 of 50 sheets, 45 with a value".</summary>
         public string Text { get; }
+
+        /// <summary>Sheets that get a value from it — off the sheet or off its titleblock.</summary>
+        public int Filled { get; }
     }
 
     /// <summary>

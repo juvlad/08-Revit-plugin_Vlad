@@ -568,24 +568,21 @@ namespace VladTools.Commands
         /// they fold in the Project Browser. Filter buttons go on only where there are no folder lines:
         /// sorting through them would scatter the sheets out of their folders.
         ///
-        /// With a shared parameter as the number, the "Number" column is that parameter (and is headed by
-        /// its name), and Revit's own Sheet Number stands beside it: the one Revit keeps unique, and the
-        /// one a sheet is found by in Revit.
+        /// With a parameter as the number, the "Number" column is that parameter, headed by its name, and
+        /// Revit's own Sheet Number is not written at all: a column of it beside the parameter read as the
+        /// number the report had picked.
         /// </summary>
         private static XlsxSheet Workbook(IReadOnlyList<SheetListRow> rows, SheetNumbering numbering)
         {
-            var withSheetNumber = numbering != null && numbering.UsesParameter;
-
             const int numberColumn = 0;
-            const int sheetNumberColumn = 1;
-            var nameColumn = withSheetNumber ? 2 : 1;
-            var changedColumn = nameColumn + 1;
-            var contentsColumn = changedColumn + 1;
+            const int nameColumn = 1;
+            const int changedColumn = 2;
+            const int contentsColumn = 3;
+
+            var heading = numbering?.Heading ?? "Number";
 
             var sheet = new XlsxSheet("Sheets") { FrozenRows = 1 };
-            sheet.Set(0, numberColumn, numbering?.Heading ?? "Number", XlsxStyle.Heading);
-            if (withSheetNumber)
-                sheet.Set(0, sheetNumberColumn, SheetNumberParameter.RevitName, XlsxStyle.Heading);
+            sheet.Set(0, numberColumn, heading, XlsxStyle.Heading);
             sheet.Set(0, nameColumn, "Sheet name", XlsxStyle.Heading);
             sheet.Set(0, changedColumn, "Changed", XlsxStyle.Heading);
             sheet.Set(0, contentsColumn, "On the sheet", XlsxStyle.Heading);
@@ -604,8 +601,6 @@ namespace VladTools.Commands
                 else
                 {
                     sheet.Set(line, numberColumn, row.Sheet.Number);
-                    if (withSheetNumber)
-                        sheet.Set(line, sheetNumberColumn, row.Sheet.SheetNumber);
                     sheet.Set(line, nameColumn, row.Sheet.Name);
                     sheet.Set(line, changedColumn, row.Sheet.ChangedText);
                     sheet.Set(line, contentsColumn, row.ContentsText);
@@ -621,9 +616,8 @@ namespace VladTools.Commands
             var numbers = sheets.Select(row => row.Sheet.Number.Length).DefaultIfEmpty(0).Max();
             var names = sheets.Select(row => row.Sheet.Name.Length).DefaultIfEmpty(0).Max();
             var contents = sheets.SelectMany(row => row.ContentsText.Split('\n')).Select(text => text.Length).DefaultIfEmpty(0).Max();
-            sheet.ColumnWidths[numberColumn] = Math.Max(10, Math.Min(24, numbers + 4));
-            if (withSheetNumber)
-                sheet.ColumnWidths[sheetNumberColumn] = Math.Max(14, Math.Min(24, sheets.Select(row => row.Sheet.SheetNumber.Length).DefaultIfEmpty(0).Max() + 4));
+            // Wide enough for the parameter's name too: "SH_SheetNumber" over numbers "1", "2" broke in two.
+            sheet.ColumnWidths[numberColumn] = Math.Max(10, Math.Min(24, Math.Max(numbers, heading.Length) + 4));
             sheet.ColumnWidths[nameColumn] = Math.Max(30, Math.Min(70, names + 4));
             sheet.ColumnWidths[changedColumn] = 13;
             sheet.ColumnWidths[contentsColumn] = Math.Max(30, Math.Min(100, contents + 4));

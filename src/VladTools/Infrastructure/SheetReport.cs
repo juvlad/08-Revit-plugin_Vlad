@@ -275,26 +275,22 @@ namespace VladTools.Infrastructure
         // ───────────────────────────── the "All sheets" sheet ─────────────────────────────
 
         /// <summary>
-        /// With a shared parameter as the number, "Number" is that parameter, headed by its name, and
-        /// Revit's own Sheet Number gets a column of its own after it — the same as a model's own report.
-        /// A model that did not have the parameter shows Revit's numbers in both, and says so in "Models".
+        /// With a parameter as the number, "Number" is that parameter, headed by its name, and Revit's own
+        /// Sheet Number is not written — the same as a model's own report. A model that did not have the
+        /// parameter shows Revit's numbers there, and says so in "Models".
         /// </summary>
         private static XlsxSheet AllSheets(IReadOnlyList<SheetModelResult> results, Dictionary<SheetInfo, List<string>> repeats)
         {
             var numbering = results.Where(result => result.IsRead).Select(result => result.Numbering).FirstOrDefault(item => item.UsesParameter);
-            var withSheetNumber = numbering != null;
+            var heading = numbering?.Heading ?? "Number";
 
-            var headings = new List<string> { "Model", numbering?.Heading ?? "Number" };
-            if (withSheetNumber)
-                headings.Add(SheetNumberParameter.RevitName);
-            headings.AddRange(new[] { "Sheet name", "Browser folder", "Changed", "On the sheet", "Notes" });
+            var headings = new List<string> { "Model", heading, "Sheet name", "Browser folder", "Changed", "On the sheet", "Notes" };
 
-            var shift = withSheetNumber ? 1 : 0;
-            var nameColumn = 2 + shift;
-            var folderColumn = 3 + shift;
-            var changedColumn = 4 + shift;
-            var contentsColumn = 5 + shift;
-            var notesColumn = 6 + shift;
+            const int nameColumn = 2;
+            const int folderColumn = 3;
+            const int changedColumn = 4;
+            const int contentsColumn = 5;
+            const int notesColumn = 6;
 
             var sheet = new XlsxSheet("All sheets") { FrozenRows = 1 };
             for (var column = 0; column < headings.Count; column++)
@@ -314,8 +310,6 @@ namespace VladTools.Infrastructure
 
                     sheet.Set(line, 0, result.Name);
                     sheet.Set(line, 1, info.Number);
-                    if (withSheetNumber)
-                        sheet.Set(line, 2, info.SheetNumber);
                     sheet.Set(line, nameColumn, info.Name);
                     sheet.Set(line, folderColumn, folder);
                     sheet.Set(line, changedColumn, info.ChangedText);
@@ -332,9 +326,7 @@ namespace VladTools.Infrastructure
 
             var sheets = results.Where(result => result.IsRead).SelectMany(result => result.Sheets).ToList();
             sheet.ColumnWidths[0] = Width(results.Where(result => result.IsRead).Select(result => result.Name), 16, 40);
-            sheet.ColumnWidths[1] = Width(sheets.Select(info => info.Number), 10, 24);
-            if (withSheetNumber)
-                sheet.ColumnWidths[2] = Width(sheets.Select(info => info.SheetNumber), 14, 24);
+            sheet.ColumnWidths[1] = Width(sheets.Select(info => info.Number).Concat(new[] { heading }), 10, 24);
             sheet.ColumnWidths[nameColumn] = Width(sheets.Select(info => info.Name), 24, 60);
             sheet.ColumnWidths[folderColumn] = Math.Max(16, Math.Min(50, folderWidth + 4));
             sheet.ColumnWidths[changedColumn] = 12;

@@ -74,7 +74,7 @@ namespace VladTools.UI
         private readonly Button _numberButton;
         private readonly TextBlock _numberNote;
         private readonly DataGrid _grid;
-        private DataGridTextColumn _sheetNumberColumn;
+        private DataGridTextColumn _sheetColumn;
         private readonly CheckBox _openAfter;
         private readonly TextBlock _status;
         private readonly Button _openButton;
@@ -147,8 +147,8 @@ namespace VladTools.UI
                 Padding = new Thickness(8, 2, 8, 2),
                 MinWidth = 150,
                 ToolTip = "Which parameter is a sheet's number — in \"A101 - Name\", in the export and in a batch's reports:\n" +
-                          "Revit's own Sheet Number, or a shared parameter picked out of a shared parameter file\n" +
-                          "(read off the sheet, or off its titleblock). The choice is remembered."
+                          "Revit's own Sheet Number, or another parameter — one the sheets already carry, or one from a\n" +
+                          "shared parameter file (read off the sheet, or off its titleblock). The choice is remembered."
             };
             _numberButton.Click += (s, e) => ChooseNumber();
 
@@ -388,27 +388,14 @@ namespace VladTools.UI
             sheetStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Binding(nameof(SheetListRow.Indent))));
             sheetStyle.Setters.Add(new Setter(TextBlock.FontWeightProperty, new Binding(nameof(SheetListRow.Weight))));
 
-            grid.Columns.Add(new DataGridTextColumn
+            // Headed by what the number is (see ShowNumbering) — the one number column there is.
+            _sheetColumn = new DataGridTextColumn
             {
-                Header = "Sheet",
                 Width = new DataGridLength(2, DataGridLengthUnitType.Star),
                 Binding = new Binding(nameof(SheetListRow.SheetText)),
                 ElementStyle = sheetStyle
-            });
-
-            var sheetNumberStyle = CellStyle();
-            sheetNumberStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 3, 4, 3)));
-            sheetNumberStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, SystemColors.GrayTextBrush));
-
-            // Shown only while a shared parameter is the number: Revit's own is the one a sheet is found by in Revit.
-            _sheetNumberColumn = new DataGridTextColumn
-            {
-                Header = SheetNumberParameter.RevitName,
-                Width = new DataGridLength(110),
-                Binding = new Binding(nameof(SheetListRow.SheetNumberText)),
-                ElementStyle = sheetNumberStyle
             };
-            grid.Columns.Add(_sheetNumberColumn);
+            grid.Columns.Add(_sheetColumn);
 
             var changedStyle = CellStyle();
             changedStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(4, 3, 4, 3)));
@@ -621,11 +608,16 @@ namespace VladTools.UI
 
         // ───────────────────────────── the number ─────────────────────────────
 
-        /// <summary>The "Number" button, Revit's own number's column, and the line saying what the numbers are.</summary>
+        /// <summary>
+        /// The "Number" button, the sheet column's heading, and the line saying what the numbers are. With a
+        /// parameter as the number, Revit's own Sheet Number is shown nowhere — a column of it beside the
+        /// parameter read as the number the table had picked. The heading is a TextBlock: a column header is
+        /// a button, and the underscore of "SH_SheetNumber" would vanish as a shortcut marker.
+        /// </summary>
         private void ShowNumbering()
         {
-            _numberButton.Content = Numbering.Parameter.Label + "…";
-            _sheetNumberColumn.Visibility = Numbering.UsesParameter ? Visibility.Visible : Visibility.Collapsed;
+            _numberButton.Content = SheetNumberWindow.ButtonContent(Numbering.Parameter);
+            _sheetColumn.Header = new TextBlock { Text = Numbering.UsesParameter ? Numbering.Parameter.Name + " - Sheet name" : "Sheet" };
 
             var note = string.Empty;
             _numberNote.Foreground = SystemColors.GrayTextBrush;
@@ -637,8 +629,7 @@ namespace VladTools.UI
             }
             else if (Numbering.UsesParameter)
             {
-                note = "The number shown is \"" + Numbering.Parameter.Name + "\", read off the sheet or off its titleblock; " +
-                       "Revit's own Sheet Number is in the column beside it.";
+                note = "The number shown is \"" + Numbering.Parameter.Name + "\", read off the sheet or off its titleblock.";
 
                 if (Numbering.WithoutValue > 0)
                 {

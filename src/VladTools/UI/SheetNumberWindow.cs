@@ -14,11 +14,12 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// "Sheets → Number": which parameter is a sheet's number — Revit's own Sheet Number, or a shared
-    /// parameter picked out of a shared parameter file (any file: "Browse…" loads another one). Beside
-    /// every definition the window says whether the open project's sheets or titleblocks have it and
-    /// how many give a value, so the right one is found by looking rather than by trying; a shared
-    /// parameter the project uses that the file does not hold is listed too.
+    /// "Sheets → Number": which parameter is a sheet's number — Revit's own Sheet Number, or another one:
+    /// a shared parameter out of a shared parameter file (any file: "Browse…" loads another one), or any
+    /// parameter the open project's sheets and titleblocks already carry, shared or not. Beside every one
+    /// the window says on how many sheets it stands and how many get a value from it, and the ones that
+    /// hold values come first — so the parameter the numbers were really typed in is found by looking,
+    /// not by trying a name from the file that turns out to be empty.
     ///
     /// The window knows nothing about Revit: the file is read and the project counted through
     /// <see cref="SheetNumberSource"/>. It is built in code, without XAML, like every window here.
@@ -27,8 +28,9 @@ namespace VladTools.UI
     {
         private const string WindowTitle = "Sheet number";
 
-        private const string ProjectOnlyGroup = "(in this project, not in this file)";
-        private const string ChosenBeforeGroup = "(chosen before, not in this file)";
+        private const string SharedProjectGroup = "(on this project's sheets, not in this file)";
+        private const string NamedProjectGroup = "(on this project's sheets, not shared)";
+        private const string PickedGroup = "(picked, not in this file)";
 
         private readonly SheetNumberSource _source;
         private readonly SheetNumberParameter _current;
@@ -68,6 +70,15 @@ namespace VladTools.UI
             return !window.Chosen.Same(before) || !string.Equals(window.Chosen.Name, before.Name, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// What the "Number" buttons show. A TextBlock rather than the string: a string in a button is
+        /// read as access-key text, and the underscore of "SH_SheetNumber" vanished as a shortcut marker.
+        /// </summary>
+        public static object ButtonContent(SheetNumberParameter parameter)
+        {
+            return new TextBlock { Text = (parameter ?? SheetNumberParameter.Revit).Label + "…" };
+        }
+
         private SheetNumberWindow(SheetNumberParameter current, string filePath, SheetNumberSource source)
         {
             _source = source;
@@ -83,7 +94,12 @@ namespace VladTools.UI
             SnapsToDevicePixels = true;
 
             _revitOption = new RadioButton { Content = "Revit's own Sheet Number", GroupName = "number", Margin = new Thickness(0, 0, 0, 4) };
-            _sharedOption = new RadioButton { Content = "A shared parameter from a shared parameter file:", GroupName = "number", Margin = new Thickness(0, 0, 0, 6) };
+            _sharedOption = new RadioButton
+            {
+                Content = new TextBlock { Text = "Another parameter — one the sheets already carry, or one from a shared parameter file:" },
+                GroupName = "number",
+                Margin = new Thickness(0, 0, 0, 6)
+            };
 
             _filePath = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 6, 0) };
             _fileProblem = new TextBlock { Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 0, 0, 4) };
@@ -159,10 +175,11 @@ namespace VladTools.UI
             var hint = new TextBlock
             {
                 Text = "The number the \"Sheets\" table shows for a sheet — in \"A101 - Name\", in \"Export to Excel…\" and in the " +
-                       "reports of \"Several models…\". A shared parameter is read off the sheet, or off its titleblock when the " +
-                       "sheet gives it no value, and Revit's own Sheet Number then gets a column of its own beside it. " +
-                       "A model that has no such parameter is shown with Revit's own numbers, and the window says so. " +
-                       "The choice is remembered.",
+                       "reports of \"Several models…\". The parameter is read off the sheet, or off its titleblock (the instance, " +
+                       "then its type) when the sheet gives it no value; the table and the export are then headed by its name, and " +
+                       "Revit's own Sheet Number is left out. The list puts first what this project's sheets actually hold values in. A shared parameter is " +
+                       "found by its GUID; one that is not shared, by its name. A model that has no such parameter is shown with " +
+                       "Revit's own numbers, and the window says so. The choice is remembered.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10)
             };
@@ -304,44 +321,46 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// The file's definitions, then the shared parameters the project has on its sheets that the
-        /// file does not hold, then the parameter chosen before if neither holds it — so it can always
-        /// be kept. What the project uses comes first: that is nearly always what is being looked for.
+        /// The file's definitions, then the parameters the project's sheets and titleblocks carry that the
+        /// file does not hold — shared or not — then the parameter picked if neither holds it, so it can
+        /// always be kept. What holds values comes first, the most filled at the top: the numbers were typed
+        /// into one parameter, and a name from the file may well be another one, standing there empty.
         /// </summary>
         private void Fill(IReadOnlyList<SharedParameterInfo> found)
         {
             // A file read again keeps the row picked; with Revit's own picked it must not pick one for
             // the user. On the opening read neither is picked yet, and the choice from before stands.
-            var keep = (_grid.SelectedItem as Row)?.Guid
-                       ?? (_revitOption.IsChecked == true || _current.IsRevit ? Guid.Empty : _current.Guid);
+            var keep = (_grid.SelectedItem as Row)?.Parameter
+                       ?? (_revitOption.IsChecked == true || _current.IsRevit ? null : _current);
 
             var uses = _source.HasProject
-                ? _source.Uses.GroupBy(use => use.Guid).ToDictionary(group => group.Key, group => group.First())
-                : new Dictionary<Guid, SheetParameterUse>();
+                ? _source.Uses.GroupBy(use => use.Parameter.Key, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal)
+                : new Dictionary<string, SheetParameterUse>(StringComparer.Ordinal);
 
             var rows = new List<Row>();
-            var seen = new HashSet<Guid>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var info in found)
             {
-                if (!seen.Add(info.Guid))
+                var parameter = new SheetNumberParameter(info.Guid, info.Name);
+                if (!seen.Add(parameter.Key))
                     continue;
 
-                uses.TryGetValue(info.Guid, out var use);
-                rows.Add(new Row(info.Guid, info.Name, info.GroupName, info.DataType, use?.Text));
+                uses.TryGetValue(parameter.Key, out var use);
+                rows.Add(new Row(parameter, info.GroupName, info.DataType, use));
             }
 
-            foreach (var use in uses.Values.Where(use => seen.Add(use.Guid)).OrderBy(use => use.Name, StringComparer.CurrentCultureIgnoreCase))
-                rows.Add(new Row(use.Guid, use.Name, ProjectOnlyGroup, use.DataType, use.Text));
+            foreach (var use in uses.Values.Where(use => seen.Add(use.Parameter.Key)).OrderBy(use => use.Parameter.Name, StringComparer.CurrentCultureIgnoreCase))
+                rows.Add(new Row(use.Parameter, use.Parameter.IsByName ? NamedProjectGroup : SharedProjectGroup, use.DataType, use));
 
-            if (!_current.IsRevit && seen.Add(_current.Guid))
-                rows.Add(new Row(_current.Guid, _current.Name, ChosenBeforeGroup, string.Empty, null));
+            if (keep != null && seen.Add(keep.Key))
+                rows.Add(new Row(keep, PickedGroup, string.Empty, null));
 
             _rows.Clear();
-            foreach (var row in rows.OrderBy(row => row.Use.Length == 0))
+            foreach (var row in rows.OrderBy(row => row.Filled > 0 ? 0 : row.Use.Length > 0 ? 1 : 2).ThenByDescending(row => row.Filled))
                 _rows.Add(row);
 
-            _grid.SelectedItem = _rows.FirstOrDefault(row => keep != Guid.Empty && row.Guid == keep);
+            _grid.SelectedItem = keep == null ? null : _rows.FirstOrDefault(row => row.Parameter.Same(keep));
             UpdateStatus();
         }
 
@@ -412,10 +431,18 @@ namespace VladTools.UI
                                "It is remembered for the models that have it.";
                 _okButton.IsEnabled = true;
             }
+            else if (_source.HasProject && row.Filled == 0)
+            {
+                _status.Foreground = Brushes.DarkRed;
+                _status.Text = "\"" + row.Name + "\" is on this project's sheets, but not one gives it a value — the table would show the names alone. " +
+                               "The parameters at the top of the list are the ones holding values.";
+                _okButton.IsEnabled = true;
+            }
             else
             {
                 _status.Foreground = Brushes.DarkGreen;
-                _status.Text = "The table will show \"" + row.Name + "\" as the sheet number" + (row.Use.Length > 0 ? " — " + row.Use + "." : ".");
+                _status.Text = "The table will show \"" + row.Name + "\" as the sheet number" + (row.Use.Length > 0 ? " — " + row.Use + "." : ".") +
+                               (row.Parameter.IsByName ? " It is not shared, so it is found by its name." : string.Empty);
                 _okButton.IsEnabled = true;
             }
         }
@@ -431,7 +458,7 @@ namespace VladTools.UI
                 if (!(_grid.SelectedItem is Row row))
                     return;
 
-                Chosen = new SheetNumberParameter(row.Guid, row.Name);
+                Chosen = row.Parameter;
             }
 
             DialogResult = true;
@@ -454,18 +481,18 @@ namespace VladTools.UI
 
         private sealed class Row
         {
-            public Row(Guid guid, string name, string groupName, string dataType, string use)
+            public Row(SheetNumberParameter parameter, string groupName, string dataType, SheetParameterUse use)
             {
-                Guid = guid;
-                Name = name ?? string.Empty;
+                Parameter = parameter;
                 GroupName = groupName ?? string.Empty;
-                DataType = dataType ?? string.Empty;
-                Use = use ?? string.Empty;
+                DataType = string.IsNullOrEmpty(dataType) ? use?.DataType ?? string.Empty : dataType;
+                Use = use?.Text ?? string.Empty;
+                Filled = use?.Filled ?? 0;
             }
 
-            public Guid Guid { get; }
+            public SheetNumberParameter Parameter { get; }
 
-            public string Name { get; }
+            public string Name => Parameter.Name;
 
             public string GroupName { get; }
 
@@ -473,6 +500,9 @@ namespace VladTools.UI
 
             /// <summary>Where the open project has it, and how filled; empty when nowhere.</summary>
             public string Use { get; }
+
+            /// <summary>Sheets of the open project that get a value from it.</summary>
+            public int Filled { get; }
         }
     }
 }

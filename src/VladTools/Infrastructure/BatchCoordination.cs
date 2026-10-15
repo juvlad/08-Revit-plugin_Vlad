@@ -36,6 +36,19 @@ namespace VladTools.Infrastructure
 
         /// <summary>The folder holding the local copy made for this run; empty — nothing to sweep away.</summary>
         public string LocalFolder { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The document was in the session before the run — the project open on screen, or a model
+        /// loaded as a link — and was read as it stands. It is not the run's to close.
+        /// </summary>
+        public bool WasOpen { get; set; }
+
+        /// <summary>
+        /// Opened detached from its central file (<see cref="BatchCoordination.OpenToRead"/>): a copy of
+        /// the model rather than the model, with an empty path — and element versions nobody has yet
+        /// confirmed are the central's own.
+        /// </summary>
+        public bool IsDetached { get; set; }
     }
 
     /// <summary>
@@ -66,6 +79,9 @@ namespace VladTools.Infrastructure
     /// **A cloud model's worksets cannot be listed without opening it** — see <see cref="LinkCatalog.ModelWorksets"/>.
     /// There the list is fetched by opening the model with every workset closed and closing it
     /// again: an extra open, and the same selective loading as everywhere else.
+    ///
+    /// A button that only reads a batch ("Sheets") takes the other road here, <see cref="OpenToRead"/>:
+    /// detached, every workset closed, nothing written back — so none of the above is needed there.
     /// </summary>
     internal static class BatchCoordination
     {
@@ -221,6 +237,135 @@ namespace VladTools.Infrastructure
                 failures.Add(entry.Name + " — the model would not open: " + LinkCatalog.Short(exception.Message));
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Opens one model to read it and nothing else — for a button that writes reports, not models
+        /// ("Sheets" on a batch). Null on any refusal, with the reason in <paramref name="reason"/>.
+        ///
+        /// **Every workset is closed.** Sheets, views, viewports and whatever else stands on a sheet
+        /// live in worksets Revit never closes — one per view and per sheet — so all of it arrives,
+        /// while the model's geometry, and every link standing in a user workset, stays where it is.
+        /// That is the difference between seconds and minutes per model, and no workset names have
+        /// to match: <c>CloseAllWorksets</c> needs no list.
+        ///
+        /// **Nothing is ever written back, so nothing is made to write back through.** A file or a
+        /// Revit Server model is opened detached (<c>DetachAndPreserveWorksets</c>): no local copy, no
+        /// lock on somebody's central file, nothing to relinquish. A cloud model is opened the way
+        /// <see cref="LinkCatalog.ModelWorksets"/> already opens one on this office's projects — Revit
+        /// keeps its own cache of it, and closing without saving takes nothing from the central.
+        /// A file that says of itself it is not workshared is opened plainly: detaching is refused there.
+        ///
+        /// A model already in the session — the project on screen, its local copy, a loaded link — is
+        /// read as it stands rather than opened a second time, and left open afterwards
+        /// (<see cref="BatchModel.WasOpen"/>).
+        /// </summary>
+        public static BatchModel OpenToRead(Application app, LinkEntry entry, out string reason)
+        {
+            reason = string.Empty;
+
+            if (entry == null)
+            {
+                reason = "no model was given";
+                return null;
+            }
+
+            ModelPath path;
+
+            try
+            {
+                path = LinkCatalog.ToModelPath(entry);
+            }
+            catch (Exception exception)
+            {
+                reason = LinkCatalog.Short(exception.Message);
+                return null;
+            }
+
+            var open = InSession(app, entry, path);
+            if (open != null)
+                return new BatchModel(entry, open, null) { WasOpen = true };
+
+            var plain = false;
+
+            if (entry.Origin == LinkOrigin.File)
+            {
+                if (!File.Exists(entry.Path))
+                {
+                    reason = "there is no such file — the path may have come from a saved set and gone stale, " +
+                             "or the network folder may not be reachable from this machine";
+                    return null;
+                }
+
+                var info = Info(entry.Path);
+                if (info != null && info.IsLater)
+                {
+                    reason = "the model was saved in a newer Revit than this one (Revit " + app.VersionNumber +
+                             "; the model's own format is " + info.Format + ") and will not open here";
+                    return null;
+                }
+
+                plain = info != null && !info.IsWorkshared;
+            }
+
+            var options = new OpenOptions();
+            var detached = !plain && entry.Origin != LinkOrigin.Cloud;
+
+            if (!plain)
+            {
+                if (detached)
+                    options.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets;
+
+                options.SetOpenWorksetsConfiguration(new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets));
+            }
+
+            try
+            {
+                return new BatchModel(entry, app.OpenDocumentFile(path, options), null) { IsDetached = detached };
+            }
+            catch (Exception exception)
+            {
+                reason = "the model would not open: " + LinkCatalog.Short(exception.Message) +
+                         (entry.Origin == LinkOrigin.Cloud
+                             ? " Usually: no access to the project, not signed in to Autodesk, or the model saved in a newer Revit than this one."
+                             : Header(entry));
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The document of this model already in the session — the project itself, a local copy of it,
+        /// or a link loaded into an open project; null when there is none. A cloud model is recognised
+        /// by its model GUID, everything else by its path or its central model's path.
+        /// </summary>
+        private static Document InSession(Application app, LinkEntry entry, ModelPath path)
+        {
+            var model = Guid.Empty;
+            var cloud = entry.Origin == LinkOrigin.Cloud && Guid.TryParse(entry.ModelGuid, out model);
+            var wanted = cloud ? string.Empty : Visible(path);
+
+            if (!cloud && wanted.Length == 0)
+                return null;
+
+            foreach (var doc in app.Documents.Cast<Document>())
+            {
+                try
+                {
+                    if (doc.IsFamilyDocument)
+                        continue;
+
+                    if (cloud
+                            ? doc.IsModelInCloud && doc.GetCloudModelPath().GetModelGUID() == model
+                            : Same(doc.PathName, wanted) || Same(Central(doc), wanted))
+                        return doc;
+                }
+                catch (Exception)
+                {
+                    // A document that will not say where it is from is not the one being looked for.
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -546,11 +691,12 @@ namespace VladTools.Infrastructure
         /// <summary>
         /// Closes the document and sweeps away the local copy. Never skipped: a document left open
         /// hangs in memory for the rest of the Revit session, and a local copy nobody deletes stays
-        /// in the Windows temp folder at the size of a whole model.
+        /// in the Windows temp folder at the size of a whole model. A document that was open before
+        /// the run (<see cref="BatchModel.WasOpen"/>) is the user's, and is left as it is.
         /// </summary>
         public static void Release(BatchModel model)
         {
-            if (model == null)
+            if (model == null || model.WasOpen)
                 return;
 
             try

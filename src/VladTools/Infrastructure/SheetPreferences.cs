@@ -1,14 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace VladTools.Infrastructure
 {
     /// <summary>
-    /// The "Sheets" window's settings: where the last export went and whether to open it in Excel.
+    /// The "Sheets" windows' settings: where the last export went and whether to open it in Excel, and
+    /// for a batch — where the last summary went and the model list from last time.
     ///
-    /// File: `%AppData%\VladTools\sheets\_settings.txt`, lines of the form "KEY = value".
+    /// The list is remembered for the same reason as in "Accept Changes → Other models…": a sheet report
+    /// over a project's models is run again and again over the same models. A saved set
+    /// (<see cref="LinkSetLibrary"/>, shared with "Link Manager") is the named, kept form of a list;
+    /// this is only "what was there last time".
+    ///
+    /// File: `%AppData%\VladTools\sheets\_settings.txt`, lines of the form "KEY = value"; MODEL repeats.
     /// </summary>
     internal sealed class SheetPreferences
     {
@@ -19,12 +26,25 @@ namespace VladTools.Infrastructure
             "# \"Sheets\" button settings — the Project panel.",
             "# FOLDER — the folder of the last export to Excel",
             "# OPEN_AFTER — 1/0: open the exported file in Excel",
+            "# BATCH_FOLDER — the folder of the last batch summary (\"Several models…\")",
+            "# SET — the link set worked with last in the batch window",
+            "# MODEL — a model of the batch list from last time, in the same line format as in link sets:",
+            "#   FILE | path · SERVER | RSN://… · CLOUD | region | project GUID | model GUID | name",
             "# The file is rewritten every time the window closes."
         };
 
         public string Folder { get; set; } = string.Empty;
 
         public bool OpenAfter { get; set; } = true;
+
+        /// <summary>The folder the last batch summary was saved in.</summary>
+        public string BatchFolder { get; set; } = string.Empty;
+
+        /// <summary>The link set worked with last in the batch window.</summary>
+        public string Set { get; set; } = string.Empty;
+
+        /// <summary>The models the batch window was closed with last time.</summary>
+        public List<LinkEntry> Models { get; } = new List<LinkEntry>();
 
         /// <summary>%AppData%\VladTools\sheets</summary>
         public static string FolderPath
@@ -68,8 +88,13 @@ namespace VladTools.Infrastructure
                 {
                     string.Empty,
                     Line("FOLDER", Folder ?? string.Empty),
-                    Line("OPEN_AFTER", OpenAfter ? "1" : "0")
+                    Line("OPEN_AFTER", OpenAfter ? "1" : "0"),
+                    Line("BATCH_FOLDER", BatchFolder ?? string.Empty),
+                    Line("SET", Set ?? string.Empty)
                 };
+
+                lines.AddRange(Models.Where(entry => entry != null)
+                    .Select(entry => Line("MODEL", LinkSetLibrary.Format(entry))));
 
                 Directory.CreateDirectory(FolderPath);
 
@@ -85,6 +110,12 @@ namespace VladTools.Infrastructure
         public string ExistingFolder()
         {
             return !string.IsNullOrEmpty(Folder) && Directory.Exists(Folder) ? Folder : null;
+        }
+
+        /// <summary>The folder of the last batch summary, else of the last export — if it still exists.</summary>
+        public string ExistingBatchFolder()
+        {
+            return !string.IsNullOrEmpty(BatchFolder) && Directory.Exists(BatchFolder) ? BatchFolder : ExistingFolder();
         }
 
         private static string Line(string key, string value)
@@ -112,6 +143,18 @@ namespace VladTools.Infrastructure
                     break;
                 case "OPEN_AFTER":
                     OpenAfter = value != "0";
+                    break;
+                case "BATCH_FOLDER":
+                    BatchFolder = value;
+                    break;
+                case "SET":
+                    Set = value;
+                    break;
+                case "MODEL":
+                    // The line format is the link sets' own — there is no second parser for it.
+                    var entry = LinkSetLibrary.Parse(value);
+                    if (entry != null)
+                        Models.Add(entry);
                     break;
             }
         }

@@ -225,27 +225,36 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// A folder on disk or on the network. It is chosen by pointing at any model inside it: WPF
-        /// has no folder-picker dialog of its own in any of the three years this add-in is built for
-        /// (it exists in .NET 8, not in .NET Framework 4.8), and dragging in WinForms just for that,
-        /// in an add-in that lives inside somebody else's process, is a bad trade.
+        /// A folder on disk or on the network. WPF has no folder-picker dialog of its own in any of the
+        /// three years this add-in is built for (it exists in .NET 8, not in .NET Framework 4.8), and
+        /// dragging in WinForms just for that, in an add-in that lives inside somebody else's process,
+        /// is a bad trade. So the file dialog is made to answer with a folder: point at any model in it,
+        /// or simply open the folder and press "Open" with the placeholder name left in the name box —
+        /// the only way to choose a folder that holds no model itself, a project root say.
         /// </summary>
         public static ModelFolder PickFileFolder(Window owner)
         {
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Title = "Point to any model in the folder you need",
+                Title = "Open the folder you need and press \"Open\" — or point at any model in it",
                 Filter = "Revit models (*.rvt)|*.rvt",
-                CheckFileExists = true
+                FileName = FolderPlaceholder,
+                CheckFileExists = false,
+                ValidateNames = false
             };
 
             if (dialog.ShowDialog(owner) != true)
                 return null;
 
-            var folder = System.IO.Path.GetDirectoryName(dialog.FileName);
+            var folder = System.IO.Directory.Exists(dialog.FileName)
+                ? dialog.FileName
+                : System.IO.Path.GetDirectoryName(dialog.FileName);
 
-            return string.IsNullOrEmpty(folder) ? null : ModelFolder.ForFile(folder);
+            return string.IsNullOrEmpty(folder) || !System.IO.Directory.Exists(folder) ? null : ModelFolder.ForFile(folder);
         }
+
+        /// <summary>What stands in the file dialog's name box when a folder is being chosen — not a file anybody has.</summary>
+        private const string FolderPlaceholder = "Choose this folder";
 
         /// <summary>
         /// A tree node as a folder. A BIM360 account or project has no folder: its contents have not

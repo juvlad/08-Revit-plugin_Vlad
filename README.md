@@ -431,8 +431,9 @@ Details:
   cloud folder is a network request. If the add-in runs into too large a tree, it says so —
   meaning the search was started from the wrong folder, and it should be pointed with the "On
   server…" / "In BIM360…" / "On disk…" buttons.
-- **A folder on disk is chosen by pointing at any model in it** — these .NET versions have no
-  ordinary folder-picker dialog, and dragging in an extra library just for that is not worth it.
+- **A folder on disk is chosen in the ordinary file dialog**: open the folder and press "Open" with
+  "Choose this folder" left in the name box — or point at any model in it. These .NET versions have
+  no folder-picker dialog of their own, and dragging in an extra library just for that is not worth it.
 - **Only what is shown in the table is acted on**: a row that leaves it through the "Show" filter
   loses its check mark.
 - Duplicates are dropped on their own: a model already in the table will not be added a second
@@ -680,9 +681,11 @@ them in line means opening a dozen models one after another, waiting for each an
 button in it.
 
 **How the models are gathered.** The same four sources as in "Link Manager" — files, Revit Server,
-BIM360 and BIM360 by GUID — and the same saved **sets**: a list gathered once is loaded by name with
-"Load set" and kept with "Save set", and those sets are shared with "Link Manager". The list the
-window was closed with comes back the next time it opens.
+BIM360 and BIM360 by GUID — plus **"Folder…"**: every model in a folder on disk, on Revit Server or
+in BIM360 (and, if you say so, in the folders inside it; Revit's own backups are left out). And the
+same saved **sets**: a list gathered once is loaded by name with "Load set" and kept with "Save set",
+and those sets are shared with "Link Manager". The list the window was closed with comes back the
+next time it opens.
 
 **Only two worksets are opened in each model**, and this is the setting worth understanding:
 
@@ -1081,9 +1084,10 @@ brings values edited in Excel back into a schedule — the pair ModPlus calls "E
 
 ### Sheets (Project panel)
 
-Works **only in a project** (`.rvt`, and a template `.rte`). One table for the whole sheet set:
-every sheet on the left ("A101 - Floor Plan", as the Project Browser writes it), everything placed
-on it on the right, one line each.
+Works in a project (`.rvt`, and a template `.rte`) — and, for a **batch of models**, anywhere: in a
+family or with no model open at all (see "Several models" below). One table for the whole sheet set:
+every sheet on the left ("A101 - Floor Plan", as the Project Browser writes it), the date of the
+latest change found on it, and everything placed on it on the right, one line each.
 
 1. **The sheets sit in the same folders and in the same order as in the Project Browser** — the
    button reads the sheet organization in use (View → User Interface → Browser Organization →
@@ -1091,13 +1095,47 @@ on it on the right, one line each.
    fold every folder at once.
 2. **"On the sheet"** lists the views by kind ("Floor plan: Level 1", "Section: S-1"…), then
    legends, schedules (a split schedule once, with its number of segments), panel schedules, images
-   and CAD files. The titleblock, text notes and other annotation are not listed.
-3. **"Find"** narrows the table by sheet number or name, by folder, or by what is placed — type a
-   view's name to see which sheet it is on.
-4. **Double-click a sheet** (or "Open sheet") to close the window and open the sheet.
-5. **"Export to Excel…"** writes the table into an .xlsx and opens it (a box below the table turns
-   that off). The folders become Excel row groups: the +/− buttons in the margin fold them the way
-   the browser does. What the search leaves in the table is written; a folded folder is written whole.
+   and CAD files. The titleblock, text notes and other annotation are not listed. A view with a
+   change found in it carries the date: "Floor plan: Level 1 — changed 2026-10-07"; a view newly put
+   on the sheet reads "— placed 2026-10-14".
+3. **"Changed"** is the latest of those dates for the sheet — in the sheet itself or in any view on
+   it. Hover over it to see between which checks the change was made and what it was in. A date
+   found by the check you have just made is bold. How the dates come about is below — read it once.
+4. **"Show"** narrows the table to the sheets changed since the previous check, or in the last 7 or
+   30 days — open the window on a Monday, pick "Changed in the last 7 days", export, and you have
+   the week's progress.
+5. **"Find"** narrows the table by sheet number or name, by folder, by what is placed — type a
+   view's name to see which sheet it is on — or by a date ("2026-10" finds every sheet changed in
+   October 2026).
+6. **Double-click a sheet** (or "Open sheet") to close the window and open the sheet.
+7. **"Export to Excel…"** writes the table into an .xlsx and opens it (a box below the table turns
+   that off): "Number", "Sheet name", "Changed" and "On the sheet" columns — the number in a column
+   of its own, so one week's file can be matched against the next one's. The folders become Excel
+   row groups: the +/− buttons in the margin fold them the way the browser does. What the search and
+   "Show" leave in the table is written; a folded folder is written whole.
+
+**How the change dates come about.** Revit keeps no date of a change — not for a view, not for any
+element — so the button keeps its own record. **Every opening of the window is a check**: the button
+compares every sheet and every view on a sheet with what the previous check saw, and dates what
+differs with today. So:
+
+- **A date is the day the change was found, not the day it was made.** It was made between the
+  previous check and that day (the tooltip says which). Open the window once a week, and the dates
+  read as weeks.
+- **There is no history before the first check.** The first opening on a model only remembers how
+  everything looks; dates start with the second.
+- **What counts as a change of a view**: the view itself (crop, scale, visibility/graphics, its
+  template) and everything drawn in it — dimensions, tags, text, detail lines and components,
+  filled regions, revision clouds. For a sheet: its viewports, titleblock, text and parameters, and
+  views put on it or taken off. **Model elements are not watched directly** — a moved wall shows
+  only where it moves a dimension or changes a tag on the view; watching the model itself would
+  take minutes on a large project and mark every plan a wall is seen in.
+- **Only saved or synchronised changes are seen** — Revit records a change once the model is saved
+  or synchronised. A colleague's changes show after they synchronise and you reload the latest.
+- **The record is kept on this computer** (`%AppData%\VladTools\sheets\history\`), one file per
+  model — every local copy of the same central model shares it. Whoever wants weekly progress opens
+  the window on their own computer; a colleague's record is their own.
+- Opening the window writes only that file — **nothing in the model changes**.
 
 **What is worth knowing.**
 
@@ -1108,6 +1146,65 @@ on it on the right, one line each.
   sheet sits in, but not the order the browser lists the folders in — in practice it is the same.
 - A sheet whose grouping parameter is empty sits under "???", as in the browser.
 - **Nothing in the model is changed**: the button only reads.
+
+#### Several models — a report for each, and a summary of them all
+
+**"Several models…"** at the bottom of the window (or straight away, if you press "Sheets" with no
+model open, in a family, or in a project with no sheets) opens a list of models to report on. Each
+checked model is read in turn, and you get:
+
+- **a report per model** — exactly the file "Export to Excel…" writes for an open model: the
+  browser's folders as Excel groups, "Number", "Sheet name", "Changed", "On the sheet";
+- **one summary** with two sheets:
+  - **"Models"** — a line per model: whether it was read (and if not, why), its sheet organization,
+    how many sheets, hidden by the browser's filter, placeholders, sheets with nothing placed,
+    views, legends, schedules, images and CAD, sheets changed since the previous check, sheet
+    numbers that also occur in another model of the batch — and a **link to the model's own
+    report**. A totals line closes the table.
+  - **"All sheets"** — every sheet of every model in one table with filter buttons: model, number,
+    name, browser folder, "Changed", what is on it, and **"Notes"** (highlighted): nothing placed,
+    placeholder, hidden by the browser's filter, "Number also in …". One filter answers a question
+    about the whole set — which sheets are empty, where A101 occurs, what changed this week.
+
+**How the models are gathered** — the same list as in "Accept Changes → Other models…":
+
+- **"Folder…"** — every model in a folder, on disk or the network, on Revit Server or in BIM360.
+  If the folder has folders inside, you are asked whether to take their models too (every level
+  down). Revit's own backups (`Model.0001.rvt`, the `_backup` folders) are left out. On disk, open
+  the folder in the dialog and press "Open" with "Choose this folder" left in the name box — so a
+  project root with only discipline folders in it can be chosen too.
+- "Files…", "Revit Server…", "BIM360…", "BIM360 by GUID…" — single models, as in "Link Manager".
+- **Saved sets** — "Load set" / "Save set", shared with "Link Manager" and "Accept Changes". The
+  list the window was closed with comes back next time.
+
+**"Write reports…"** asks where to save the summary (named `Sheets summary <date>.xlsx` by
+default); the models' reports go into a folder of the same name next to it. One run is one file and
+one folder, so runs on different days never overwrite each other. When the batch is done, a report
+says what was read and what was not, with buttons to open the summary or the folder.
+
+Worth knowing:
+
+- **Nothing in any model is changed, and nothing is locked.** A model is opened **detached** from
+  its central file — no local copy, no lock, nothing to synchronise — and closed without saving.
+- **Every workset is closed** when a model is opened: sheets, views and everything placed on sheets
+  are always loaded anyway, while the geometry and linked models are not. That is why a model takes
+  seconds rather than minutes.
+- **A model already open in Revit** — the project you are in, or a link loaded into it — is read as
+  it stands (unsaved changes included) and left open.
+- **Change dates.** Every report shows the dates from the same record the model's own window keeps.
+  A model the batch opens as itself — one already open in Revit, a BIM360 model, a file that is not
+  workshared — is also **checked** on the way, exactly as opening its window would. A model opened
+  detached is **not** checked, only read: it is not yet confirmed that a detached copy keeps the
+  versions Revit marks changes by, and if it did not, the batch and the window would keep marking
+  everything "changed" in turn. The summary says so for such a model ("not checked (opened detached);
+  dates as of …") — to bring its dates up to date, open its window.
+- **Revit is busy until the whole batch is done**, with no progress bar (the Revit API is
+  single-threaded). A model that cannot be opened — no access, a newer Revit version, a stale path
+  in a saved set — is a line in the summary and the report; the rest carry on.
+- **"Number also in another model"** is information, not an error: worth acting on where one
+  building is split into discipline models and numbers must be unique across them; a project that
+  numbers every model from 1 will see it on every sheet.
+- The settings live in `%AppData%\VladTools\sheets\_settings.txt`.
 
 ### Views to Sheets (Project panel)
 
@@ -1315,7 +1412,7 @@ src/VladTools/
     ModelBrowserWindow.cs            a model tree with check boxes — shared by Revit Server and BIM360
     BrowseNode.cs                    a node of that tree: a folder or a model
     CloudLinkWindow.cs               entering cloud models as pairs of GUIDs
-    ModelPicker.cs                   picking a model from a file, Revit Server, BIM360 or a pair of GUIDs
+    ModelPicker.cs                   picking a model from a file, Revit Server, BIM360 or a pair of GUIDs — or a folder
     BaseFileWindow.cs                the "Base File" window: a model and a list of what to do with it
     AutoDimensionWindow.cs           the "Auto Dimensions" window: the chain table, boundary, direction, templates
     DimensionChainRow.cs             a row of that table (chain kind, offset, dimension type)
@@ -1326,6 +1423,8 @@ src/VladTools/
     CoordinationChangeKind.cs        the kinds of difference (Position/Name/Missing/New/Cannot be applied)
     CoordinationScan.cs              the result of comparing against one link
     BatchCoordinationWindow.cs       "Other models…": the model list, the worksets to open, what may be changed
+    ModelListPanel.cs                a batch's model list: Folder…, Files…, Revit Server…, BIM360…, sets, the table —
+                                     shared by "Other models…" and "Sheets → Several models…"
     BatchModelRow.cs                 a row of that table (check box, model, source, where it lives)
     ScheduleLibraryWindow.cs         the "Schedule Library" window: the set, where to fill it from, the insert table
     ScheduleChooserWindow.cs         "which of this model's schedules go into the set"
@@ -1359,8 +1458,9 @@ src/VladTools/
     ExcelImportWindow.cs             the "Import from Excel" window: sheet → schedule, pairing, the highlighted preview
     ExcelImportPreview.cs            what that window shows: the request, columns, rows and cells with their state
     SheetsWindow.cs                  the "Sheets" window: the sheets in the Project Browser's folders, Find, Export to Excel
+    SheetsBatchWindow.cs             "Sheets → Several models…": the model list and where the summary goes
     SheetListRow.cs                  a line of that table: a folder or a sheet
-    SheetInfo.cs                     a snapshot of one sheet: number, name, its folders, what is placed on it
+    SheetInfo.cs                     a snapshot of one sheet: number, name, its folders, what is placed on it, its change date
     FlatTree.cs                      a tree laid flat into table rows — shared by "Sheets" and "Views to Sheets"
     ViewsToSheetsWindow.cs           the "Views to Sheets" window: the views in the browser's folders, scales, titleblock,
                                      margins, numbering, positioning, the sample, the sheet preview
@@ -1377,6 +1477,7 @@ src/VladTools/
     SheetScaleRequest.cs             what the window hands back: the scale, the template choice, the views
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
+    AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets", for its batch)
     Icons.cs                     loading icons from the assembly's resources
     FormulaLibrary.cs            reading and writing the formula list file (%AppData%)
     FormulaParser.cs             finding names in a formula that are not family parameters
@@ -1403,7 +1504,8 @@ src/VladTools/
     AutoDimensionMarker.cs       the "this dimension was placed by the button" mark (ExtensibleStorage), against duplicates
     CoordinationCatalog.cs       comparing the project's grids and levels against the coordination file
     DatumUpdate.cs                a ready-made edit for a single grid or level: rotation, translation, elevation, name
-    BatchCoordination.cs         opening somebody else's model with two worksets, and synchronising it back
+    BatchCoordination.cs         opening somebody else's model with two worksets, and synchronising it back;
+                                 or only to read it — detached, every workset closed ("Sheets" batch)
     CoordinationPreferences.cs   the "Other models…" window settings (%AppData%)
     ScheduleLibrary.cs           the schedule cache: sets as .rvt files (%AppData%), copying between documents
     SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
@@ -1418,7 +1520,10 @@ src/VladTools/
     ScheduleWorkbook.cs          how a schedule sits on an Excel sheet, both ways
     ScheduleImport.cs            comparing a sheet with a schedule: what would change, and why not
     ExcelPreferences.cs          the "Excel" button settings (%AppData%)
-    SheetPreferences.cs          the "Sheets" window settings (%AppData%)
+    SheetPreferences.cs          the "Sheets" window settings and the batch's model list (%AppData%)
+    SheetReport.cs               the "Sheets" batch summary: the "Models" and "All sheets" Excel sheets
+    SheetHistory.cs              the "Sheets" change history: when a change was found on each sheet and view (%AppData%)
+    ViewFingerprint.cs           a digest of a view and everything it owns — what the change history compares
     ProjectBrowser.cs            the Project Browser's folders, filter, sort value and natural order — shared
     ViewsToSheetsPreferences.cs  the "Views to Sheets" window settings, margins per titleblock (%AppData%)
     ViewScale.cs                 who decides a view's scale: a template that controls it, a primary view — shared

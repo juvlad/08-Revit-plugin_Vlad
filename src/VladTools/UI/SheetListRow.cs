@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows;
 
@@ -34,6 +36,43 @@ namespace VladTools.UI
         public static SheetListRow ForSheet(SheetListRow parent, int level, SheetInfo sheet)
         {
             return new SheetListRow(parent, level, null, sheet);
+        }
+
+        /// <summary>
+        /// Lays the sheets' folder paths out as folder lines, every folder counting all its sheets. The
+        /// sheets arrive sorted by their paths, so a folder's sheets are consecutive, and a new folder
+        /// line is needed only where a sheet's path parts from the one before it. Shared by the window
+        /// and by a batch run, whose reports are written straight from these lines.
+        /// </summary>
+        public static List<SheetListRow> Tree(IReadOnlyList<SheetInfo> sheets)
+        {
+            var rows = new List<SheetListRow>();
+            var open = new List<SheetListRow>();
+
+            foreach (var sheet in sheets)
+            {
+                var path = sheet.Folders;
+
+                var common = 0;
+                while (common < open.Count && common < path.Count && string.Equals(open[common].FolderName, path[common], StringComparison.Ordinal))
+                    common++;
+
+                open.RemoveRange(common, open.Count - common);
+
+                for (var level = common; level < path.Count; level++)
+                {
+                    var folder = Folder(level == 0 ? null : open[level - 1], level, path[level]);
+                    open.Add(folder);
+                    rows.Add(folder);
+                }
+
+                foreach (var folder in open)
+                    folder._shownSheets++;
+
+                rows.Add(ForSheet(open.Count == 0 ? null : open[open.Count - 1], path.Count, sheet));
+            }
+
+            return rows;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -85,6 +124,14 @@ namespace VladTools.UI
         public string ContentsText => IsFolder
             ? Count(ShownSheets)
             : Sheet.Contents.Count == 0 ? NothingPlaced : string.Join("\n", Sheet.Contents);
+
+        public string ChangedText => IsFolder ? string.Empty : Sheet.ChangedText;
+
+        /// <summary>The tooltip of the date; null — no tooltip — for a folder line.</summary>
+        public string ChangeNote => IsFolder || Sheet.ChangeNote.Length == 0 ? null : Sheet.ChangeNote;
+
+        /// <summary>Bold for a date this very check found: what changed since the previous one stands out.</summary>
+        public FontWeight ChangedWeight => !IsFolder && Sheet.ChangedAtThisCheck ? FontWeights.SemiBold : FontWeights.Normal;
 
         public Thickness Indent => new Thickness(4 + Level * IndentStep, 3, 4, 3);
 

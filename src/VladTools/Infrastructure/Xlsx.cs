@@ -10,14 +10,43 @@ using System.Xml.Linq;
 
 namespace VladTools.Infrastructure
 {
-    /// <summary>The handful of cell looks an exported schedule uses — one entry each in styles.xml.</summary>
+    /// <summary>The handful of cell looks the exports use — one entry each in styles.xml.</summary>
     internal enum XlsxStyle
     {
         Plain = 0,
         Title = 1,
         Heading = 2,
         Cell = 3,
-        Group = 4
+        Group = 4,
+
+        /// <summary>A count, written as a number: a summary's columns have to sort and add up as numbers. See <see cref="XlsxSheet.SetNumber"/>.</summary>
+        Number = 5,
+
+        /// <summary>The text of a hyperlink — blue and underlined, as Excel draws one. See <see cref="XlsxSheet.Links"/>.</summary>
+        Link = 6,
+
+        /// <summary>A text cell on a light orange fill: something in the line worth a look.</summary>
+        Attention = 7,
+
+        /// <summary>A number in bold — a total line under a column of <see cref="Number"/> cells.</summary>
+        GroupNumber = 8
+    }
+
+    /// <summary>A hyperlink on one cell: the cell keeps its text, the link opens <see cref="Target"/>.</summary>
+    internal struct XlsxLink
+    {
+        public XlsxLink(int row, int column, string target)
+        {
+            Row = row;
+            Column = column;
+            Target = target;
+        }
+
+        public int Row { get; }
+        public int Column { get; }
+
+        /// <summary>A path relative to the workbook's own folder, with forward or back slashes — or an absolute one.</summary>
+        public string Target { get; }
     }
 
     /// <summary>A rectangle of cells, zero-based and inclusive.</summary>
@@ -80,6 +109,9 @@ namespace VladTools.Infrastructure
         /// </summary>
         public Dictionary<int, int> OutlineLevels { get; } = new Dictionary<int, int>();
 
+        /// <summary>Cells that open another file when clicked — a summary pointing at the reports it sums up.</summary>
+        public List<XlsxLink> Links { get; } = new List<XlsxLink>();
+
         public IEnumerable<KeyValuePair<int, SortedDictionary<int, KeyValuePair<string, XlsxStyle>>>> Rows => _rows;
 
         public int LastRow => _rows.Count == 0 ? -1 : _rows.Keys.Max();
@@ -93,6 +125,15 @@ namespace VladTools.Infrastructure
             }
 
             cells[column] = new KeyValuePair<string, XlsxStyle>(text ?? string.Empty, style);
+        }
+
+        /// <summary>
+        /// A count as a real number. Kept apart from <see cref="Set"/> on purpose: everything a schedule
+        /// or a sheet list shows is text, and a number cell is only ever a count this add-in made itself.
+        /// </summary>
+        public void SetNumber(int row, int column, long value, bool bold = false)
+        {
+            Set(row, column, value.ToString(CultureInfo.InvariantCulture), bold ? XlsxStyle.GroupNumber : XlsxStyle.Number);
         }
     }
 
@@ -160,12 +201,14 @@ namespace VladTools.Infrastructure
     /// add-in lives inside Revit's process, where every extra assembly is one more way of failing to
     /// load or of clashing with another add-in's copy of the same library — the same reasoning as the
     /// add-in's own JSON parser. What an exported schedule needs is small: text cells, five looks,
-    /// column widths, a frozen heading, merged title cells, a filter, a hidden column and a hidden sheet.
+    /// column widths, a frozen heading, merged title cells, a filter, a hidden column and a hidden sheet;
+    /// a summary of sheet lists adds counts, a highlight and hyperlinks to the files it sums up.
     ///
     /// Every value is written as text, in a text-formatted cell, exactly as the schedule shows it.
     /// Turning "1 200" or "001" into numbers would depend on the reader's locale and lose leading
     /// zeros, and the import compares what comes back against what the schedule shows — text is the
-    /// one form that survives the round trip unchanged.
+    /// one form that survives the round trip unchanged. The one exception is a count the add-in
+    /// computed itself (<see cref="XlsxSheet.SetNumber"/>): "10" sorted as text comes before "9".
     /// </summary>
     internal static class XlsxWriter
     {
@@ -204,6 +247,10 @@ namespace VladTools.Infrastructure
                         var sheet = sheets[i];
                         var selected = i == firstVisible;
                         Entry(zip, "xl/worksheets/sheet" + (i + 1) + ".xml", writer => Worksheet(writer, sheet, selected));
+
+                        // A hyperlink's target lives in the sheet's own relationships part, not in the cell.
+                        if (sheet.Links.Count > 0)
+                            Entry(zip, "xl/worksheets/_rels/sheet" + (i + 1) + ".xml.rels", writer => LinkRelationships(writer, sheet));
                     }
                 }
 
@@ -299,6 +346,47 @@ namespace VladTools.Infrastructure
             writer.WriteEndElement();
         }
 
+        private static void LinkRelationships(XmlWriter writer, XlsxSheet sheet)
+        {
+            writer.WriteStartElement("Relationships", PackageRelationshipNs);
+
+            for (var i = 0; i < sheet.Links.Count; i++)
+            {
+                writer.WriteStartElement("Relationship", PackageRelationshipNs);
+                writer.WriteAttributeString("Id", "rId" + (i + 1));
+                writer.WriteAttributeString("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink");
+                writer.WriteAttributeString("Target", LinkTarget(sheet.Links[i].Target));
+                writer.WriteAttributeString("TargetMode", "External");
+                writer.WriteEndElement();
+            }
+
+            writer.WriteEndElement();
+        }
+
+        /// <summary>
+        /// A file path as a hyperlink target: a URI reference, so slashes go forward and the characters a
+        /// URI cannot hold are escaped — a space above all, which Excel otherwise answers with a repair
+        /// prompt. Letters outside ASCII are left as they are, the way Excel writes them itself, so a
+        /// Cyrillic model name stays readable. A relative path stays relative: Excel resolves it from the
+        /// workbook's own folder, so a summary and its reports can be moved together.
+        /// </summary>
+        private static string LinkTarget(string path)
+        {
+            var text = (path ?? string.Empty).Replace('\\', '/');
+            var absolute = text.Length > 2 && text[1] == ':' && text[2] == '/';
+
+            var builder = new StringBuilder(absolute ? "file:///" : string.Empty);
+            foreach (var character in text)
+            {
+                if (character > 0x7F || char.IsLetterOrDigit(character) || "-._~!$&'()*+,;=:@/".IndexOf(character) >= 0)
+                    builder.Append(character);
+                else
+                    builder.Append('%').Append(((int)character).ToString("X2", CultureInfo.InvariantCulture));
+            }
+
+            return builder.ToString();
+        }
+
         private static void Workbook(XmlWriter writer, IReadOnlyList<XlsxSheet> sheets, int firstVisible)
         {
             writer.WriteStartElement("workbook", MainNs);
@@ -352,30 +440,32 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
-        /// Five looks, in the order of <see cref="XlsxStyle"/>. Every look but the first carries the
+        /// The looks, in the order of <see cref="XlsxStyle"/>. Every text look but the first carries the
         /// text number format ("@"), so a value typed over in Excel stays text too — "001" is not
-        /// quietly turned into 1 on the way back.
+        /// quietly turned into 1 on the way back. The two number looks carry "0" instead.
         /// </summary>
         private static string Styles()
         {
             return
                 "<styleSheet xmlns=\"" + MainNs + "\">" +
-                "<fonts count=\"3\">" +
+                "<fonts count=\"4\">" +
                 "<font><sz val=\"11\"/><name val=\"Calibri\"/><family val=\"2\"/></font>" +
                 "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/><family val=\"2\"/></font>" +
                 "<font><b/><sz val=\"13\"/><name val=\"Calibri\"/><family val=\"2\"/></font>" +
+                "<font><u/><sz val=\"11\"/><color rgb=\"FF0563C1\"/><name val=\"Calibri\"/><family val=\"2\"/></font>" +
                 "</fonts>" +
-                "<fills count=\"3\">" +
+                "<fills count=\"4\">" +
                 "<fill><patternFill patternType=\"none\"/></fill>" +
                 "<fill><patternFill patternType=\"gray125\"/></fill>" +
                 "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDDEBF7\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
+                "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFCE4D6\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
                 "</fills>" +
                 "<borders count=\"2\">" +
                 "<border><left/><right/><top/><bottom/><diagonal/></border>" +
                 "<border>" + Side("left") + Side("right") + Side("top") + Side("bottom") + "<diagonal/></border>" +
                 "</borders>" +
                 "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-                "<cellXfs count=\"5\">" +
+                "<cellXfs count=\"9\">" +
                 "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
                 "<xf numFmtId=\"49\" fontId=\"2\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyAlignment=\"1\">" +
                 "<alignment vertical=\"center\"/></xf>" +
@@ -385,6 +475,14 @@ namespace VladTools.Infrastructure
                 "<alignment vertical=\"top\" wrapText=\"1\"/></xf>" +
                 "<xf numFmtId=\"49\" fontId=\"1\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\">" +
                 "<alignment vertical=\"top\" wrapText=\"1\"/></xf>" +
+                "<xf numFmtId=\"1\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\" applyBorder=\"1\" applyAlignment=\"1\">" +
+                "<alignment vertical=\"top\"/></xf>" +
+                "<xf numFmtId=\"49\" fontId=\"3\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\">" +
+                "<alignment vertical=\"top\"/></xf>" +
+                "<xf numFmtId=\"49\" fontId=\"0\" fillId=\"3\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\">" +
+                "<alignment vertical=\"top\" wrapText=\"1\"/></xf>" +
+                "<xf numFmtId=\"1\" fontId=\"1\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\">" +
+                "<alignment vertical=\"top\"/></xf>" +
                 "</cellXfs>" +
                 "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>" +
                 "</styleSheet>";
@@ -504,6 +602,19 @@ namespace VladTools.Infrastructure
                 writer.WriteEndElement();
             }
 
+            if (sheet.Links.Count > 0)
+            {
+                writer.WriteStartElement("hyperlinks", MainNs);
+                for (var i = 0; i < sheet.Links.Count; i++)
+                {
+                    writer.WriteStartElement("hyperlink", MainNs);
+                    writer.WriteAttributeString("ref", Xlsx.CellName(sheet.Links[i].Row, sheet.Links[i].Column));
+                    writer.WriteAttributeString("id", RelationshipNs, "rId" + (i + 1));
+                    writer.WriteEndElement();
+                }
+                writer.WriteEndElement();
+            }
+
             writer.WriteStartElement("pageMargins", MainNs);
             writer.WriteAttributeString("left", "0.5");
             writer.WriteAttributeString("right", "0.5");
@@ -524,7 +635,13 @@ namespace VladTools.Infrastructure
                 writer.WriteAttributeString("s", ((int)style).ToString(CultureInfo.InvariantCulture));
 
             var clean = Clean(text);
-            if (clean.Length > 0)
+
+            if ((style == XlsxStyle.Number || style == XlsxStyle.GroupNumber) &&
+                double.TryParse(clean, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            {
+                writer.WriteElementString("v", MainNs, clean);
+            }
+            else if (clean.Length > 0)
             {
                 // An inline string rather than the shared-string table: one part fewer to write, and
                 // Excel converts it to its own form the first time the file is saved anyway.

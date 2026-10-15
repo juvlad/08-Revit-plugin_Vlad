@@ -211,7 +211,7 @@ namespace VladTools.UI
             where.Children.Add(SourceButton("Model's folder", "Go back to the folder the open model lives in.", OnRootAuto));
             where.Children.Add(SourceButton("On server…", "Choose a folder on Revit Server.", OnRootServer));
             where.Children.Add(SourceButton("In BIM360…", "Choose a folder in BIM360 / Autodesk Docs.", OnRootCloud));
-            where.Children.Add(SourceButton("On disk…", "Choose a folder on disk or on the network — by pointing to any model in it.", OnRootFile));
+            where.Children.Add(SourceButton("On disk…", "Choose a folder on disk or on the network: open it in the dialog and press \"Open\" — or point to any model in it.", OnRootFile));
             where.Children.Add(SourceButton("Find", "Walk the discipline folders again.", OnFind));
 
             Grid.SetRow(where, 3);

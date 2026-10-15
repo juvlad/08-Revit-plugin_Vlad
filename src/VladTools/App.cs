@@ -379,7 +379,7 @@ namespace VladTools
                 name: "VladTools_Sheets",
                 text: "Sheets",
                 commandType: typeof(SheetsCommand),
-                tooltip: "Lists every sheet of the project with what is placed on it, and exports the list to Excel.",
+                tooltip: "Lists every sheet of the project with what is placed on it, and exports the list to Excel — for one model or a whole batch.",
                 longDescription:
                     "One table for the whole sheet set: the sheet on the left, everything placed on it on the right —\n" +
                     "views, legends, schedules, images and CAD, one line each.\n\n" +
@@ -388,8 +388,12 @@ namespace VladTools
                     "opens it. \"Find\" narrows the table by a sheet, a folder or a view placed on it.\n\n" +
                     "\"Export to Excel…\" writes the table into an .xlsx — the folders become groups Excel can fold\n" +
                     "with its +/− buttons. Sheets the browser's filter hides and placeholder sheets are listed too,\n" +
-                    "in folders of their own at the end. Nothing in the model is changed.",
-                iconBaseName: "sheets");
+                    "in folders of their own at the end.\n\n" +
+                    "\"Several models…\" does the same for a batch — a folder of models, files, Revit Server, BIM360:\n" +
+                    "each model gets a report of its own, plus one summary of them all. It works with no model open,\n" +
+                    "too. Nothing in any model is changed.",
+                iconBaseName: "sheets",
+                availability: typeof(AlwaysAvailable));
 
             // ───────────────── Button 18: Views to Sheets (project) ─────────────────
             Ribbon.AddPushButton(

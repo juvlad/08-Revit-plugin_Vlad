@@ -27,6 +27,10 @@ namespace VladTools.Infrastructure
             return existing ?? application.CreateRibbonPanel(tabName, panelName);
         }
 
+        /// <param name="availability">
+        /// An <c>IExternalCommandAvailability</c> class deciding when the button can be pressed; null —
+        /// Revit's own rule, "a document is open". See <see cref="AlwaysAvailable"/>.
+        /// </param>
         public static PushButton AddPushButton(
             RibbonPanel panel,
             string name,
@@ -34,13 +38,17 @@ namespace VladTools.Infrastructure
             Type commandType,
             string tooltip,
             string longDescription = null,
-            string iconBaseName = null)
+            string iconBaseName = null,
+            Type availability = null)
         {
             var data = new PushButtonData(name, text, AssemblyPath, commandType.FullName)
             {
                 ToolTip = tooltip,
                 LongDescription = longDescription
             };
+
+            if (availability != null)
+                data.AvailabilityClassName = availability.FullName;
 
             if (!string.IsNullOrEmpty(iconBaseName))
             {

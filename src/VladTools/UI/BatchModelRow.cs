@@ -4,8 +4,8 @@ using VladTools.Infrastructure;
 namespace VladTools.UI
 {
     /// <summary>
-    /// A table row in the "other models" window: one model whose grids are to be put in line with
-    /// the coordination file.
+    /// A row of a batch's model list (<see cref="ModelListPanel"/>): one model of "Accept Changes →
+    /// Other models…" or of the "Sheets" batch.
     ///
     /// Close kin to <see cref="LinkRow"/>, and deliberately not the same class: there a row is a
     /// link about to be inserted into the open project, with a workset of its own and an "already in

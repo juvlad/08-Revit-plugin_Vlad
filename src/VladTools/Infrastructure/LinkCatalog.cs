@@ -182,8 +182,11 @@ namespace VladTools.Infrastructure
             return AccClient.ProjectId(pathGuid);
         }
 
-        /// <summary>The central model path, or the file's own path when there is none.</summary>
-        private static string VisiblePath(Document doc)
+        /// <summary>
+        /// The central model path, or the file's own path when there is none — the same for every
+        /// local copy of a model; "Sheets" keys its change history by it.
+        /// </summary>
+        public static string VisiblePath(Document doc)
         {
             if (doc.IsWorkshared)
             {

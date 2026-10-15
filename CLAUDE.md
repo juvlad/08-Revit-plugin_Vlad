@@ -55,8 +55,9 @@ and are left out of the report; everything else goes in.
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
 editor** (`.rfa`); "Project" — fifteen buttons, working **only in a project** (`.rvt`, and a project
-template `.rte` — Revit opens both as the same kind of document). There is no test
-project — checking is done by hand, in Revit.
+template `.rte` — Revit opens both as the same kind of document). The one exception is the "Sheets"
+batch ("Several models…"), which opens its models itself and so also runs from a family or with no
+document open at all. There is no test project — checking is done by hand, in Revit.
 
 ## Build and run
 
@@ -126,7 +127,8 @@ UI/LinkWorksetScan.cs             the result of reading worksets from links: nam
 UI/BrowseNode.cs                  a node of the browse tree (folder/model), shared by Revit Server and BIM360
 UI/ModelBrowserWindow.cs          the tree itself with check boxes; what fills its children is given as a lambda
 UI/CloudLinkWindow.cs             entering cloud models as pairs of GUIDs — the fallback path to BIM360
-UI/ModelPicker.cs                 picking a model from all four sources; shared by "Link Manager" and "Base File"
+UI/ModelPicker.cs                 picking a model from all four sources, or a folder; shared by "Link Manager", "Base File"
+                                  and every batch's model list
 UI/ModelKitRow.cs                 a row of the "Building Kit" table: discipline, model, where it was found
 UI/ModelKitWindow.cs              the "Building Kit" window: building, disciplines, where to search, the found-models table
 UI/GridBuilder.cs                 shared table column assemblies: a text column and a check box column
@@ -135,7 +137,9 @@ UI/CoordinationChangeKind.cs      the kinds of discrepancy against the coordinat
 UI/CoordinationChangeRow.cs       a row of the "Accept Changes" table + the ready-made edit
 UI/CoordinationScan.cs            the result of comparing against one link: rows + how many elements monitor it
 UI/AcceptCoordinationWindow.cs    the "Accept Changes" window: choosing a link, the discrepancy table
-UI/BatchModelRow.cs               a row of the "other models" table: the model itself and a check box
+UI/BatchModelRow.cs               a row of a batch's model list: the model itself and a check box
+UI/ModelListPanel.cs              a batch's model list: sources (Folder… in all three stores, Files…, Revit Server…, BIM360…,
+                                  by GUID), saved sets, the table with check boxes; shared by both batch windows
 UI/BatchCoordinationWindow.cs     "Accept Changes → Other models…": the model list, which worksets to open, what may be changed
 UI/ScheduleInfo.cs                a snapshot of one schedule for the window + the ScheduleChooser call-back
 UI/ScheduleAction.cs              what to do when the project already holds a schedule of that name + captions
@@ -173,8 +177,14 @@ UI/ExcelImportPreview.cs          the import window's data: ExcelImportRequest (
 UI/ExcelImportWindow.cs           the "Import from Excel" window: sheet → schedule, how rows are paired, a source-column
                                   drop-down under every heading, the highlighted preview; previews come from a call-back
 UI/SheetInfo.cs                   a snapshot of one sheet: number, name, its Project Browser folders, one line per thing placed
-UI/SheetListRow.cs                a line of the "Sheets" table: a browser folder (foldable, with a sheet count) or a sheet
-UI/SheetsWindow.cs                the "Sheets" window: the browser's folder tree laid flat, Find, Open sheet, Export to Excel
+                                  (dated), the latest change found + its note, hidden by the browser's filter, SheetCounts
+                                  (views/legends/schedules/other); plus SheetTracking — where the history stands
+UI/SheetListRow.cs                a line of the "Sheets" table: a browser folder (foldable, with a sheet count) or a sheet;
+                                  Tree — the sheets laid out as these lines, for the window and a batch's reports alike
+UI/SheetsWindow.cs                the "Sheets" window: the browser's folder tree laid flat, the "Changed" column, Find,
+                                  Show (changed since the previous check / 7 / 30 days), Open sheet, Export to Excel,
+                                  Several models…
+UI/SheetsBatchWindow.cs           "Sheets → Several models…": the model list and where the summary goes
 UI/FlatTree.cs                    a tree laid flat into table rows: the one merge that folds without Clear(); shared by
                                   "Sheets" and "Views to Sheets"
 UI/TitleblockInfo.cs              a snapshot of one titleblock type: "Family : Type" + the frame it draws, mm from the sheet origin
@@ -197,6 +207,7 @@ UI/SheetScaleRequest.cs           what that window hands back: the scale, the te
 UI/SheetScaleWindow.cs            the "Sheet Scale" window: sheets and their views in the browser's folders, "at … to …",
                                   the template choice, what changes along
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
+Infrastructure/AlwaysAvailable.cs an IExternalCommandAvailability saying "yes" — a button pressable with no document open
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
 Infrastructure/FormulaLibrary.cs  reading/writing %AppData%\VladTools\formulas.txt
 Infrastructure/FormulaParser.cs   which names in a formula do not match a family parameter
@@ -211,6 +222,8 @@ Infrastructure/LinkCatalog.cs     the links and worksets of the open project; sh
                                   plus HostModel — where the open project itself lives and what it is called
                                   plus ModelWorksets → ModelWorkset — a model's worksets read without loading it
                                   (a cloud one by a brief open); shared by "Link Manager" and the batch
+                                  plus VisiblePath — the central model's path, the same for every local copy; also the
+                                  key of the "Sheets" change history
 Infrastructure/ModelStore.cs      a model folder across the three stores: what is inside, what is above
 Infrastructure/ModelKit.cs        guessing a link kit by building number and discipline folders
 Infrastructure/LinkSetLibrary.cs  saved link sets, %AppData%\VladTools\links\<name>.txt
@@ -222,6 +235,7 @@ Infrastructure/CoordinationCatalog.cs  comparing the project's grids and levels 
 Infrastructure/DatumUpdate.cs     a ready-made edit for a single grid or level: rotation, translation, elevation, name
                                   plus DatumVerdict — what a re-read after the commit says (Aligned/Off/Unknown)
 Infrastructure/BatchCoordination.cs  opening somebody else's model with two worksets, a local copy, synchronising back
+                                  plus OpenToRead — the read-only road: detached, every workset closed, nothing written back
                                   plus BatchModel — one opened model of the batch
 Infrastructure/CoordinationPreferences.cs  the "other models" window settings (%AppData%\VladTools\coordination\_settings.txt)
 Infrastructure/DisciplineCatalog.cs  a discipline code (OV, VK…) from a model name → a project workset "01_Link_OV", by tokens
@@ -245,7 +259,8 @@ Infrastructure/TranslationDictionary.cs  the dictionary (%AppData%\VladTools\tra
 Infrastructure/TranslatePreferences.cs  the "Translate" window settings (%AppData%\VladTools\translate\_settings.txt)
 Infrastructure/Xlsx.cs            writing and reading .xlsx with the framework's zip + XML only: XlsxSheet/XlsxWriter out,
                                   XlsxReader → XlsxReadSheet/XlsxValue back (shared strings, numbers, dates, strict namespaces);
-                                  shared by "Excel" and "Sheets" (row groups — Excel's +/− outline — are for the latter)
+                                  shared by "Excel" and "Sheets" (row groups — Excel's +/− outline — are for the latter;
+                                  number cells, the highlight and hyperlinks for the "Sheets" batch summary)
 Infrastructure/ScheduleTable.cs   a schedule read out of Revit: ScheduleColumn (what a column shows, whether it may be
                                   written), ScheduleDataRow (texts + the elements behind the row), the rows as drawn;
                                   the row → elements probe lives here (see "Key decisions")
@@ -255,7 +270,13 @@ Infrastructure/ScheduleImport.cs  ScheduleImportPlanner: pairs sheet lines with 
                                   ScheduleImportPlan (the preview + PlannedWrites); ScheduleValues — finding a column's
                                   parameter on an element or its type, parsing/comparing a value in the column's units
 Infrastructure/ExcelPreferences.cs  the "Excel" button settings (%AppData%\VladTools\excel\_settings.txt)
-Infrastructure/SheetPreferences.cs  the "Sheets" window settings (%AppData%\VladTools\sheets\_settings.txt)
+Infrastructure/SheetPreferences.cs  the "Sheets" windows' settings, the batch's model list too (%AppData%\VladTools\sheets\_settings.txt)
+Infrastructure/SheetReport.cs     the "Sheets" batch summary: SheetModelResult (one model read, or why not) → the "Models" and
+                                  "All sheets" Excel sheets; the reports folder and file names
+Infrastructure/SheetHistory.cs    the "Sheets" change history: per sheet and per placed view a fingerprint and the check
+                                  that last found it changed (%AppData%\VladTools\sheets\history\<model>_<hash>.txt)
+Infrastructure/ViewFingerprint.cs a digest of a view: its VersionGuid, template, primary, and every element it owns —
+                                  what SheetHistory compares from one check to the next
 Infrastructure/ProjectBrowser.cs  what the Project Browser says about an element: folders, filter, sort value, natural
                                   order; shared by "Sheets" and "Views to Sheets"
 Infrastructure/ViewsToSheetsPreferences.cs  the "Views to Sheets" settings, margins per titleblock type
@@ -287,7 +308,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project                                                                                                                                                                                                                                                                                                                                     | "Translate"                | `TranslateCommand`               | replaces the Russian typed into a project or template with English through one dictionary: every distinct text with Cyrillic in it is one row (with where it is used), and a translation replaces it in every place at once — element names (views, templates, sheets, schedules, families, types, materials, filters, levels, worksets…), text parameter values, schedule column headings, header cells and filter values, view filter rule strings, text notes — in one transaction. Translations come from the dictionary (`%AppData%\VladTools\translate\`), from a TAB-separated file ("Export…" for a translator or an AI, "Import…" back), or by hand; the window catches name clashes and forbidden characters first. What the API cannot change (shared parameter names, line styles, subcategories) is shown and reported, not skipped |
 | Project                                                                                                                                                                                                                                                                                                                                     | "Move to Workset"          | `MoveToWorksetCommand`           | finds elements standing in the wrong workset — above all model elements in Revit's own worksets (project standards, views, families), where an AI tool or a script left them — and moves the checked ones into one user workset by writing `ELEM_PARTITION_PARAM`, in one transaction. The table is one row per workset × category, over the current selection or the whole model; rows in Revit's own worksets come first and are checked. The elements are checked out first (held / out-of-date ones are named, not attempted), every one is read back after the commit, and "Select in model" selects the checked elements instead of moving them |
 | Project | "Excel" | `ExcelScheduleCommand` | asks which way (a `TaskDialog` with two command links). **Export**: the checked schedules into one .xlsx, a sheet each, every value as text exactly as the schedule shows it — laid out "as in Revit" (title, headings, group lines, totals) or as a plain table with filters; every element row carries a hidden key to its elements. **Import**: a sheet of a workbook into a schedule — rows paired by those elements, by a key column or by order (the ModPlus way); a preview with every changed cell highlighted (yellow — will be written, red — cannot be, with the reason); the checked rows are written into the elements' parameters (instance → every element of the row, type → the type) in one transaction, read back, and the changed rows selected in the opened schedule |
-| Project | "Sheets" | `SheetsCommand` | a table of every sheet — "A101 - Name" on the left, one line per thing placed on it on the right (views by kind, legends, schedules, panel schedules, images, CAD) — in the folders and the order of the Project Browser's current sheet organization (`BrowserOrganization.GetFolderItems`, `SortingParameterId`/`SortingOrder`); sheets the browser's filter hides and placeholder sheets get folders of their own at the end. A click folds a folder, a double click opens the sheet (once the window has closed). "Export to Excel…" writes the table as the search leaves it (folding does not narrow it) into one .xlsx sheet whose folders are Excel row groups. Read-only — no transaction |
+| Project | "Sheets" | `SheetsCommand` | a table of every sheet — "A101 - Name" on the left, one line per thing placed on it on the right (views by kind, legends, schedules, panel schedules, images, CAD) — in the folders and the order of the Project Browser's current sheet organization (`BrowserOrganization.GetFolderItems`, `SortingParameterId`/`SortingOrder`); sheets the browser's filter hides and placeholder sheets get folders of their own at the end. Between them, "Changed": the day of the check that last found a change in the sheet or a view on it, and every view line carries its own ("— changed 2026-10-07") — Revit keeps no such date, so every opening of the window is a check against the previous one (`SheetHistory`, `ViewFingerprint`); "Show" narrows to what changed since the previous check or in the last 7/30 days. A click folds a folder, a double click opens the sheet (once the window has closed). "Export to Excel…" writes the table as the search and "Show" leave it (folding does not narrow it) into one .xlsx sheet — Number, Sheet name, Changed, On the sheet — whose folders are Excel row groups. "Several models…" (also offered from a family, a project with no sheets, and with no document open — `AlwaysAvailable`) does the same for a batch from `ModelListPanel` (a folder in any store, files, Revit Server, BIM360, a saved set): every model is opened detached with every workset closed (`BatchCoordination.OpenToRead`), read exactly as the window reads it (the change check only where it opened the model itself — a detached copy just reads the history), its table written into a report of its own, and a summary (`SheetReport`: "Models" with counts and a link to each report, "All sheets" across every model with notes — nothing placed, placeholder, hidden, number also in another model) written next to the folder of reports. Read-only — no transaction; the history is a file in `%AppData%` |
 | Project | "Views to Sheets" | `ViewsToSheetsCommand` | one new sheet per checked view (`ViewSheet.Create` of the titleblock type chosen in the window, named after the view, numbered prefix + counter, skipping taken numbers) and the view on it (`Viewport.Create`), at the scale chosen per view (`View.Scale`), centred in the titleblock's drawing area — the titleblock's measured frame minus margins kept per titleblock type. The views are picked in a tree laid out like the Project Browser's view organization (folders, then the view-type groups); a folder's box takes its views. Four ways to position, asked in the window: the whole viewport with its title (`GetBoxOutline` + `GetLabelOutline`), the crop region, one model point in the same place on every sheet for views looking the same way, or like a sample sheet — where a viewport placed by hand stands, for new sheets and for views already on sheets, which are then moved there (`SetBoxCenter`). Workshared: the views and viewports are checked out first. Everything in one transaction; every viewport and scale is read back after the commit, and the report lists sheets where the view sticks out of the drawing area |
 | Project | "Sheet Scale" | `SheetScaleCommand` | one new scale (`View.Scale`) for the views standing on the checked sheets — the sheets selected in the Project Browser start checked, every view on them but legends — laid out like the browser's sheet organization, a sheet's box taking its views. "Change the checked views at 1:100 to 1:200" narrows what can be checked to one scale. A view whose template sets the scale is handled as asked in the window: the template stops setting it (`SetNonControlledTemplateParameterIds`, every other view keeps its scale), the template gets the new scale (every view using it follows), or the view is left alone. A primary and its dependents change together; the primary is the one changed. Workshared: views, viewports and templates are checked out first. One transaction; the middle of every viewport is put back where it stood (`SetBoxCenter`); every scale and viewport is read back after the commit, and the report lists sheets where a view now sticks out of the drawing area |
 
@@ -348,12 +369,21 @@ window hands back is the preview the user confirmed; the command keeps the `Sche
 each preview in a dictionary and writes from that. Steps 5–8 are as usual, plus a read-back after the
 commit. The export has no transaction at all — only the rolled-back reads.
 
-**Exception — `SheetsCommand`, steps 4–7.** It only reads: no transaction, no batch, no success
-report. The window closes for one of two things it does not do itself, and `SheetsWindow.Action`
+**Exception — `SheetsCommand`, steps 2 and 4–7.** It only reads: no transaction, no batch, no success
+report. The window closes for one of three things it does not do itself, and `SheetsWindow.Action`
 says which: open a sheet (a sheet opened behind a modal window could not be looked at — the command
-sets `UIDocument.ActiveView` after `ShowDialog` returns) or export (the window hands back the lines
-as shown and a path; the command writes, like the "Excel" export). A dialog appears only when the
-write or the opening failed, or when the file was not opened in Excel.
+sets `UIDocument.ActiveView` after `ShowDialog` returns), export (the window hands back the lines
+as shown and a path; the command writes, like the "Excel" export) or the batch ("Several models…").
+A dialog appears only when the write or the opening failed, or when the file was not opened in Excel.
+Step 3 does one thing besides reading: the snapshot is also the change check — the history file is
+compared and rewritten **before** the window opens, so opening is the check whatever the window is
+closed with (see "Key decisions"). It is a file in `%AppData%`, never the model.
+Step 2 is not a refusal here: with no document open (the button names `AlwaysAvailable`, so Revit
+lets it be pressed) the command goes straight to the batch window, and a family or a project with no
+sheets gets a `TaskDialog` that says so **and** offers "Several models…". The batch itself is steps
+3–8 once per model, the way the "Accept Changes" batch runs them: each model in a `try` of its own,
+closed in `finally`, a failure a line in the summary and the report, never the end of the run; the
+report is a `TaskDialog` with links to open the summary or the reports' folder.
 
 **Exception — `ViewsToSheetsCommand`, steps 3 and 5.** The snapshot needs a transaction: every
 titleblock type is measured on a sheet made for it in a transaction that is always rolled back (see
@@ -693,8 +723,13 @@ measure" per view: that is a regeneration per view.
 - **None of the three years being built has its own folder-picker dialog in WPF.**
   `OpenFolderDialog` only arrived in .NET 8, while 2022 and 2024 live on .NET Framework 4.8;
   dragging in WinForms — inside an add-in loaded into someone else's process — just for one dialog
-  is a bad trade. So a folder on disk is chosen by pointing at any model inside it
-  (`ModelPicker.PickFileFolder`), and the tooltip says exactly that.
+  is a bad trade. So the ordinary file dialog is made to answer with a folder
+  (`ModelPicker.PickFileFolder`): `CheckFileExists = false`, `ValidateNames = false` and a placeholder
+  name, "Choose this folder" — open the folder, press "Open", and the folder of the returned path is
+  the answer; pointing at any model in it works as well. The placeholder is what makes a folder with
+  no model directly in it choosable at all — a project root, which is exactly where "Folder…" with
+  its subfolders, or the "Building Kit", is meant to start. Checked by the result, not the name: a
+  path that turns out to be a folder is taken as it is.
 - **A new `RevitLinkInstance` is pinned right away (`Pinned = true`).** A consultant's link is
   inserted by coordinates, and an accidental mouse drag is later hunted down by the whole team;
   removing a pin in Revit is one button, putting a link that drifted back in place is not. Only
@@ -773,7 +808,16 @@ measure" per view: that is a regeneration per view.
   trees and remembering the server name; `Infrastructure/LinkCatalog.cs` — the links already in the
   project, its worksets, turning a `LinkEntry` into a `ModelPath`, and a Revit failure code into an
   English sentence. "Link Manager" and "Base File" do different things with this, but they take the
-  same code — do not set up a second copy of it.
+  same code — do not set up a second copy of it. The same goes one level up for a batch's model list:
+  `UI/ModelListPanel.cs` (sources, saved sets, the check-box table) is both "Accept Changes → Other
+  models…" and "Sheets → Several models…"; each window only adds its own settings and run button.
+- **"Folder…" takes every model in a folder, in any of the three stores** (`ModelListPanel.AddFolder`
+  over `ModelStore.Children`), and the folders inside it only when asked — the question comes up only
+  when there are any, since on Revit Server and BIM360 each folder is a request. The walk is breadth
+  first and stops at `FolderLimit` (200) with a note; a folder that cannot be read is named, not fatal.
+  On disk, Revit's own backups are left out — `Model.0001.rvt` next to a non-workshared model, the
+  `*_backup` folders next to a workshared one, `Revit_temp`: a folder of models is never meant to
+  include them, and a batch would open each of them as a model.
 - **"Coordination Review" does not exist in the Revit API at all**, and the "Accept Changes" button
   comes at it from the other side. Neither reading its list nor pressing "Accept" in it is
   possible: of the whole monitoring feature only `Element.IsMonitoringLinkElement`,
@@ -1353,7 +1397,9 @@ measure" per view: that is a regeneration per view.
   + `System.Xml`), not by a library such as ClosedXML or EPPlus — the same reasoning as the JSON
   parser: the add-in lives in Revit's process, where every extra assembly is one more way to fail to
   load or to clash with another add-in's copy of it. The writer needs only text cells, five styles,
-  widths, a frozen pane, merges, a filter, hidden rows/columns/sheets and row groups; the reader takes what Excel
+  widths, a frozen pane, merges, a filter, hidden rows/columns/sheets and row groups — plus, for the
+  "Sheets" batch summary, number cells, a highlight and hyperlinks (new styles are appended after the
+  first five, whose indices the exports rely on); the reader takes what Excel
   actually saves (shared strings, numbers, booleans, formula results, dates told apart by the number
   format, the "strict" namespaces). Checked against real Excel: a written file opens without a repair
   prompt with every feature intact, and a file re-saved by Excel reads back the same. Old binary
@@ -1459,7 +1505,41 @@ measure" per view: that is a regeneration per view.
   above the group — `outlinePr summaryBelow="0"`, a heading over its contents rather than a total
   under its rows), so the folders fold in Excel as well. Filter buttons go on only when there are no
   folder lines: sorting through them would scatter the sheets. Checked in real Excel: the file opens
-  without a repair prompt, with the levels and the button position intact.
+  without a repair prompt, with the levels and the button position intact. In the file the number and
+  the name are columns of their own (the window keeps "A101 - Name", as the browser writes it): the
+  number is what one week's file is matched against the next one's by. A folder line is merged across
+  the number, the name and the date. The "Show" list narrows like "Find", and the export follows both.
+- **"Sheets" dates a change itself, because Revit keeps no date of one.** Confirmed in RevitAPI.xml
+  2022/2024/2025: `Element.VersionGuid` and `DocumentVersion` carry no time ("does not contain any time
+  information"), `WorksharingTooltipInfo.LastChangedBy` says who and not when, and
+  `Document.GetChangedElements` (2023+ only) gives ids without dates too. So **every opening of the
+  window is a check**: a `ViewFingerprint` of every sheet and every view on a sheet is compared with
+  the one the previous check left in `SheetHistory`, and a difference is dated with today. The date is
+  the day a change was *found*; it was made after the previous check (`SheetHistoryEntry.After`, shown
+  in the tooltip). The first check only sets the baseline — nothing before it can be known, and a sheet
+  or view first seen after it is "Added" (a new sheet, a view placed on a sheet). Never word the
+  column as "the day it was made". The check is saved **before** the window opens: looking is the check.
+- **What a view's fingerprint holds, and what it leaves out on purpose.** The view's own
+  `VersionGuid` (crop, scale, visibility/graphics), its template's, the primary's for a dependent view,
+  and the `VersionGuid` of every element the view owns — read in one pass over the model with
+  `ElementOwnerViewFilter(ElementId.InvalidElementId, true)` (every view-specific element), not a
+  collector per view. A dependent view also takes its primary's elements: annotation drawn in a
+  dependent belongs to the primary. A sheet is fingerprinted the same way, so its viewports,
+  titleblock, schedule instances, text, images and CAD are all in it. Elements with no category are
+  skipped as Revit's bookkeeping. **Model elements seen in the view are not in it**: finding them is a
+  visibility pass per view — minutes on a large model — and one wall would mark every plan it shows
+  in; a model change shows where it moves the view's own annotation (a dimension value, a tag's text).
+  `VersionGuid` moves only on save/synchronise, so an unsaved edit is found by a later check. **Not
+  yet seen on a live model**: whether a project-wide edit (a new workset, a new link) touches every
+  view element at once and dates every sheet the same day — if that shows up, look here first.
+- **The history is kept on this computer, keyed by the central model's path**
+  (`LinkCatalog.VisiblePath`), so every local copy of one central model shares it. Keeping it in the
+  model (ExtensibleStorage) was turned down: it would turn a read-only button into one that opens a
+  transaction and borrows an element at every opening. Unlike the add-in's settings the file is data,
+  so a failure to read or write it is shown in the window, and **a file that could not be read is
+  never written over** — that would replace somebody's history with a fresh baseline. A model never
+  saved has no path and is not tracked. Sheets and views no longer on a sheet drop out of the file at
+  the next check (a view put back on a sheet later reads "placed" again).
 - **What stands on a sheet is read in one pass per kind over the whole project**, not with a
   collector per sheet: viewports (`Viewport.SheetId` — views and legends), `ScheduleSheetInstance`
   (`IsTitleblockRevisionSchedule` skipped — it is on every sheet and belongs to the titleblock; a
@@ -1467,6 +1547,61 @@ measure" per view: that is a regeneration per view.
   `ImageInstance` and view-specific `ImportInstance` (`OwnerViewId`). Titleblocks, text notes and
   annotation are left out: they are on nearly every sheet and would bury what was placed. The word for
   a view's kind is `TextSiteCollector.ViewKind`, shared with "Translate" rather than copied.
+- **The "Sheets" batch only reads, so it opens a model the read-only way** (`BatchCoordination.OpenToRead`),
+  not the "Accept Changes" batch's way (a local copy, a synchronisation — that one writes). A file or
+  a Revit Server model is opened **detached** (`DetachAndPreserveWorksets`): no local copy, no lock on
+  the central, nothing to relinquish, closed without saving. **Every workset is closed**
+  (`CloseAllWorksets`, no list needed): sheets, views and everything standing on a sheet live in the
+  per-view worksets Revit never closes, so the table is whole while the geometry and every link in a
+  user workset stay unloaded — seconds per model, not minutes. The change check is unaffected for the
+  same reason: a fingerprint holds only view-owned elements. A cloud model is opened the way
+  `LinkCatalog.ModelWorksets` already opens one on this office's projects (not detached, every
+  workset closed — Revit keeps its own cache, and closing without saving takes nothing from the
+  central); a file whose header says it is not workshared is opened plainly (detaching is refused
+  there); a model already in the session — the open project, its local copy, a loaded link — is read
+  as it stands and left open (`BatchModel.WasOpen`; `Release` skips it).
+- **A batch run checks a model only when it opened the model itself, and only reads the history of a
+  detached copy.** The history is the model's own: RevitAPI.xml says a detached document's `PathName`
+  and `Title` are empty, so `LinkCatalog.VisiblePath` would give nothing and the model would read
+  "never saved, not tracked". `Collect` therefore takes the history key as a parameter: the window
+  passes `VisiblePath(doc)`, the batch passes the same where there is one, else the path the model was
+  opened from (`SheetsCommand.HistoryKey`). A model reached under another spelling of its path (a
+  mapped drive against UNC) gets a history of its own — a fresh baseline, not wrong dates.
+  **Whether a detached open keeps the central's element versions is not confirmed**: RevitAPI.xml
+  promises an equal `VersionGuid` only "in two instances of the saved file". If detaching gave the
+  elements new versions, every batch run would date every view "changed", and the model's own window
+  would date them all again at its next opening — each check undoing the last, for good. So `Collect`
+  takes `check` too: a detached copy (`BatchModel.IsDetached`) gets no fingerprints — `SheetHistory.Check`
+  with none keeps the old record, which is exactly a read — and the history is not saved; its dates
+  are the ones its last check left, and the summary says so ("not checked (opened detached); dates as
+  of …", `SheetReport.CheckNote`) rather than showing a zero. A model the batch opens **as itself** —
+  already open in the session, a cloud model (opened the way its own window's model is), a file that
+  is not workshared — is checked and saved exactly like the window. To lift the restriction, test in
+  Revit with nothing changed in between: the window in a local copy of model X, the batch on X, the
+  window again — the second window must find no change. If it finds none, pass `check: true` for
+  detached copies too.
+- **A model's report in a batch is the window's own export, whole**: `SheetListRow.Tree` plus
+  `SheetsCommand.Workbook`, every sheet (there is no search to narrow it) — so a batch file and a file
+  exported by hand from the open model are the same file and can be compared week to week. The
+  reports go into a folder named after the summary, next to it (`SheetReport.ReportsFolder`): one run
+  is one file and one folder, and runs on different days never write over each other; file names are
+  made unique within a run (two models called "AR" from different folders).
+- **The summary (`SheetReport`) is two sheets, both with filter buttons.** "Models": one line per
+  model — what became of it, the sheet organization, counts (sheets, hidden, placeholders, nothing
+  placed, views, legends, schedules, images and CAD, changed since the previous check, numbers also in
+  another model) and a link to its report — then a totals line kept **outside** the filter range, or
+  sorting would carry it up among the models. "All sheets": every sheet of every model with a "Notes"
+  column (highlighted), so a question about the whole set is one filter. The counts are real numbers
+  (`XlsxSheet.SetNumber` — the one exception to "every cell is text": a count the add-in made itself,
+  and "10" sorted as text comes before "9"); the links are relative (`XlsxSheet.Links`, escaped the way
+  Excel escapes them itself — a space as `%20`, Cyrillic as it is), so the summary and its folder can be
+  moved together. Checked in real Excel: no repair prompt, the numbers are numbers, a link followed
+  opens the model's report from a path with Cyrillic and spaces in it.
+  "Nothing placed" leaves placeholders out — they can never hold anything — and the window's status
+  counts the same way (`SheetInfo.IsEmpty`). "Number also in another model" is information, not an
+  error: a building split into discipline models usually wants numbers unique across them, but a
+  project that numbers every model from 1 will see every sheet there — that is why it is a note and a
+  count, not a red result.
 - **What the Project Browser says is read in one place, `ProjectBrowser`** — folders, filter, sort
   value, the natural order — and laid out in one place, `FlatTree.Sync` (the merge that folds without
   `Clear()`). "Sheets" reads the sheet organization through it, "Views to Sheets" the view one; do not
@@ -1620,8 +1755,12 @@ window closes, and a set itself only through its own "Save set" button — table
 binding, group) are not written until then. `coordination\` holds settings only, and has no sets of
 its own on purpose: the model list there is the same `LinkSetLibrary` one "Link Manager" uses.
 `translate\` is data, not settings: the dictionary there is rewritten whenever the "Translate" window
-closes, with every translation the window held (see "Key decisions"). `sheets\`, `viewstosheets\`
-and `sheetscale\` hold settings only.
+closes, with every translation the window held (see "Key decisions"). `sheets\` is both:
+`_settings.txt` is rewritten when either of its windows closes, and `history\` is data — the change
+history, rewritten at every opening of the window, before it is shown, and for every model a batch
+opens as itself (never for a detached copy — see "Key decisions"). The batch's reports themselves are
+not kept here: they go wherever the user saves the summary.
+`viewstosheets\` and `sheetscale\` hold settings only.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -1759,9 +1898,27 @@ keeps no data of its own (an exported workbook carries its own bookkeeping, on i
 throwaway shared parameter file, `%TEMP%\VladTools-rowkey-<guid>.txt`, deleted again in a `finally`
 — it is not a setting and never outlives the read.
 
-`sheets\_settings.txt` — the "Sheets" window's settings: `KEY = value` — `FOLDER` (the folder of the
-last export) and `OPEN_AFTER` (`1`/`0` — open the exported file in Excel). Rewritten whenever the
-window closes. The button keeps no data: the folders come from the Project Browser every time.
+`sheets\_settings.txt` — the "Sheets" windows' settings: `KEY = value` — `FOLDER` (the folder of the
+last export), `OPEN_AFTER` (`1`/`0` — open the exported file in Excel), and for "Several models…":
+`BATCH_FOLDER` (the folder of the last summary), `SET` (the link set worked with last) and `MODEL`
+lines (may repeat — the batch's model list from last time, in the same line format as a link set,
+`LinkSetLibrary.Format`/`Parse`; the sets themselves live in `links\`, shared with "Link Manager" and
+the "Accept Changes" batch). Rewritten whenever either window closes, each one loading the file
+fresh first, so neither loses what the other wrote. The "Show" choice is not kept: the window always
+opens on every sheet.
+
+`sheets\history\<model name>_<path hash>.txt` — the "Sheets" change history, one file per model,
+keyed by the central model's path for a workshared one (`LinkCatalog.VisiblePath`) so every local
+copy shares it; the hash keeps two models of one name apart, the same as `dimensions\`. Two
+`KEY = value` lines — `STARTED` (the first check) and `LAST_CHECK` (the latest), `yyyy-MM-dd` — then
+one line per sheet and per view on a sheet, fields separated by a vertical bar:
+`UniqueId | fingerprint | None/Added/Changed | the check that found it | the check before it`. The
+fingerprint is a `ViewFingerprint` digest (20 hex characters); `None` has both dates empty. Rewritten
+at every opening of the window, and for every model a batch opens as itself, with what is on sheets
+now; a detached copy a batch reads is looked up by the path it was opened from, and never written
+(see "Key decisions"). A file with records but no `STARTED` line
+counts as no history at all. Deleting the file starts the history again from the next check. Not
+written over when it could not be read (see "Key decisions").
 
 `viewstosheets\_settings.txt` — the "Views to Sheets" window's settings: `KEY = value` —
 `TITLEBLOCK` (the titleblock type used last, `Family : Type`), `CENTER` (`Viewport` / `CropRegion` /
@@ -1876,7 +2033,12 @@ Sheets" uses — `ViewSheet.Create`, `Viewport.Create`/`CanAddViewToSheet`/`GetB
 `BuiltInParameter.VIEW_SCALE_PULLDOWN_METRIC`/`_IMPERIAL`/`VIEW_SCALE`, `Element.Pinned`,
 `ViewCropRegionShapeManager.Split`, `SubTransaction` — was confirmed by reflection over RevitAPI.dll
 2022 and 2024 and by compiling for all three. "Sheet Scale" adds `View.SetNonControlledTemplateParameterIds`
-(`<since>2013</since>`), checked the same way.
+(`<since>2013</since>`), checked the same way. The "Sheets" change dates use `Element.VersionGuid`,
+`ElementOwnerViewFilter(ElementId, bool)`, `View.GetPrimaryViewId` and `View.ViewTemplateId` — all
+in RevitAPI.xml 2022, and compiled for all three years. Its batch adds
+`OpenOptions.DetachFromCentralOption` (`DetachAndPreserveWorksets`, `<since>2013</since>`),
+`WorksetConfigurationOption.CloseAllWorksets`, `PushButtonData.AvailabilityClassName` and
+`IExternalCommandAvailability` — long-standing API, compiled for all three years.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

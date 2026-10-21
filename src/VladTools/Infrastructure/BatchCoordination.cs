@@ -479,7 +479,7 @@ namespace VladTools.Infrastructure
 
             try
             {
-                return LinkCatalog.ModelWorksets(app, entry);
+                return LinkCatalog.ModelWorksets(app, entry, true);
             }
             catch (Exception exception)
             {

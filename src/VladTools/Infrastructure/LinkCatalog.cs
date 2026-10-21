@@ -355,8 +355,15 @@ namespace VladTools.Infrastructure
         /// in with its worksets untouched. No other call answers the question, so a cloud model is
         /// read through a document of it: worksets are elements of the document, and
         /// <c>FilteredWorksetCollector</c> returns every one of them, closed ones included.
+        ///
+        /// <paramref name="mayOpen"/> says whether a cloud model not yet in the session may be opened
+        /// for that. "Link Manager" passes false, and not out of caution: with the open in place,
+        /// every BIM360 model it then linked failed with a bare "Object reference not set to an
+        /// instance of an object" (October 2026, three models out of three, on another office
+        /// computer), while the same models had linked before the open was added. There the model is
+        /// linked first and read from its own link document — that one is in the session.
         /// </summary>
-        public static List<ModelWorkset> ModelWorksets(Application app, LinkEntry entry)
+        public static List<ModelWorkset> ModelWorksets(Application app, LinkEntry entry, bool mayOpen)
         {
             var path = ToModelPath(entry);
 
@@ -375,8 +382,14 @@ namespace VladTools.Infrastructure
             if (loaded != null)
                 return UserWorksets(loaded);
 
+            if (!mayOpen)
+                throw new InvalidOperationException(NotLinkedYet);
+
             return Probe(app, path);
         }
+
+        /// <summary>Why a cloud model's worksets were not read: it is not linked yet, and it is not opened to find out.</summary>
+        public const string NotLinkedYet = "a BIM360 model's worksets are read only once it is linked";
 
         /// <summary>
         /// Opens a cloud model with every workset closed, reads the list and closes it again.
@@ -498,6 +511,61 @@ namespace VladTools.Infrastructure
         {
             var text = (message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
             return text.Length > 160 ? text.Substring(0, 160) + "…" : text;
+        }
+
+        /// <summary>
+        /// An exception as a report line. Revit's own exceptions say in words what went wrong; a
+        /// NullReferenceException, or Revit's "A managed exception was thrown by Revit…", says nothing
+        /// — "Object reference not set to an instance of an object" was the whole report when BIM360
+        /// links failed on another computer, with no telling whose call it was. For those the line
+        /// also names the method that threw and the last step in this add-in on the way to it (the
+        /// .pdb is installed next to the DLL, so the step has its line number).
+        /// </summary>
+        public static string Explain(Exception exception)
+        {
+            var text = Short(exception.Message);
+
+            if (!(exception is NullReferenceException ||
+                  exception is InvalidCastException ||
+                  exception is IndexOutOfRangeException ||
+                  exception is KeyNotFoundException ||
+                  exception is Autodesk.Revit.Exceptions.InternalException))
+                return text;
+
+            return text + " [" + exception.GetType().Name + Where(exception) + "]";
+        }
+
+        private static string Where(Exception exception)
+        {
+            try
+            {
+                var frames = new System.Diagnostics.StackTrace(exception, true).GetFrames();
+                if (frames == null || frames.Length == 0)
+                    return string.Empty;
+
+                var ours = frames.FirstOrDefault(frame =>
+                    frame.GetMethod()?.DeclaringType?.Assembly == typeof(LinkCatalog).Assembly);
+
+                var text = " in " + Name(frames[0]);
+                if (ours != null && ours != frames[0])
+                    text += ", called from " + Name(ours);
+
+                return text;
+            }
+            catch (Exception)
+            {
+                // The location is a hint for whoever reads the report; the message is already there.
+                return string.Empty;
+            }
+        }
+
+        private static string Name(System.Diagnostics.StackFrame frame)
+        {
+            var method = frame.GetMethod();
+            var name = method == null ? "?" : (method.DeclaringType?.Name ?? "?") + "." + method.Name;
+            var line = frame.GetFileLineNumber();
+
+            return line > 0 ? name + " line " + line : name;
         }
     }
 }

@@ -370,9 +370,12 @@ the window — a name list with check boxes: the checked worksets will close in 
 come from last time, so "00_Shared levels and grids" is usually already checked when the window
 opens; the "Read Worksets" button reads the names from the models themselves without loading them.
 A BIM360 / Autodesk Docs model is the one exception: Revit cannot read a cloud model's worksets
-from outside, so the add-in opens it for a moment with every workset closed, reads the list and
-closes it again — that takes longer than for a file. The same happens on "Load", before the link is
-created; a cloud link already loaded in the project is read as it is, without opening anything.
+from outside, and opening the model just to read them made the link itself fail afterwards. So a
+BIM360 model is linked first, with the "On load" setting alone, and its worksets are read from the
+link right away; if any of them is not as asked, the link is loaded a second time with the real
+setup — the report lists it under "took hold only on a second load", and that second load clears
+Revit's undo history, like every reload. "Read Worksets" shows a BIM360 model's names only once it
+is linked; one not linked yet reads "Worksets read once linked".
 
 The "Found in" column is exactly the name check, and it is worth looking at whenever a workset
 "somehow did not close". "in N links" — the workset was found and will close. "in none of them" —

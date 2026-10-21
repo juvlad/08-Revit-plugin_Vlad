@@ -232,7 +232,9 @@ Infrastructure/RevitServerClient.cs  Revit Server folders and models through its
 Infrastructure/LinkCatalog.cs     the links and worksets of the open project; shared by both link commands
                                   plus HostModel — where the open project itself lives and what it is called
                                   plus ModelWorksets → ModelWorkset — a model's worksets read without loading it
-                                  (a cloud one by a brief open); shared by "Link Manager" and the batch
+                                  (a cloud one from the session, or by a brief open where the caller
+                                  allows it — the batch does, "Link Manager" does not); shared by both
+                                  plus Explain — an exception as a report line, naming the call that threw
                                   plus VisiblePath — the central model's path, the same for every local copy; also the
                                   key of the "Sheets" change history
 Infrastructure/ModelStore.cs      a model folder across the three stores: what is inside, what is above
@@ -961,7 +963,7 @@ kept, and the command writes the plan behind exactly the preview the window hand
   names the worksets it actually has instead, and `Idle` tells four different "nothing was done"
   cases apart — nothing monitors a link, the link is not loaded, nothing this run was allowed to
   touch, and everything already in place.
-- **A cloud model's worksets cannot be listed without opening it — so it is opened twice.**
+- **A cloud model's worksets cannot be listed without opening it — so the batch opens it twice.**
   `WorksharingUtils.GetUserWorksetInfo` reads the worksets out of the file itself, and an Autodesk
   Docs model has no file to read: on a cloud path it throws `InternalException` with Revit's own "A
   managed exception was thrown by Revit or by one of its external applications" (seen on this
@@ -969,23 +971,40 @@ kept, and the command writes the plan behind exactly the preview the window hand
   BIM360 link with its worksets untouched). There is no other call that answers the question, and
   without the ids a `WorksetConfiguration` cannot be built at all, which would leave only "load a
   consultant's model whole" or "cloud models are not supported". `LinkCatalog.ModelWorksets` — the
-  one reader both "Link Manager" and the batch use — takes the one way left: worksets are elements
-  of the document and `FilteredWorksetCollector` returns **every** one of them, closed included, so
-  the model is opened with `CloseAllWorksets` (it holds no model elements then, but knows all its
-  worksets), the list is read, the document is closed, and the real open or link follows with the
-  ids. The second open is the cheap one — the first loads nothing and Revit has the model in its
-  local cache by then. A cloud model already loaded as a link is not opened at all: its document is
-  in the session (`Application.Documents`), and it is read as it stands. Files and Revit Server keep
-  the short road: there the file is there to be read.
-  In "Link Manager" this has two consequences. **The worksets of new links are read before the
-  transaction opens** (`LinkManagerCommand.Prefetch`): whether a document may be opened and closed
-  while another has a transaction open is something the API does not promise, so it is not tried; a
-  failure is cached (`_unreadable`) as firmly as a success, so `Configuration` inside the
-  transaction does not try again. And **the retry after a mismatch re-reads the list first**
-  (`Reread`) — the link is loaded by then, so a cloud model whose open was refused is read from its
-  own link document, and the reload applies the real setup. A link that came in with the base mode
-  because nothing could be read is reported as exactly that, never as "Revit did not apply the
-  worksets": no workset setup was sent to Revit at all (`Account` takes the first load's notes).
+  one reader both "Link Manager" and the batch use — has two ways for a cloud model. A model already
+  in the session (a loaded link, as a rule — `Application.Documents`) is read as it stands. Any
+  other is opened with `CloseAllWorksets` (it holds no model elements then, but knows all its
+  worksets — `FilteredWorksetCollector` returns **every** one, closed included), the list is read,
+  the document is closed, and the real open follows with the ids — **but only when the caller passes
+  `mayOpen: true`**, which the batch does. Files and Revit Server keep the short road: there the
+  file is there to be read.
+- **"Link Manager" never opens a cloud model to read its worksets (`mayOpen: false`) — it links it
+  first and reads it from the link.** With the open in place (14–21 October 2026), every BIM360 model
+  it then linked failed on another office computer with a bare "Object reference not set to an
+  instance of an object" — three models out of three, nothing created — while the same models had
+  linked before the open was added. Which call threw was never seen (the report carried only the
+  message); the open-then-link sequence is the one thing that changed, so it went. Now a new BIM360
+  link is created with the base mode (`BaseOption`, "open all" by default — never "close all": if
+  the second step fails, the link must not be left empty), `EnsureWorksets` reads its list from the
+  link's own document at once (`Reread`, for every row in `_unreadable`, so its names count for
+  "not found in any link" even when nothing needs a reload), and a mismatch is fixed by the usual
+  `LoadFrom` with the real setup — the report lists it under "took hold only on a second load", and
+  that load clears the undo history like every reload. The price is a cloud consultant model loaded
+  twice when a workset has to close; the gain is that the link is there whatever happens to the
+  worksets. "Read Worksets" in the window does not open one either: a cloud row not linked yet
+  reads "Worksets read once linked" (`LinkCatalog.NotLinkedYet`). A link that came in with the base
+  mode because nothing could be read and was not put right is reported as exactly that, never as
+  "Revit did not apply the worksets": no workset setup was sent to Revit at all; one the check found
+  as asked gets no note at all (`Account`) — every new BIM360 link starts unread, and a note on each
+  would read as a failure. If the reload itself fails, its reason goes into the line
+  (`WorksetCheck.Because`). Do not bring back an open of a cloud model before `RevitLinkType.Create`
+  without testing a BIM360 link in Revit after it.
+- **Link Manager's failure lines name the call that threw when the message says nothing**
+  (`LinkCatalog.Explain`). For a `NullReferenceException`, an `InvalidCastException`, an index/key
+  miss or Revit's `InternalException`, the line gets "[NullReferenceException in RevitLinkType.Create,
+  called from LinkManagerCommand.Create line 716]" — the throwing method from the stack trace and
+  the last frame in this assembly, with its line (the .pdb is installed). Everything else keeps its
+  message alone: Revit's own exceptions already say what went wrong.
 - **The batch never deletes, and this is not the same rule as the window's "Delete…" box.** In the
   open project a row that is gone from the coordination file can be deleted — behind its own switch,
   unchecked, with the count of what stands on the level in the confirmation. None of that can be

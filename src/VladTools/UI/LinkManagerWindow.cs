@@ -239,7 +239,8 @@ namespace VladTools.UI
                 IsEnabled = _readWorksets != null,
                 ToolTip =
                     "Reads the workset names of the checked models without loading them.\n" +
-                    "A BIM360 model is opened for a moment with every workset closed — that takes longer.\n" +
+                    "A BIM360 model is read only once it is linked: on load its worksets are read from the link\n" +
+                    "and applied by a second load.\n" +
                     "This is only for seeing the name list: on load the worksets are read again\n" +
                     "regardless — the worksets themselves still have to be found by name."
             };

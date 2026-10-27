@@ -334,6 +334,92 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
+        /// Opens a local copy of a workshared model with exactly the named user worksets open — none
+        /// named, every one closed — for a batch that edits a model it did not choose the worksets of by
+        /// prefix: "Upload to Server" opens the worksets its links stand in, read out of the very same
+        /// model a moment earlier. So the names are compared through <see cref="LinkPreferences.SameWorkset"/>,
+        /// not as prefixes, and an empty match is not a refusal here: a link type outside every user
+        /// workset needs none opened. Null on any refusal, with the reason in <paramref name="reason"/>.
+        /// </summary>
+        public static BatchModel OpenLocal(Application app, LinkEntry entry, IReadOnlyList<string> worksets, out string reason)
+        {
+            reason = string.Empty;
+
+            ModelPath path;
+
+            try
+            {
+                path = LinkCatalog.ToModelPath(entry);
+            }
+            catch (Exception exception)
+            {
+                reason = LinkCatalog.Short(exception.Message);
+                return null;
+            }
+
+            if (InSession(app, entry, path) != null)
+            {
+                reason = "the model is open in this Revit session — close it and run the button again";
+                return null;
+            }
+
+            List<ModelWorkset> all;
+
+            try
+            {
+                all = LinkCatalog.ModelWorksets(app, entry, false);
+            }
+            catch (Exception exception)
+            {
+                reason = "its worksets could not be read: " + LinkCatalog.Short(exception.Message);
+                return null;
+            }
+
+            if (all.Count == 0)
+            {
+                reason = "the model is not workshared — there is no local copy to make";
+                return null;
+            }
+
+            var wanted = all
+                .Where(workset => (worksets ?? new List<string>()).Any(name => LinkPreferences.SameWorkset(workset.Name, name)))
+                .ToList();
+
+            var options = new OpenOptions();
+            var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
+            if (wanted.Count > 0)
+                configuration.Open(wanted.Select(workset => workset.Id).ToList());
+            options.SetOpenWorksetsConfiguration(configuration);
+
+            string local;
+            string why;
+            var target = Localise(path, entry, out local, out why);
+
+            if (target == null)
+            {
+                reason = "a local copy could not be made: " + why;
+                return null;
+            }
+
+            try
+            {
+                var doc = app.OpenDocumentFile(target, options);
+
+                return new BatchModel(entry, doc, wanted.Select(workset => LinkPreferences.NormalizeWorkset(workset.Name)).ToList())
+                {
+                    NeedsSync = doc.IsWorkshared,
+                    LocalFolder = local
+                };
+            }
+            catch (Exception exception)
+            {
+                Sweep(local);
+                reason = "the model would not open: " + LinkCatalog.Short(exception.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
         /// The document of this model already in the session — the project itself, a local copy of it,
         /// or a link loaded into an open project; null when there is none. A cloud model is recognised
         /// by its model GUID, everything else by its path or its central model's path.
@@ -575,7 +661,7 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>What a model's header says about it — the few facts that can be had without opening it.</summary>
-        private sealed class FileHeader
+        internal sealed class FileHeader
         {
             public bool IsWorkshared;
             public bool IsCentral;
@@ -592,8 +678,9 @@ namespace VladTools.Infrastructure
         ///
         /// The facts are copied out and the <c>BasicFileInfo</c> is disposed of right here: it holds
         /// unmanaged memory, and handing it out would mean every caller remembering to let it go.
+        /// "Upload to Server" reads it too, before it opens a file.
         /// </summary>
-        private static FileHeader Info(string file)
+        internal static FileHeader Info(string file)
         {
             try
             {

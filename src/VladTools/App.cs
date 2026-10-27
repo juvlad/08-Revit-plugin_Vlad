@@ -482,6 +482,26 @@ namespace VladTools
                     "clears Revit's undo history — save the model first.",
                 iconBaseName: "linkupdater");
 
+            // ───────────────── Button 22: Upload to Server (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_ServerUpload",
+                text: "Upload to\nServer",
+                commandType: typeof(ServerUploadCommand),
+                tooltip: "Puts a whole batch of models on Revit Server as central models, then points the links in each at the server.",
+                longDescription:
+                    "Moving a project from BIM360 to Revit Server means opening every downloaded model, \"Save As\" onto the\n" +
+                    "server as a central model, and then \"Reload From\" every link in every one of them. Here the list is\n" +
+                    "gathered once — a folder of models, files, a saved set — and the button does the rest unattended.\n\n" +
+                    "Each model is opened detached with every workset closed (quick, and the file itself is not changed),\n" +
+                    "saved into the chosen Revit Server folder under its own name, and its worksets handed back so the team\n" +
+                    "can work in it. Then, once every model is up, each is opened again and its links are reloaded from the\n" +
+                    "server models of the same name — the way \"Link Updater\" does it — and synchronised.\n\n" +
+                    "A model already in the folder is skipped unless you choose to replace it. Revit is busy until the whole\n" +
+                    "list is done; the full report is written as it goes. Works with no model open.",
+                iconBaseName: "serverupload",
+                availability: typeof(AlwaysAvailable));
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

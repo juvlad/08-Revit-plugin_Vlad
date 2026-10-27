@@ -163,11 +163,7 @@ namespace VladTools.Infrastructure
         {
             var path = string.IsNullOrEmpty(folderPath) ? RootFolder : folderPath;
 
-            var url = "http://" + NormalizeServer(server) +
-                      "/RevitServerAdminRESTService" + ServiceVersion +
-                      "/AdminRESTService.svc/" + Uri.EscapeDataString(path) + "/contents";
-
-            var body = Http.GetJson(url, Headers());
+            var body = Http.GetJson(Address(server, path) + "/contents", Headers());
 
             var folders = Json.Items(body, "Folders")
                 .Select(item => Json.Str(item, "Name"))
@@ -183,6 +179,46 @@ namespace VladTools.Infrastructure
             return folders.OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Concat(models.OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase))
                 .ToList();
+        }
+
+        /// <summary>
+        /// Creates a folder — <paramref name="folderPath"/> in service form, "|Projects|New" — for
+        /// "Upload to Server": the REST service does it with a PUT on the folder's own path. The folder it
+        /// goes in must exist. Throws with ready-to-show text, like <see cref="Contents"/>.
+        /// </summary>
+        public static void CreateFolder(string server, string folderPath)
+        {
+            if (string.IsNullOrEmpty(folderPath) || folderPath == RootFolder)
+                throw new ArgumentException("The server root cannot be created.", nameof(folderPath));
+
+            Http.Put(Address(server, folderPath), Headers());
+        }
+
+        /// <summary>
+        /// What a Revit Server folder or model name may not hold: the vertical bar is the service's own
+        /// separator, the slash the RSN path's, and the rest are what Windows refuses — the server keeps
+        /// its models as folders on its disk. Empty when the name will do.
+        /// </summary>
+        public static string NameProblem(string name)
+        {
+            var text = name ?? string.Empty;
+
+            if (text.Trim().Length == 0)
+                return "the name is empty";
+
+            if (text != text.Trim())
+                return "the name starts or ends with a space";
+
+            var bad = text.FirstOrDefault(character => "|\\/:*?\"<>".IndexOf(character) >= 0 || char.IsControl(character));
+            return bad == default(char) ? string.Empty : "the name holds \"" + bad + "\"";
+        }
+
+        /// <summary>The service's address for a path: http://server/RevitServerAdminRESTService2022/AdminRESTService.svc/|VSC|3.0_AR</summary>
+        private static string Address(string server, string path)
+        {
+            return "http://" + NormalizeServer(server) +
+                   "/RevitServerAdminRESTService" + ServiceVersion +
+                   "/AdminRESTService.svc/" + Uri.EscapeDataString(path);
         }
 
         private static IDictionary<string, string> Headers()

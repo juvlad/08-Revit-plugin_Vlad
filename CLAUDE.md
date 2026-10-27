@@ -54,10 +54,10 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — seventeen buttons, working **only in a project** (`.rvt`, and a project
-template `.rte` — Revit opens both as the same kind of document). The one exception is the "Sheets"
-batch ("Several models…"), which opens its models itself and so also runs from a family or with no
-document open at all. There is no test project — checking is done by hand, in Revit.
+editor** (`.rfa`); "Project" — eighteen buttons, working **only in a project** (`.rvt`, and a project
+template `.rte` — Revit opens both as the same kind of document). The exceptions are the "Sheets"
+batch ("Several models…") and "Upload to Server", which open their models themselves and so also run
+from a family or with no document open at all. There is no test project — checking is done by hand, in Revit.
 
 ## Build and run
 
@@ -139,7 +139,8 @@ UI/CoordinationScan.cs            the result of comparing against one link: rows
 UI/AcceptCoordinationWindow.cs    the "Accept Changes" window: choosing a link, the discrepancy table
 UI/BatchModelRow.cs               a row of a batch's model list: the model itself and a check box
 UI/ModelListPanel.cs              a batch's model list: sources (Folder… in all three stores, Files…, Revit Server…, BIM360…,
-                                  by GUID), saved sets, the table with check boxes; shared by both batch windows
+                                  by GUID), saved sets, the table with check boxes; shared by every batch window ("Upload to
+                                  Server" turns the BIM360 sources off)
 UI/BatchCoordinationWindow.cs     "Accept Changes → Other models…": the model list, which worksets to open, what may be changed
 UI/ScheduleInfo.cs                a snapshot of one schedule for the window + the ScheduleChooser call-back
 UI/ScheduleAction.cs              what to do when the project already holds a schedule of that name + captions
@@ -224,6 +225,9 @@ UI/LinkUpdateRow.cs               a row of that table + LinkTarget (one server m
                                   or loose, picked by hand, distance); Picked — the combo's null-proof view of Target
 UI/LinkUpdaterWindow.cs           the "Link Updater" window: the server search (climbing from the open model's folder,
                                   "Search wider", "Another folder…", "Choose on server…"), the per-row drop-down, the checks
+UI/ServerUploadWindow.cs          the "Upload to Server" window: the model list (ModelListPanel without BIM360), the Revit
+                                  Server folder (Choose…, New folder…, read to say what is there already), the links box,
+                                  what to do with a model of the same name already there (always starts on "Skip")
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/AlwaysAvailable.cs an IExternalCommandAvailability saying "yes" — a button pressable with no document open
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
@@ -232,10 +236,11 @@ Infrastructure/FormulaParser.cs   which names in a formula do not match a family
 Infrastructure/NameBuffer.cs      reading/writing %AppData%\VladTools\names.txt
 Infrastructure/WarningSuppressor.cs  suppresses Revit warnings on Commit and gathers their text for the report
 Infrastructure/DimensionLabelCache.cs  the saved family scan for dimension labels (one file per project)
-Infrastructure/JsonHttp.cs        our own JSON parsing + a GET with headers (no third-party assemblies)
+Infrastructure/JsonHttp.cs        our own JSON parsing + a GET with headers (no third-party assemblies), and a bodiless PUT
 Infrastructure/AutodeskSession.cs the Autodesk token of the user signed in to Revit — via reflection over SSONET.dll
 Infrastructure/AccClient.cs       the BIM360/ACC tree via the Data Management API: hubs → projects → folders → models
-Infrastructure/RevitServerClient.cs  Revit Server folders and models through its REST service
+Infrastructure/RevitServerClient.cs  Revit Server folders and models through its REST service; CreateFolder (a PUT) and
+                                  NameProblem (what a server name may not hold) for "Upload to Server"
 Infrastructure/LinkCatalog.cs     the links and worksets of the open project; shared by both link commands
                                   plus HostModel — where the open project itself lives and what it is called
                                   plus ModelWorksets → ModelWorkset — a model's worksets read without loading it
@@ -256,6 +261,8 @@ Infrastructure/DatumUpdate.cs     a ready-made edit for a single grid or level: 
                                   plus DatumVerdict — what a re-read after the commit says (Aligned/Off/Unknown)
 Infrastructure/BatchCoordination.cs  opening somebody else's model with two worksets, a local copy, synchronising back
                                   plus OpenToRead — the read-only road: detached, every workset closed, nothing written back
+                                  plus OpenLocal — a local copy with exactly the named worksets open, none named → all
+                                  closed ("Upload to Server"'s links); Info → FileHeader — a file's header, unopened
                                   plus BatchModel — one opened model of the batch
 Infrastructure/CoordinationPreferences.cs  the "other models" window settings (%AppData%\VladTools\coordination\_settings.txt)
 Infrastructure/DisciplineCatalog.cs  a discipline code (OV, VK…) from a model name → a project workset "01_Link_OV", by tokens
@@ -317,6 +324,16 @@ Infrastructure/CopyParameterPreferences.cs  the "Copy Parameters" settings (%App
 Infrastructure/ServerModelIndex.cs  ServerModel + ServerModelIndex: a part of Revit Server walked breadth first (FolderLimit,
                                   never the same folder twice), models found by exact name or loosely, tree distance
 Infrastructure/LinkUpdaterPreferences.cs  the "Link Updater" settings (%AppData%\VladTools\linkupdater\_settings.txt)
+Infrastructure/LinkRepointing.cs  the run of "Link Updater", shared with "Upload to Server": Collect (a model's top-level
+                                  links as LinkPathInfo), Run (checkout, then per link LoadFrom + the LinkOpenAsHost unload
+                                  and retry + Restore, the path read back, the worksets inside compared and healed),
+                                  LinkRepointOutcome — the report's sections
+Infrastructure/ServerUpload.cs    "Upload to Server": ServerUploadResult (one model, both passes), ServerUpload (pass 1 —
+                                  detached open with every workset closed, SaveAs central to RSN, hand back, confirm by
+                                  listing; pass 2 — OpenLocal, LinkRepointing, synchronise), ServerLinkTargets (where each
+                                  link goes), ServerUploadLog (the full report, written as the run goes)
+Infrastructure/ServerUploadPreferences.cs  the "Upload to Server" settings (%AppData%\VladTools\serverupload\_settings.txt)
+                                  and the reports folder
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -346,6 +363,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project | "Sheet Scale" | `SheetScaleCommand` | one new scale (`View.Scale`) for the views standing on the checked sheets — the sheets selected in the Project Browser start checked, every view on them but legends — laid out like the browser's sheet organization, a sheet's box taking its views. "Change the checked views at 1:100 to 1:200" narrows what can be checked to one scale. A view whose template sets the scale is handled as asked in the window: the template stops setting it (`SetNonControlledTemplateParameterIds`, every other view keeps its scale), the template gets the new scale (every view using it follows), or the view is left alone. A primary and its dependents change together; the primary is the one changed. Workshared: views, viewports and templates are checked out first. One transaction; the middle of every viewport is put back where it stood (`SetBoxCenter`); every scale and viewport is read back after the commit, and the report lists sheets where a view now sticks out of the drawing area |
 | Project | "Copy Parameters" | `CopyParameterValuesCommand` | writes the value of one parameter into another on every element of one category — the selection, the active view (`FilteredElementCollector(doc, viewId)`) or the whole model; the categories are those with `AllowsBoundParameters`. Both lists are the category's parameters read off one element of each type and that type (`GetOrderedParameters`), keyed across families by `ParameterKey`; read-only ones (reporting, computed, formula-driven) are sources only. The two may store different kinds of value — `ParameterValueConverter` turns a number into text as Revit shows it, text into a number the way Revit parses a typed value (`UnitFormatUtils.TryParse`), anything into Yes/No, a length into a plain number by its displayed figure. A preview line per element (per type for a type parameter, whose elements in scope must agree) shows source, target now, target after and why not; options: only empty targets, an empty source empties a text, no unit symbol, the first number out of a text. Workshared: checked out first. One transaction; every value is read back after the commit |
 | Project | "Link Updater" | `LinkUpdaterCommand` | points the model's top-level Revit links at Revit Server — made for a move from BIM360: for every link, a model of the same name on the server the open model lies on (`LinkCatalog.Host`), found by reading the server through its REST service (`ServerModelIndex`) from the open model's own folder, climbing a level at a time while a link is still missing, never onto the server root by itself; "Search wider", "Another folder…" (any server) and "Choose on server…" (one link, by hand) go further. One model of exactly the name is checked; several (nearest preselected), a loosely matching name or a file link are offered unchecked. Each checked link is reloaded with `RevitLinkType.LoadFrom` from its `RSN://` path (a link Revit keeps as a cloud resource falls back to the `ExternalResourceReference` overload) — the same element, so placement, pins, worksets, view overrides and Copy/Monitor stay; the worksets inside the link go in as `null` ("as the link had them"), are compared by name with what was open before and put right by a second load if Revit did not keep them. Workshared: the link types are checked out first; held / closed-workset links have no check box. No transaction — `LoadFrom` clears the undo history; every path is read back after the reload |
+| Project | "Upload to Server" | `ServerUploadCommand` | puts a batch of models — downloaded from BIM360 and detached, as a rule — on Revit Server, then points their links there. The list is `ModelListPanel` without BIM360 (a folder on disk or the server, files, Revit Server models, a saved set); the destination is one Revit Server folder picked in the tree or made with "New folder…" (`RevitServerClient.CreateFolder`). **Pass 1**, per file: `BasicFileInfo` first (newer version, not workshared → refused), opened detached (`DetachAndPreserveWorksets`) with every workset closed, its link types' user worksets noted, `Document.SaveAs` to `RSN://server/folder/<its name>` as central (`WorksharingSaveAsOptions.SaveAsCentral`, new locals open every workset), `WorksharingUtils.RelinquishOwnership` of everything, closed, and confirmed by listing the server folder. A name already in the folder is skipped (or written over, if the window says so — never remembered); one name twice in the list goes up once. **Pass 2** (optional, on by default), after every upload, per model uploaded, already there, or given as a Revit Server model: a local copy (`BatchCoordination.OpenLocal`) with only the worksets its links stand in, every link pointed at a model of its name uploaded in this run, else at the one model of its name round its folder on the server (the "Link Updater" search) — through `LinkRepointing`, the "Link Updater" run — then synchronised with everything relinquished. Several of one name, a loose name, a file link to another file are left and listed for "Link Updater". Works with no document open (`AlwaysAvailable`); the files in the list are never written; the full report is a text file written as the run goes |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -450,7 +468,19 @@ in its own `try`, after the "Move to Workset" checkout of the link types; nothin
 the confirmation in the window says before the run that Ctrl+Z will not reach past it. Each link is
 then read back (its path, whether it loaded, its worksets) instead of trusting the result code. Step 3
 is shared with the window: the command hands over the links, the window reads Revit Server itself
-(`ServerModelIndex` — plain HTTP, no Revit API) while it is open.
+(`ServerModelIndex` — plain HTTP, no Revit API) while it is open. The snapshot and the run live in
+`LinkRepointing`, not in the command: "Upload to Server" runs exactly the same thing on every model it
+uploads — keep one copy.
+
+**Exception — `ServerUploadCommand`, all of steps 2–7.** No document is needed and none is looked at
+(the button names `AlwaysAvailable`): the window opens straight away, from a project, a family or an
+empty Revit. There is no transaction anywhere — `Document.SaveAs`, `RelinquishOwnership`, `LoadFrom`
+and `SynchronizeWithCentral` all refuse to run inside one. The batch is two loops over the list, the
+"Accept Changes" batch's way (each model in a `try` of its own, a failure a line, closed in `finally`):
+every upload first, then every model's links (see "Key decisions" for why the order is forced). The
+report is written into a file **as the run goes** (`ServerUploadLog`), line by line, and the
+`TaskDialog` at the end only summarises it with a link to open it: a run over a hundred models takes
+hours, and a crash at model sixty must still leave a record of the fifty-nine done.
 
 ## Key decisions
 
@@ -1951,7 +1981,7 @@ is shared with the window: the command hands over the links, the window reads Re
   (`InSessionPath` for the "Points to" column; the type's name to search the server by; the type's
   UniqueId as the key — the reference information's keys are undocumented, so no GUIDs are parsed out
   of it). Repointing such a link (`LinkPathInfo.IsResource`) tries two routes in turn
-  (`LinkUpdaterCommand.Load`): `LoadFrom(ModelPath)` and, if that is refused, throws, or reports
+  (`LinkRepointing.Load`): `LoadFrom(ModelPath)` and, if that is refused, throws, or reports
   success with the link still on the cloud, `LoadFrom(ExternalResourceReference)` with
   `ExternalResourceReference.CreateLocalResource(…, PathType.Server)` — RevitAPI.xml says which
   overload a resource link needs nowhere, and neither has been seen on a live model yet. The route
@@ -1966,7 +1996,7 @@ is shared with the window: the command hands over the links, the window reads Re
   Desktop Connector (`…\ACCDocs\…`, older `…\BIM 360\…`) is an ordinary file path to Revit, but counts
   as a BIM360 link for the window's own check (`IsCloud`), not as a plain file link.
 - **A link's new path is read back, not taken from the result code.** `LoadFrom` returning success is
-  followed by reading the same link type again (`LinkUpdaterCommand.PathNow`: its file path through
+  followed by reading the same link type again (`LinkRepointing.PathNow`: its file path through
   `LinkCatalog.Describe`, else the resource's `InSessionPath`) and a comparison with the target, case
   and slash direction aside; a mismatch sends a resource link down the second route and is otherwise a
   failure line, and a path that took but a model that did not load (`RevitLinkType.IsLoaded`) is a
@@ -1977,7 +2007,7 @@ is shared with the window: the command hands over the links, the window reads Re
   links that were not loaded in the same model went through. The server copy is a "Save As" of that very
   file, and the likeliest reading is that Revit takes it for the document the old link still holds in
   the session: RevitAPI.xml says `LoadFrom` unloads a loaded link itself, but not, evidently, before this
-  check. Not confirmed on a live model yet. `LinkUpdaterCommand.Load` therefore unloads
+  check. Not confirmed on a live model yet. `LinkRepointing.Load` therefore unloads
   (`RevitLinkType.Unload(null)`) and tries the same route again — only on that refusal, never up front,
   so any other failure leaves the link loaded where it was; and if nothing takes after the unload, the
   link is loaded back from its old place (`Restore`, `RevitLinkType.Reload`) and the line says whether
@@ -1993,6 +2023,63 @@ is shared with the window: the command hands over the links, the window reads Re
   row unloads; there is no empty item to pick, so a null from the combo is never a choice. The window
   sets `Target` itself (null included), and `Picked` mirrors it. The same one-binding rule as the
   "DataGridComboBoxColumn" entry; the template is the window's own because every row has its own list.
+- **Revit Server takes a model only through Revit — "Upload to Server" is "Save As" without the
+  clicks.** The server keeps a model as a folder of its own data, not as an .rvt; its REST service
+  creates and lists folders but accepts no model, and `RevitServerTool` only goes the other way
+  (`createLocalRvt`, locks). So every model is opened and `Document.SaveAs` writes it to its `RSN://`
+  path with `WorksharingSaveAsOptions.SaveAsCentral = true`. The time a model takes to open cannot be
+  bought back; the clicks and the waiting at the screen can.
+- **Pass 1 opens a file detached with every workset closed** (`DetachAndPreserveWorksets` +
+  `CloseAllWorksets`): detached, so the file in the list is never written; closed, so neither geometry
+  nor any link loads (a link in a closed workset does not) and opening is seconds. A closed workset's
+  elements are still in what Revit saves — closing keeps them out of memory, not out of the file (an
+  .rvt keeps each workset as a partition of its own). **Not yet seen on a live model**: open the first
+  uploaded model from the server with every workset and compare it with its source before trusting a
+  whole run; if anything is missing, the open here is what to change (open every workset — slower, and
+  every link then loads from BIM360 too).
+- **Saving as central makes the saver the owner of every workset, so pass 1 hands them back at once**
+  (`WorksharingUtils.RelinquishOwnership`, everything) and reads `Workset.Owner` back — Revit's own
+  dialog asks the same when a new central is closed. Left owned, nobody could edit a thing in a model a
+  batch put on the server overnight. `OpenWorksetsDefault = AllWorksets`: saved with every workset
+  closed, "last viewed" would hand the first colleague an empty model. "Saved" is Revit's word; the
+  server folder listing the model (`ServerUpload.ModelNames`, REST) is the check.
+- **A file's header rules things out before the open** (`BatchCoordination.Info`, made internal for
+  this): a newer version will not open, and a model that is not workshared cannot go on Revit Server
+  at all — the button does not turn worksharing on by itself (that creates worksets in somebody's
+  model); it says so. An older version is upgraded on the way, noted. BIM360 is not offered as a source
+  (`ModelListPanel`'s `cloud: false`): a cloud model has to be downloaded first.
+- **The links come in a second pass, after every upload — the order is forced.** A link can only be
+  `LoadFrom`ed from a model that exists on the server, and a project's models link one another both
+  ways, so no order of single passes works. Pass 2 opens each model again — a local copy
+  (`BatchCoordination.OpenLocal`; a central is never edited in place, the "Accept Changes" batch rule)
+  with only the user worksets its link types stand in, read in pass 1 (`ServerUpload.ReadLinks`; a
+  link in a closed workset cannot be reloaded, and opening every workset would load the model whole).
+  That relies on a `RevitLinkType` being in the document while its workset is closed — which is why
+  `LinkedFileStatus.InClosedWorkset` exists at all — **not yet seen on a live model**: a model whose
+  log line reads "no links" though it has some is the sign it is wrong. A model given as a Revit Server
+  model, or skipped as already there, has nothing read in pass 1 and is read first the same way
+  (`OpenToRead`, closed again). The links themselves go through `LinkRepointing` — the "Link Updater"
+  run, with its read-back, workset check and `LinkOpenAsHost` unload-and-retry — then the model is
+  synchronised with everything relinquished; one where nothing was pointed is relinquished and closed.
+- **Pass 2 points a link only where it is certain, because nobody is watching a batch.** A model of
+  the link's name uploaded in this very run wins over any namesake elsewhere on the server; failing
+  that, exactly one model of exactly the name found round the model's folder (`ServerLinkTargets`: the
+  "Link Updater" search — the folder down, then up a level while something is missing, never the root;
+  one `ServerModelIndex` for the whole pass). Several of one name, a loose name, a server model already
+  linked as another link, two links given one model — left as they are, listed "finish in Link
+  Updater". A plain file link moves only when it points at the very file this run uploaded under that
+  name; anything else may be a local model on purpose.
+- **A model already in the destination still gets its links updated** when it is skipped: a run that
+  broke off after the upload is finished by running the same list again — the uploads are skipped by
+  name and pass 2 does the rest (links already pointing there are only counted). "Replace" is never
+  remembered (`ServerUploadPreferences`): left over from one migration, it would greet the next by
+  writing over a central model the team works in; the window starts on "Skip" every time and the
+  confirmation names the count of replacements.
+- **"New folder…" is a REST `PUT` on the folder's path** (`RevitServerClient.CreateFolder`) — the
+  documented Revit Server admin operation, **not yet seen on a live server**; the window reads the new
+  folder back at once, so a PUT the server ignored shows as "the folder could not be read" before any
+  model is sent there. Names go through `RevitServerClient.NameProblem` first: the vertical bar is the
+  service's separator, the slash the RSN path's, the rest what the server's own disk refuses.
 
 ## Storing user settings
 
@@ -2016,7 +2103,9 @@ closes, with every translation the window held (see "Key decisions"). `sheets\` 
 history, rewritten at every opening of the window, before it is shown, and for every model a batch
 opens as itself (never for a detached copy — see "Key decisions"). The batch's reports themselves are
 not kept here: they go wherever the user saves the summary.
-`viewstosheets\`, `sheetscale\`, `copyparams\` and `linkupdater\` hold settings only.
+`viewstosheets\`, `sheetscale\`, `copyparams\` and `linkupdater\` hold settings only. `serverupload\`
+is both: `_settings.txt` is rewritten whenever its window closes, and `reports\` holds one text file per
+run, written as the run goes.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -2213,6 +2302,21 @@ a file, open detached); otherwise the search starts from the model's own folder.
 browser offers are not here — the window reads and adds to `SERVER` in `links\_settings.txt`, as
 "Base File" does. Rewritten whenever the window closes.
 
+`serverupload\_settings.txt` — the "Upload to Server" window's settings: `KEY = value` — `FOLDER` (the
+Revit Server folder the models went into last, as a `ModelFolder.Format` line: `SERVER | RSN://…`),
+`LINKS` (`1`/`0` — update the links afterwards; default `1`), `SET` (the link set worked with last) and
+`MODEL` lines (may repeat — the list from last time, in the link-set line format,
+`LinkSetLibrary.Format`/`Parse`; the sets themselves live in `links\`). What to do with a model already
+in the folder is deliberately not kept (see "Key decisions"). The server names come from and go to
+`links\_settings.txt`, as everywhere. Rewritten whenever the window closes.
+
+`serverupload\reports\Upload <yyyy-MM-dd HH-mm-ss>.txt` — one run's full report: a header (the
+folder, the counts, the choices), then an "UPLOAD" section with a time-stamped line per file (uploaded
+→ path, REPLACED, already there, NOT uploaded: reason; notes indented), a "LINKS" section with a line
+per model and every link indented (pointed → path, left as it is: reason, the workset checks, FAILED),
+and the totals. Appended to after every model, so a run that never reaches its end still says how far it
+got. Never read back by the add-in; old reports are left for the user to delete.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -2329,7 +2433,10 @@ WorksetConfiguration)` with a null configuration (documented as "the same set of
 previously had" in 2022 and 2024 alike) and `RevitLinkType.IsLoaded`; for links kept as cloud
 resources, `Element.GetExternalResourceReference`, `ExternalResourceTypes.BuiltInExternalResourceTypes.RevitLink`,
 `ExternalResourceReference.InSessionPath`/`CreateLocalResource` and `RevitLinkType.LoadFrom(ExternalResourceReference,
-WorksetConfiguration)` — all in RevitAPI.xml 2022, compiled for all three years.
+WorksetConfiguration)` — all in RevitAPI.xml 2022, compiled for all three years. "Upload to Server" adds
+`Document.SaveAs(ModelPath, SaveAsOptions)`, `SaveAsOptions.SetWorksharingOptions`, `WorksharingSaveAsOptions`
+(`SaveAsCentral`, `OpenWorksetsDefault`), `SimpleWorksetConfiguration`, `WorksharingUtils.RelinquishOwnership`
+and `Workset.Owner` — long-standing API, compiled for all three years.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

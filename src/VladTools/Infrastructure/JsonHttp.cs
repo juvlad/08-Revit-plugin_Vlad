@@ -274,7 +274,8 @@ namespace VladTools.Infrastructure
     /// <summary>
     /// An HTTP GET with headers and JSON parsing. Both services the "Link Manager" button takes its
     /// model lists from (Revit Server and Autodesk Platform Services) are built the same way:
-    /// a GET, some headers, JSON in the response.
+    /// a GET, some headers, JSON in the response. The one write is "Upload to Server"'s new folder — a
+    /// PUT with no body.
     /// </summary>
     internal static class Http
     {
@@ -292,21 +293,7 @@ namespace VladTools.Infrastructure
 
         public static string GetString(string url, IDictionary<string, string> headers)
         {
-            // On net48 TLS 1.2 may be off by default, and Autodesk answers over nothing else.
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-
-            var request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "GET";
-            request.Timeout = TimeoutMilliseconds;
-            request.ReadWriteTimeout = TimeoutMilliseconds;
-            request.Accept = "application/json";
-            request.UserAgent = "VladTools";
-
-            if (headers != null)
-            {
-                foreach (var header in headers)
-                    request.Headers[header.Key] = header.Value;
-            }
+            var request = Request(url, "GET", headers);
 
             try
             {
@@ -324,6 +311,48 @@ namespace VladTools.Infrastructure
             {
                 throw new InvalidOperationException(Describe(exception, url), exception);
             }
+        }
+
+        /// <summary>
+        /// A PUT with no body — how the Revit Server service is asked to create a folder. Errors are
+        /// raised the way <see cref="GetString"/> raises them.
+        /// </summary>
+        public static void Put(string url, IDictionary<string, string> headers)
+        {
+            var request = Request(url, "PUT", headers);
+            request.ContentLength = 0;
+
+            try
+            {
+                using (request.GetResponse())
+                {
+                }
+            }
+            catch (WebException exception)
+            {
+                throw new InvalidOperationException(Describe(exception, url), exception);
+            }
+        }
+
+        private static HttpWebRequest Request(string url, string method, IDictionary<string, string> headers)
+        {
+            // On net48 TLS 1.2 may be off by default, and Autodesk answers over nothing else.
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = method;
+            request.Timeout = TimeoutMilliseconds;
+            request.ReadWriteTimeout = TimeoutMilliseconds;
+            request.Accept = "application/json";
+            request.UserAgent = "VladTools";
+
+            if (headers != null)
+            {
+                foreach (var header in headers)
+                    request.Headers[header.Key] = header.Value;
+            }
+
+            return request;
         }
 
         /// <summary>

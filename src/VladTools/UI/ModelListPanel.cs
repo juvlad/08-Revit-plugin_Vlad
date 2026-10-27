@@ -56,7 +56,12 @@ namespace VladTools.UI
 
         /// <param name="title">The window's title — the caption of the dialogs the panel shows.</param>
         /// <param name="set">The saved set worked with last, shown in the set box.</param>
-        public ModelListPanel(string title, LinkPreferences linkPreferences, string set)
+        /// <param name="cloud">
+        /// Offer BIM360 as a source. "Upload to Server" does not: it puts files on a server, and a cloud
+        /// model has to be downloaded first — a button that offers one only to refuse it later is worse
+        /// than no button.
+        /// </param>
+        public ModelListPanel(string title, LinkPreferences linkPreferences, string set, bool cloud = true)
         {
             _title = title;
             _linkPreferences = linkPreferences ?? new LinkPreferences();
@@ -88,12 +93,17 @@ namespace VladTools.UI
             RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
 
             var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-            sources.Children.Add(FolderButton());
+            sources.Children.Add(FolderButton(cloud));
             sources.Children.Add(SourceButton("Files…", "Ordinary .rvt files: a disk or a network folder.", OnAddFiles));
             sources.Children.Add(SourceButton("Revit Server…", "Browse folders and models on Revit Server.", OnBrowseServer));
-            sources.Children.Add(SourceButton("BIM360…", "Browse BIM360/ACC accounts, projects and folders.", OnBrowseCloud));
-            sources.Children.Add(SourceButton("BIM360 by GUID…",
-                "Enter cloud models as pairs of GUIDs — when browsing is unavailable.", OnAddCloudByGuid));
+
+            if (cloud)
+            {
+                sources.Children.Add(SourceButton("BIM360…", "Browse BIM360/ACC accounts, projects and folders.", OnBrowseCloud));
+                sources.Children.Add(SourceButton("BIM360 by GUID…",
+                    "Enter cloud models as pairs of GUIDs — when browsing is unavailable.", OnAddCloudByGuid));
+            }
+
             sources.Children.Add(SourceButton("Remove from list",
                 "Removes the checked rows from the table. The models themselves are left untouched.", OnRemove));
             SetRow(sources, 0);
@@ -153,16 +163,18 @@ namespace VladTools.UI
             return button;
         }
 
-        /// <summary>"Folder…" with a menu of the three stores a folder can be in.</summary>
-        private Button FolderButton()
+        /// <summary>"Folder…" with a menu of the stores a folder can be in.</summary>
+        private Button FolderButton(bool cloud)
         {
             var menu = new ContextMenu();
             menu.Items.Add(MenuEntry("On disk or the network…", (s, e) => AddFolder(ModelPicker.PickFileFolder(Owner))));
             menu.Items.Add(MenuEntry("On Revit Server…", (s, e) => AddFolder(ModelPicker.PickServerFolder(Owner, _title, _linkPreferences))));
-            menu.Items.Add(MenuEntry("In BIM360…", (s, e) => AddFolder(ModelPicker.PickCloudFolder(Owner, _title))));
+
+            if (cloud)
+                menu.Items.Add(MenuEntry("In BIM360…", (s, e) => AddFolder(ModelPicker.PickCloudFolder(Owner, _title))));
 
             var button = SourceButton("Folder…",
-                "Every model in a folder — on disk or the network, on Revit Server or in BIM360 —\n" +
+                "Every model in a folder — on disk or the network, on Revit Server" + (cloud ? " or in BIM360" : string.Empty) + " —\n" +
                 "and, if you say so, in the folders inside it. Revit's own backups (Model.0001.rvt)\n" +
                 "and the \"_backup\" folders are left out.", null);
 

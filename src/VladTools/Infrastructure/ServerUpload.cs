@@ -416,6 +416,9 @@ namespace VladTools.Infrastructure
                 return;
             }
 
+            if (model.Note.Length > 0)
+                result.LinksNotes.Add(model.Note);
+
             try
             {
                 var doc = model.Document;
@@ -733,6 +736,10 @@ namespace VladTools.Infrastructure
                 lines.Add(Stamp() + result.Name + " — no links (none were found while it was " + (result.Uploaded ? "uploaded" : "read") + ")");
             else
                 lines.Add(Stamp() + result.Name + " — " + LinkSummary(result));
+
+            if (result.LinkCount > 0 && result.LinkWorksets != null)
+                lines.Add("    worksets asked for, the ones its links stand in: " +
+                          (result.LinkWorksets.Count == 0 ? "none (no link stands in a user workset)" : string.Join(", ", result.LinkWorksets)));
 
             var outcome = result.Links;
             if (outcome != null)

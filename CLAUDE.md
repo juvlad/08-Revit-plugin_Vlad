@@ -2055,8 +2055,17 @@ hours, and a crash at model sixty must still leave a record of the fifty-nine do
   with only the user worksets its link types stand in, read in pass 1 (`ServerUpload.ReadLinks`; a
   link in a closed workset cannot be reloaded, and opening every workset would load the model whole).
   That relies on a `RevitLinkType` being in the document while its workset is closed — which is why
-  `LinkedFileStatus.InClosedWorkset` exists at all — **not yet seen on a live model**: a model whose
-  log line reads "no links" though it has some is the sign it is wrong. A model given as a Revit Server
+  `LinkedFileStatus.InClosedWorkset` exists at all — and that much **is confirmed** on the first live
+  run (October 2026: every link and its workset read correctly with everything closed). The same run
+  showed the open itself failing: every local copy came up with all its worksets closed, so every link
+  read "closed workset" and nothing was pointed. The ids had come from the central
+  (`GetUserWorksetInfo` on the `RSN://` path) and were applied to the local copy; `WorksetPreview.Id` is
+  documented as changing on synchronising, and a configuration naming ids the file does not have is
+  ignored silently. So `OpenLocal` (and `Open`, which had the same pattern) now take the ids from the
+  file actually opened (`BatchCoordination.IdsIn`), and `OpenLocal` checks the opened document: an
+  asked-for workset still closed means a second open with every workset (slower — the whole model
+  loads), said in the log (`BatchModel.Note`). Whether the ids were really the cause is **not yet
+  confirmed**: the log line "worksets asked for" plus that note tell which it was. A model given as a Revit Server
   model, or skipped as already there, has nothing read in pass 1 and is read first the same way
   (`OpenToRead`, closed again). The links themselves go through `LinkRepointing` — the "Link Updater"
   run, with its read-back, workset check and `LinkOpenAsHost` unload-and-retry — then the model is

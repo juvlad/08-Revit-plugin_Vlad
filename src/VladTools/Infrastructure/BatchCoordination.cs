@@ -49,6 +49,9 @@ namespace VladTools.Infrastructure
         /// confirmed are the central's own.
         /// </summary>
         public bool IsDetached { get; set; }
+
+        /// <summary>What the open had to do other than asked (<see cref="BatchCoordination.OpenLocal"/>); empty when nothing.</summary>
+        public string Note { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -191,17 +194,6 @@ namespace VladTools.Infrastructure
                 return null;
             }
 
-            var options = new OpenOptions();
-
-            if (wanted.Count > 0)
-            {
-                // "Close all, then open the listed ones" — the same phrasing as for link worksets,
-                // and for the same reason: it is the one Revit carries out reliably.
-                var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
-                configuration.Open(wanted.Select(workset => workset.Id).ToList());
-                options.SetOpenWorksetsConfiguration(configuration);
-            }
-
             var names = wanted.Select(workset => LinkPreferences.NormalizeWorkset(workset.Name)).ToList();
             var local = string.Empty;
             var target = path;
@@ -219,6 +211,17 @@ namespace VladTools.Infrastructure
                                  "directly is not something this button does.");
                     return null;
                 }
+            }
+
+            var options = new OpenOptions();
+
+            if (wanted.Count > 0)
+            {
+                // "Close all, then open the listed ones" — the same phrasing as for link worksets,
+                // and for the same reason: it is the one Revit carries out reliably.
+                var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
+                configuration.Open(IdsIn(target, wanted));
+                options.SetOpenWorksetsConfiguration(configuration);
             }
 
             try
@@ -385,12 +388,6 @@ namespace VladTools.Infrastructure
                 .Where(workset => (worksets ?? new List<string>()).Any(name => LinkPreferences.SameWorkset(workset.Name, name)))
                 .ToList();
 
-            var options = new OpenOptions();
-            var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
-            if (wanted.Count > 0)
-                configuration.Open(wanted.Select(workset => workset.Id).ToList());
-            options.SetOpenWorksetsConfiguration(configuration);
-
             string local;
             string why;
             var target = Localise(path, entry, out local, out why);
@@ -401,14 +398,39 @@ namespace VladTools.Infrastructure
                 return null;
             }
 
+            var options = new OpenOptions();
+            var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
+            if (wanted.Count > 0)
+                configuration.Open(IdsIn(target, wanted));
+            options.SetOpenWorksetsConfiguration(configuration);
+
             try
             {
                 var doc = app.OpenDocumentFile(target, options);
+                var note = string.Empty;
+
+                // What was asked is checked, not assumed: a configuration Revit does not carry out raises
+                // no error, and every link here would then read "closed workset". Opened again with every
+                // workset open, the whole model loads — slower, but nothing the run needs stays closed.
+                var closed = NotOpen(doc, wanted);
+                if (closed.Count > 0)
+                {
+                    doc.Close(false);
+
+                    var everything = new OpenOptions();
+                    everything.SetOpenWorksetsConfiguration(new WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets));
+                    doc = app.OpenDocumentFile(target, everything);
+
+                    var still = NotOpen(doc, wanted);
+                    note = "Revit did not open " + Quote(closed) + " as asked, so the model was opened again with every workset" +
+                           (still.Count > 0 ? " — and still left " + Quote(still) + " closed" : string.Empty);
+                }
 
                 return new BatchModel(entry, doc, wanted.Select(workset => LinkPreferences.NormalizeWorkset(workset.Name)).ToList())
                 {
                     NeedsSync = doc.IsWorkshared,
-                    LocalFolder = local
+                    LocalFolder = local,
+                    Note = note
                 };
             }
             catch (Exception exception)
@@ -416,6 +438,60 @@ namespace VladTools.Infrastructure
                 Sweep(local);
                 reason = "the model would not open: " + LinkCatalog.Short(exception.Message);
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// The ids of these worksets in the file about to be opened, read from that file. A local copy's ids
+        /// are taken from the copy rather than from its central: <c>WorksetPreview.Id</c> is documented as
+        /// changing on synchronising, and a configuration naming ids the file does not have is ignored
+        /// without a word — the likeliest reading of "Upload to Server" opening every local copy of a
+        /// fresh Revit Server central with all its worksets closed (October 2026), when the ids came from
+        /// the central. Where the file cannot be read (a cloud model), the ids in hand are all there is.
+        /// </summary>
+        private static List<WorksetId> IdsIn(ModelPath target, IReadOnlyList<ModelWorkset> wanted)
+        {
+            try
+            {
+                var here = WorksharingUtils.GetUserWorksetInfo(target);
+
+                var ids = wanted
+                    .Select(workset => here.FirstOrDefault(preview => LinkPreferences.SameWorkset(preview.Name, workset.Name)))
+                    .Where(preview => preview != null)
+                    .Select(preview => preview.Id)
+                    .ToList();
+
+                if (ids.Count == wanted.Count)
+                    return ids;
+            }
+            catch (Exception)
+            {
+                // Falls through to the ids already in hand.
+            }
+
+            return wanted.Select(workset => workset.Id).ToList();
+        }
+
+        /// <summary>The asked-for worksets an opened document still holds closed; empty when it could not be read.</summary>
+        private static List<string> NotOpen(Document doc, IReadOnlyList<ModelWorkset> wanted)
+        {
+            try
+            {
+                var open = new FilteredWorksetCollector(doc)
+                    .OfKind(WorksetKind.UserWorkset)
+                    .ToWorksets()
+                    .Where(workset => workset.IsOpen)
+                    .Select(workset => workset.Name)
+                    .ToList();
+
+                return wanted
+                    .Where(workset => !open.Any(name => LinkPreferences.SameWorkset(name, workset.Name)))
+                    .Select(workset => workset.Name)
+                    .ToList();
+            }
+            catch (Exception)
+            {
+                return new List<string>();
             }
         }
 

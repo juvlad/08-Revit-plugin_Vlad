@@ -33,11 +33,19 @@ namespace VladTools.UI
         /// </summary>
         private const int FolderLimit = 200;
 
+        /// <summary>
+        /// The same for "Whole server…", where starting at the top is the point: the limit only guards
+        /// against a server that never stops answering. The batch's own server search reads as far.
+        /// </summary>
+        private const int WholeServerLimit = ServerModelIndex.BatchFolderLimit;
+
         /// <summary>Revit's own backups of a model that is not workshared: "Model.0001.rvt" next to "Model.rvt".</summary>
         private static readonly Regex BackupFile = new Regex(@"\.\d{4}\.rvt$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         private readonly string _title;
         private readonly LinkPreferences _linkPreferences;
+        private readonly bool _cloud;
+        private readonly bool _files;
 
         private readonly ObservableCollection<BatchModelRow> _rows = new ObservableCollection<BatchModelRow>();
 
@@ -61,10 +69,17 @@ namespace VladTools.UI
         /// model has to be downloaded first — a button that offers one only to refuse it later is worse
         /// than no button.
         /// </param>
-        public ModelListPanel(string title, LinkPreferences linkPreferences, string set, bool cloud = true)
+        /// <param name="files">
+        /// Offer files on disk as a source. The "Link Updater" batch does not: it works on models already
+        /// on Revit Server, so its list is the server's alone — then "Whole server…" is offered, and a saved
+        /// set's files and BIM360 models are left out of the table rather than listed only to be refused.
+        /// </param>
+        public ModelListPanel(string title, LinkPreferences linkPreferences, string set, bool cloud = true, bool files = true)
         {
             _title = title;
             _linkPreferences = linkPreferences ?? new LinkPreferences();
+            _cloud = cloud;
+            _files = files;
 
             _setBox = new ComboBox
             {
@@ -93,8 +108,19 @@ namespace VladTools.UI
             RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // table
 
             var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-            sources.Children.Add(FolderButton(cloud));
-            sources.Children.Add(SourceButton("Files…", "Ordinary .rvt files: a disk or a network folder.", OnAddFiles));
+
+            if (!files)
+            {
+                sources.Children.Add(SourceButton("Whole server…",
+                    "Every model on a Revit Server, in every folder. Every folder is read once to list them —\n" +
+                    "on a large server that takes a minute or more, and Revit waits.", OnWholeServer));
+            }
+
+            sources.Children.Add(FolderButton());
+
+            if (files)
+                sources.Children.Add(SourceButton("Files…", "Ordinary .rvt files: a disk or a network folder.", OnAddFiles));
+
             sources.Children.Add(SourceButton("Revit Server…", "Browse folders and models on Revit Server.", OnBrowseServer));
 
             if (cloud)
@@ -163,18 +189,29 @@ namespace VladTools.UI
             return button;
         }
 
-        /// <summary>"Folder…" with a menu of the stores a folder can be in.</summary>
-        private Button FolderButton(bool cloud)
+        /// <summary>"Folder…" with a menu of the stores a folder can be in — or straight to the one store there is.</summary>
+        private Button FolderButton()
         {
+            if (!_files && !_cloud)
+            {
+                return SourceButton("Folder…",
+                    "Every model in a Revit Server folder and, if you say so, in the folders inside it.",
+                    (s, e) => AddFolder(ModelPicker.PickServerFolder(Owner, _title, _linkPreferences)));
+            }
+
             var menu = new ContextMenu();
-            menu.Items.Add(MenuEntry("On disk or the network…", (s, e) => AddFolder(ModelPicker.PickFileFolder(Owner))));
+
+            if (_files)
+                menu.Items.Add(MenuEntry("On disk or the network…", (s, e) => AddFolder(ModelPicker.PickFileFolder(Owner))));
+
             menu.Items.Add(MenuEntry("On Revit Server…", (s, e) => AddFolder(ModelPicker.PickServerFolder(Owner, _title, _linkPreferences))));
 
-            if (cloud)
+            if (_cloud)
                 menu.Items.Add(MenuEntry("In BIM360…", (s, e) => AddFolder(ModelPicker.PickCloudFolder(Owner, _title))));
 
             var button = SourceButton("Folder…",
-                "Every model in a folder — on disk or the network, on Revit Server" + (cloud ? " or in BIM360" : string.Empty) + " —\n" +
+                "Every model in a folder — " + (_files ? "on disk or the network, " : string.Empty) + "on Revit Server" +
+                (_cloud ? " or in BIM360" : string.Empty) + " —\n" +
                 "and, if you say so, in the folders inside it. Revit's own backups (Model.0001.rvt)\n" +
                 "and the \"_backup\" folders are left out.", null);
 
@@ -242,6 +279,14 @@ namespace VladTools.UI
             Add(ModelPicker.Files(Owner, true), "file(s)");
         }
 
+        /// <summary>Every model of one Revit Server: its root folder, walked to the bottom without asking.</summary>
+        private void OnWholeServer(object sender, RoutedEventArgs e)
+        {
+            var server = ModelPicker.PickServer(Owner, _title, _linkPreferences);
+            if (server != null)
+                AddFolder(ModelFolder.ForServer(server, RevitServerClient.RootFolder), true);
+        }
+
         private void OnBrowseServer(object sender, RoutedEventArgs e)
         {
             Add(ModelPicker.Server(Owner, _title, _linkPreferences, Keys), "Revit Server model(s)");
@@ -271,9 +316,10 @@ namespace VladTools.UI
         /// <summary>
         /// Every model in a folder, and on request in its folders too. The question is asked only when
         /// there are folders inside: on Revit Server and BIM360 each one costs a request, and a project
-        /// root walked by accident can hold hundreds of them.
+        /// root walked by accident can hold hundreds of them. A whole server is walked without asking —
+        /// every folder is what was asked for.
         /// </summary>
-        private void AddFolder(ModelFolder folder)
+        private void AddFolder(ModelFolder folder, bool whole = false)
         {
             if (folder == null)
                 return;
@@ -295,8 +341,13 @@ namespace VladTools.UI
             var folders = items.Where(item => item.IsFolder && !IsBackup(item.Folder)).Select(item => item.Folder).ToList();
             var unread = new List<string>();
             var limited = false;
+            var limit = whole ? WholeServerLimit : FolderLimit;
 
-            if (folders.Count > 0)
+            if (whole)
+            {
+                limited = Walk(folders, models, unread, limit);
+            }
+            else if (folders.Count > 0)
             {
                 var answer = MessageBox.Show(Owner,
                     "\"" + folder.Display + "\" holds " + models.Count + " model(s) and " + folders.Count + " folder(s).\n\n" +
@@ -307,26 +358,26 @@ namespace VladTools.UI
                     return;
 
                 if (answer == MessageBoxResult.Yes)
-                    limited = Walk(folders, models, unread);
+                    limited = Walk(folders, models, unread, limit);
             }
 
             if (models.Count == 0)
             {
                 MessageBox.Show(Owner,
-                    "No Revit model was found in \"" + folder.Display + "\"" + (folders.Count > 0 ? " itself." : ".") +
+                    "No Revit model was found in \"" + folder.Display + "\"" + (folders.Count > 0 && !whole ? " itself." : ".") +
                     Unread(unread),
                     _title, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            Add(models, "model(s) from the folder");
+            Add(models, whole ? "model(s) from the whole of " + folder.Display : "model(s) from the folder", whole);
 
             if (unread.Count > 0 || limited)
             {
                 MessageBox.Show(Owner,
                     (limited
-                        ? "The walk stopped after " + FolderLimit + " folders — the models found so far are in the list. " +
-                          "It probably started too high up: pick the folder the models are actually in."
+                        ? "The walk stopped after " + limit + " folders — the models found so far are in the list." +
+                          (whole ? string.Empty : " It probably started too high up: pick the folder the models are actually in.")
                         : "The models found are in the list.") +
                     Unread(unread),
                     _title, MessageBoxButton.OK, MessageBoxImage.Information);
@@ -334,18 +385,18 @@ namespace VladTools.UI
         }
 
         /// <summary>
-        /// The folders inside, breadth first, until <see cref="FolderLimit"/>. A folder that cannot be
+        /// The folders inside, breadth first, until <paramref name="limit"/>. A folder that cannot be
         /// read is noted and passed over — one locked folder is no reason to lose the rest.
         /// Returns true when the limit was reached.
         /// </summary>
-        private bool Walk(IEnumerable<ModelFolder> start, List<LinkEntry> models, List<string> unread)
+        private bool Walk(IEnumerable<ModelFolder> start, List<LinkEntry> models, List<string> unread, int limit)
         {
             var queue = new Queue<ModelFolder>(start);
             var read = 0;
 
             while (queue.Count > 0)
             {
-                if (read >= FolderLimit)
+                if (read >= limit)
                     return true;
 
                 var folder = queue.Dequeue();
@@ -418,17 +469,25 @@ namespace VladTools.UI
             return unread.Count > limit ? text + "\n… and " + (unread.Count - limit) + " more" : text;
         }
 
-        /// <summary>Adds models to the table, dropping the ones already in it.</summary>
-        public void Add(IReadOnlyList<LinkEntry> entries, string what)
+        /// <summary>Adds models to the table, dropping the ones already in it and the ones from a store this list does not take.</summary>
+        /// <param name="always">Say how many were added even when every one was — a whole server's count is news.</param>
+        public void Add(IReadOnlyList<LinkEntry> entries, string what, bool always = false)
         {
             if (entries == null || entries.Count == 0)
                 return;
 
             var known = Keys();
             var added = 0;
+            var refused = 0;
 
             foreach (var entry in entries)
             {
+                if (!Takes(entry))
+                {
+                    refused++;
+                    continue;
+                }
+
                 if (!known.Add(entry.Key))
                     continue;
 
@@ -440,8 +499,22 @@ namespace VladTools.UI
 
             OnChanged();
 
-            if (added < entries.Count)
-                Notice?.Invoke(this, "Added " + what + ": " + added + ". Already in the list: " + (entries.Count - added) + ".");
+            var repeated = entries.Count - added - refused;
+
+            if (added < entries.Count || always)
+                Notice?.Invoke(this, "Added " + what + ": " + added + "." +
+                                     (repeated > 0 ? " Already in the list: " + repeated + "." : string.Empty) +
+                                     (refused > 0 ? " Not on Revit Server, left out: " + refused + "." : string.Empty));
+        }
+
+        /// <summary>
+        /// Whether the table takes a model from this store. A list that offers files takes anything, and
+        /// its window says what its run leaves out ("Upload to Server" names the BIM360 ones); a server-only
+        /// list keeps out what its run could only refuse.
+        /// </summary>
+        private bool Takes(LinkEntry entry)
+        {
+            return _files || entry.Origin == LinkOrigin.Server || (_cloud && entry.Origin == LinkOrigin.Cloud);
         }
 
         private HashSet<string> Keys()

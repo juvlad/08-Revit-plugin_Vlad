@@ -28,7 +28,8 @@ namespace VladTools.UI
     /// user chooses" rule as the "Building Kit" and the workset guess.
     ///
     /// The window knows nothing about the Revit API: it is handed <see cref="LinkPathInfo"/> snapshots,
-    /// reads the server through <see cref="ServerModelIndex"/> (plain HTTP) and hands back rows.
+    /// reads the server through <see cref="ServerModelIndex"/> (plain HTTP) and hands back rows — or
+    /// <see cref="WantsBatch"/>, for the command to open <see cref="LinkUpdaterBatchWindow"/> instead.
     /// </summary>
     internal sealed class LinkUpdaterWindow : Window
     {
@@ -64,6 +65,9 @@ namespace VladTools.UI
 
         /// <summary>The links the user confirmed, each with its <see cref="LinkUpdateRow.Target"/>.</summary>
         public IReadOnlyList<LinkUpdateRow> Selected { get; private set; } = new List<LinkUpdateRow>();
+
+        /// <summary>"Several models…": the command shows the batch window once this one has closed.</summary>
+        public bool WantsBatch { get; private set; }
 
         /// <param name="links">Every top-level Revit link of the open project.</param>
         /// <param name="host">Where the open model lies — the search starts there.</param>
@@ -124,6 +128,21 @@ namespace VladTools.UI
             };
             _updateButton.Click += OnUpdate;
 
+            var batchButton = new Button
+            {
+                Content = "Several models…",
+                MinWidth = 130,
+                Padding = new Thickness(10, 4, 10, 4),
+                ToolTip = "Closes this window and opens a list of models on Revit Server — the whole server, folders or single\n" +
+                          "models. Each is opened in turn, its links are pointed at the server models of the same name, and it\n" +
+                          "is synchronised back. Only certain matches are made; the rest are listed in the report."
+            };
+            batchButton.Click += (s, e) =>
+            {
+                WantsBatch = true;
+                DialogResult = true;
+            };
+
             var closeButton = new Button
             {
                 Content = "Close",
@@ -133,7 +152,7 @@ namespace VladTools.UI
                 IsCancel = true
             };
 
-            Content = BuildLayout(otherButton, closeButton);
+            Content = BuildLayout(otherButton, batchButton, closeButton);
 
             foreach (var row in _rows)
                 row.PropertyChanged += OnRowChanged;
@@ -158,7 +177,7 @@ namespace VladTools.UI
 
         // ───────────────────────────── layout ─────────────────────────────
 
-        private UIElement BuildLayout(Button otherButton, Button closeButton)
+        private UIElement BuildLayout(Button otherButton, Button batchButton, Button closeButton)
         {
             var root = new Grid { Margin = new Thickness(12) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                      // hint
@@ -219,6 +238,7 @@ namespace VladTools.UI
             bottom.Children.Add(_status);
 
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            buttons.Children.Add(batchButton);
             buttons.Children.Add(_updateButton);
             buttons.Children.Add(closeButton);
             Grid.SetColumn(buttons, 1);

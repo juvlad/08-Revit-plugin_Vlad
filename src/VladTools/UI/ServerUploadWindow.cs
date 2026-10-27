@@ -34,19 +34,26 @@ namespace VladTools.UI
         private readonly ModelListPanel _models;
         private readonly TextBlock _folderText;
         private readonly CheckBox _linksBox;
+        private readonly CheckBox _subfoldersBox;
         private readonly ComboBox _existingBox;
         private readonly TextBlock _status;
         private readonly Button _runButton;
 
         private ModelFolder _destination;
 
+        /// <summary>The destination and the folders below it, read as the summary needs them; null — not read.</summary>
+        private ServerFolderCache _folders;
+
         /// <summary>The models in the destination folder, by name; null — not read (no folder, or it failed).</summary>
-        private HashSet<string> _onServer;
+        private ISet<string> _onServer;
 
         /// <summary>The folders in the destination folder, by name — for "New folder…".</summary>
-        private HashSet<string> _subfolders;
+        private ISet<string> _subfolders;
 
         private string _folderError = string.Empty;
+
+        /// <summary>A subfolder below the destination that could not be read — said in the summary, not blocking.</summary>
+        private string _subfolderError = string.Empty;
 
         /// <summary>The models the user ran the upload on, in the table's order.</summary>
         public IReadOnlyList<BatchModelRow> Selected { get; private set; } = new List<BatchModelRow>();
@@ -59,6 +66,9 @@ namespace VladTools.UI
 
         /// <summary>A model of the same name already in the folder is written over, rather than left as it is.</summary>
         public bool Replace => _existingBox.SelectedIndex == 1;
+
+        /// <summary>Each file goes as far below the destination as it lies below the folder the files share.</summary>
+        public bool KeepFolders => _subfoldersBox.IsChecked == true;
 
         public ServerUploadWindow(ServerUploadPreferences preferences, LinkPreferences linkPreferences)
         {
@@ -96,6 +106,19 @@ namespace VladTools.UI
             };
             _linksBox.Checked += (s, e) => UpdateSummary();
             _linksBox.Unchecked += (s, e) => UpdateSummary();
+
+            _subfoldersBox = new CheckBox
+            {
+                Content = "Recreate the subfolders — a file in …\\PS\\K1\\ goes into the server folder's own K1",
+                IsChecked = _preferences.KeepFolders,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 6),
+                ToolTip = "The structure is taken below the deepest folder all the checked files share, to any depth.\n" +
+                          "A folder missing on the server is made just before the first file that goes into it.\n" +
+                          "Off — every file goes straight into the chosen folder."
+            };
+            _subfoldersBox.Checked += (s, e) => UpdateSummary();
+            _subfoldersBox.Unchecked += (s, e) => UpdateSummary();
 
             // Starts on "Skip" every time, whatever was chosen before: see ServerUploadPreferences.
             _existingBox = new ComboBox { MinWidth = 260, VerticalAlignment = VerticalAlignment.Center };
@@ -160,7 +183,8 @@ namespace VladTools.UI
             {
                 Text = "Each checked file is opened detached, with every workset closed — nothing is loaded but what the file " +
                        "is made of, and the file itself is not changed — and saved into the Revit Server folder below as a " +
-                       "central model, under its own name. Then, if asked, every uploaded model is opened once more and its " +
+                       "central model, under its own name — into the same subfolder as on disk, if asked; missing folders are " +
+                       "made. Then, if asked, every uploaded model is opened once more and its " +
                        "links are reloaded from the server models of the same name. A Revit Server model in the list only " +
                        "gets its links updated. Revit is busy until the whole list is done; the full report is written as it goes.",
                 TextWrapping = TextWrapping.Wrap,
@@ -197,6 +221,7 @@ namespace VladTools.UI
             root.Children.Add(_models);
 
             var options = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            options.Children.Add(_subfoldersBox);
             options.Children.Add(_linksBox);
 
             var existing = new StackPanel { Orientation = Orientation.Horizontal };
@@ -268,9 +293,11 @@ namespace VladTools.UI
         /// <summary>What the destination holds: the models (to say which are there already) and the folders.</summary>
         private void ReadFolder()
         {
+            _folders = null;
             _onServer = null;
             _subfolders = null;
             _folderError = string.Empty;
+            _subfolderError = string.Empty;
 
             if (_destination == null)
             {
@@ -286,9 +313,10 @@ namespace VladTools.UI
             {
                 Mouse.OverrideCursor = Cursors.Wait;
 
-                var entries = RevitServerClient.Contents(_destination.Server, _destination.Path);
-                _onServer = new HashSet<string>(entries.Where(entry => !entry.IsFolder).Select(entry => entry.Name), StringComparer.OrdinalIgnoreCase);
-                _subfolders = new HashSet<string>(entries.Where(entry => entry.IsFolder).Select(entry => entry.Name), StringComparer.OrdinalIgnoreCase);
+                var folders = new ServerFolderCache(_destination.Server, _destination.Path);
+                _onServer = folders.Models(_destination.Path);
+                _subfolders = folders.Folders(_destination.Path);
+                _folders = folders;
             }
             catch (Exception exception)
             {
@@ -403,28 +431,108 @@ namespace VladTools.UI
             public int ServerModels;
             public int Cloud;
             public List<string> Duplicates = new List<string>();
+
+            /// <summary>The folder whose subfolders are recreated; null — none (switched off, or the files share none).</summary>
+            public string Root;
+
+            /// <summary>The server folders the run will make, in service form.</summary>
+            public List<string> NewFolders = new List<string>();
+
+            /// <summary>Files in a folder whose name Revit Server will not take — not uploaded.</summary>
+            public int BadFolders;
+
+            /// <summary>Some file goes into a subfolder of the destination rather than the destination itself.</summary>
+            public bool Below;
         }
 
         private Plan Count(IReadOnlyList<BatchModelRow> marked)
         {
             var files = marked.Where(row => row.Entry.Origin == LinkOrigin.File).ToList();
-            var groups = files.GroupBy(row => row.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            var destination = _destination?.Path ?? RevitServerClient.RootFolder;
 
             var plan = new Plan
             {
-                Existing = _onServer == null ? 0 : groups.Count(group => _onServer.Contains(group.Key)),
                 ServerModels = marked.Count(row => row.Entry.Origin == LinkOrigin.Server),
                 Cloud = marked.Count(row => row.Entry.Origin == LinkOrigin.Cloud),
-                Duplicates = groups.Where(group => group.Count() > 1).Select(group => group.Key).ToList()
+                Root = KeepFolders && files.Count > 0 ? ServerUpload.CommonFolder(files.Select(row => row.Entry.Path)) : null
             };
 
-            // One file per name goes up; a name already in the folder only when it is to be replaced. One
-            // left there still has its links updated: that is how a run that broke off after the upload
-            // is finished — the same list again.
+            // Where each file goes — the run's own rule (ServerUpload.TargetPath), so the window can never
+            // promise one folder while the run uses another.
+            var targets = new List<KeyValuePair<BatchModelRow, string>>();
+            foreach (var row in files)
+            {
+                var problem = string.Empty;
+                var path = KeepFolders ? ServerUpload.TargetPath(destination, plan.Root, row.Entry.Path, out problem) : destination;
+
+                if (path == null)
+                    plan.BadFolders++;
+                else
+                    targets.Add(new KeyValuePair<BatchModelRow, string>(row, path));
+            }
+
+            plan.Below = targets.Any(pair => !string.Equals(pair.Value, destination, StringComparison.OrdinalIgnoreCase));
+
+            var groups = targets.GroupBy(pair => pair.Value + "|" + pair.Key.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            plan.Duplicates = groups.Where(group => group.Count() > 1).Select(group => group.First().Key.Name).ToList();
+
+            _subfolderError = string.Empty;
+
+            if (_folders != null)
+            {
+                plan.Existing = groups.Count(group => Holds(group.First().Value, group.First().Key.Name));
+                plan.NewFolders = targets
+                    .Select(pair => pair.Value)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Where(Missing)
+                    .ToList();
+            }
+
+            // One file per name and folder goes up; a name already there only when it is to be replaced.
+            // One left there still has its links updated: that is how a run that broke off after the
+            // upload is finished — the same list again.
             plan.Uploads = groups.Count - (Replace ? 0 : plan.Existing);
             plan.LinksOnly = UpdateLinks ? plan.ServerModels + (Replace ? 0 : plan.Existing) : 0;
 
             return plan;
+        }
+
+        /// <summary>Whether a server folder already holds a model of this name; a folder that cannot be read is said, and counts as not.</summary>
+        private bool Holds(string path, string name)
+        {
+            try
+            {
+                return _folders.Models(path).Contains(name);
+            }
+            catch (Exception exception)
+            {
+                _subfolderError = LinkCatalog.Short(exception.Message);
+                return false;
+            }
+        }
+
+        private bool Missing(string path)
+        {
+            try
+            {
+                return !_folders.Exists(path);
+            }
+            catch (Exception exception)
+            {
+                _subfolderError = LinkCatalog.Short(exception.Message);
+                return false;
+            }
+        }
+
+        /// <summary>"K1, K2/Old, ST" — the new folders as they sit below the destination.</summary>
+        private string FolderNames(IReadOnlyList<string> paths, int limit)
+        {
+            var below = _destination == null ? string.Empty : _destination.Path.TrimEnd('|');
+
+            var names = paths.Select(path => path.Substring(Math.Min(path.Length, below.Length)).Trim('|').Replace('|', '/')).ToList();
+            var text = string.Join(", ", names.Take(limit));
+
+            return names.Count > limit ? text + " and " + (names.Count - limit) + " more" : text;
         }
 
         private void UpdateSummary()
@@ -466,10 +574,25 @@ namespace VladTools.UI
 
                 if (plan.Duplicates.Count > 0)
                 {
-                    parts.Add("one name twice — only the first goes up: " + string.Join(", ", plan.Duplicates.Take(3)) +
+                    parts.Add("one name twice for one folder — only the first goes up: " + string.Join(", ", plan.Duplicates.Take(3)) +
                               (plan.Duplicates.Count > 3 ? "…" : string.Empty));
                     warning = true;
                 }
+
+                if (plan.NewFolders.Count > 0)
+                    parts.Add("new folders on the server: " + plan.NewFolders.Count + " (" + FolderNames(plan.NewFolders, 4) + ")");
+
+                if (plan.BadFolders > 0)
+                {
+                    parts.Add("in a folder whose name Revit Server will not take, not uploaded: " + plan.BadFolders);
+                    warning = true;
+                }
+
+                if (KeepFolders && plan.Root == null && marked.Count(row => row.Entry.Origin == LinkOrigin.File) > 1)
+                    parts.Add("the files share no folder — they all go straight into the chosen one");
+
+                if (_subfolderError.Length > 0)
+                    parts.Add("a subfolder could not be read (" + _subfolderError + ") — the run checks it again");
 
                 if (plan.ServerModels > 0)
                     parts.Add(UpdateLinks
@@ -514,6 +637,14 @@ namespace VladTools.UI
                 ? "Upload " + plan.Uploads + " model(s) into\n" + _destination.Display + "?\n\n"
                 : "Update the links in " + plan.LinksOnly + " model(s) already on Revit Server?\n\n";
 
+            if (plan.Uploads > 0 && plan.Below)
+            {
+                text += "The subfolders are recreated as they are below\n" + plan.Root + "\n" +
+                        (plan.NewFolders.Count > 0
+                            ? "New folders on the server: " + FolderNames(plan.NewFolders, 12) + ".\n\n"
+                            : "Every folder needed is on the server already.\n\n");
+            }
+
             if (Replace && plan.Existing > 0)
             {
                 text += plan.Existing + " model(s) already there will be REPLACED: their central model is written over, " +
@@ -547,6 +678,7 @@ namespace VladTools.UI
                 _preferences.Folder = _destination.Format();
 
             _preferences.UpdateLinks = UpdateLinks;
+            _preferences.KeepFolders = KeepFolders;
             _preferences.Set = _models.SetName;
 
             // The list is remembered as it stands, check marks aside: a run that broke off is started

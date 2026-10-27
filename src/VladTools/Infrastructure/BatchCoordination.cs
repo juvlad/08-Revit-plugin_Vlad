@@ -799,11 +799,18 @@ namespace VladTools.Infrastructure
             {
                 if (model.NeedsSync)
                 {
+                    // Revit refuses to synchronise a local copy of a Revit Server model without both
+                    // saves: "Saving local before first reload latest and after saving changes to central
+                    // in Synchronize with Central is mandatory for server-based local models" — every
+                    // model of the first "Upload to Server" runs (October 2026) lost its new link paths
+                    // to it. The local is a throwaway in the temp folder either way.
+                    var server = OnServer(model);
+
                     var synchronise = new SynchronizeWithCentralOptions
                     {
                         Comment = comment,
-                        SaveLocalBefore = false,
-                        SaveLocalAfter = false
+                        SaveLocalBefore = server,
+                        SaveLocalAfter = server
                     };
 
                     synchronise.SetRelinquishOptions(new RelinquishOptions(true));
@@ -822,6 +829,22 @@ namespace VladTools.Infrastructure
                 failures.Add(model.Entry.Name + " — the changes were made but could not be saved: " +
                              LinkCatalog.Short(exception.Message) +
                              " The model is left as it was.");
+                return false;
+            }
+        }
+
+        /// <summary>Whether the model's central lies on Revit Server.</summary>
+        private static bool OnServer(BatchModel model)
+        {
+            if (model.Entry.Origin == LinkOrigin.Server)
+                return true;
+
+            try
+            {
+                return model.Document.GetWorksharingCentralModelPath().ServerPath;
+            }
+            catch (Exception)
+            {
                 return false;
             }
         }

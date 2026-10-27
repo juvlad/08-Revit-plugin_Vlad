@@ -67,6 +67,12 @@ namespace VladTools.Infrastructure
 
         /// <summary>What is worth knowing about the second pass that is not a failure of it.</summary>
         public List<string> LinksNotes { get; } = new List<string>();
+
+        /// <summary>Revit's warnings dismissed while the model went up (<see cref="WarningSilencer"/>) — said here, never shown as dialogs.</summary>
+        public List<string> Warnings { get; } = new List<string>();
+
+        /// <summary>The same for the second pass — "needs Coordination Review" after a link was repointed, above all.</summary>
+        public List<string> LinksWarnings { get; } = new List<string>();
     }
 
     /// <summary>
@@ -91,18 +97,82 @@ namespace VladTools.Infrastructure
     /// opened again — a local copy, with only the worksets its link types stand in (read in pass 1) —
     /// every link with a certain namesake on the server is reloaded from there through
     /// <see cref="LinkRepointing"/>, the very run of "Link Updater", and the model is synchronised back.
+    /// Pass 2 on its own, over models already on a server, is the "Link Updater" batch.
     /// </summary>
     internal static class ServerUpload
     {
-        /// <summary>The comment the second pass synchronises with — what the model's history on the server shows.</summary>
-        public const string SyncComment = "VladTools: links pointed at Revit Server";
-
         /// <summary>The models in a server folder, by name, case aside. Throws with ready-to-show text.</summary>
         public static HashSet<string> ModelNames(ModelFolder folder)
         {
             return new HashSet<string>(
                 RevitServerClient.Contents(folder.Server, folder.Path).Where(entry => !entry.IsFolder).Select(entry => entry.Name),
                 StringComparer.OrdinalIgnoreCase);
+        }
+
+        // ───────────────────────────── where each file goes ─────────────────────────────
+
+        /// <summary>
+        /// The deepest folder every one of these files lies under — what "Recreate the subfolders" repeats
+        /// the structure below. Null when they share none worth the name (different drives or servers).
+        /// Compared folder by folder, case aside, so "D:\SLS\PS" is never taken for "D:\SLS\PS2".
+        /// </summary>
+        public static string CommonFolder(IEnumerable<string> files)
+        {
+            List<string> common = null;
+
+            foreach (var file in files)
+            {
+                var parts = (Path.GetDirectoryName(file ?? string.Empty) ?? string.Empty).Split('\\', '/');
+
+                if (common == null)
+                {
+                    common = parts.ToList();
+                    continue;
+                }
+
+                var same = 0;
+                while (same < common.Count && same < parts.Length &&
+                       string.Equals(common[same], parts[same], StringComparison.OrdinalIgnoreCase))
+                    same++;
+
+                common.RemoveRange(same, common.Count - same);
+            }
+
+            if (common == null)
+                return null;
+
+            var root = string.Join("\\", common);
+            return root.TrimEnd('\\').Length == 0 ? null : root;
+        }
+
+        /// <summary>
+        /// The server folder a file goes into, in service form: the destination, plus the path the file's
+        /// folder has below <paramref name="root"/> — or the destination itself with no root. Null when a
+        /// folder on the way has a name Revit Server will not take, with the reason in <paramref name="problem"/>.
+        /// </summary>
+        public static string TargetPath(string destination, string root, string file, out string problem)
+        {
+            problem = string.Empty;
+
+            var folder = Path.GetDirectoryName(file ?? string.Empty) ?? string.Empty;
+            if (string.IsNullOrEmpty(root) || folder.Length < root.Length)
+                return destination;
+
+            var path = destination;
+
+            foreach (var segment in folder.Substring(root.Length).Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var bad = RevitServerClient.NameProblem(segment);
+                if (bad.Length > 0)
+                {
+                    problem = "its folder \"" + segment + "\" cannot be a Revit Server folder: " + bad;
+                    return null;
+                }
+
+                path = path == RevitServerClient.RootFolder ? RevitServerClient.RootFolder + segment : path + "|" + segment;
+            }
+
+            return path;
         }
 
         // ───────────────────────────── pass 1: the upload ─────────────────────────────
@@ -198,8 +268,13 @@ namespace VladTools.Infrastructure
 
             Confirm(result, destination, exists);
 
+            // One name uploaded into two subfolders is the batch's own copy of neither: kept as null, so
+            // pass 2 says so instead of picking one.
             if (result.Uploaded)
-                uploaded[ServerModelIndex.Bare(name)] = result;
+            {
+                var key = ServerModelIndex.Bare(name);
+                uploaded[key] = uploaded.ContainsKey(key) ? null : result;
+            }
         }
 
         /// <summary>
@@ -439,7 +514,9 @@ namespace VladTools.Infrastructure
 
                 if (outcome.Count > 0)
                 {
-                    if (!BatchCoordination.Commit(model, SyncComment, failures))
+                    // No comment, as the office asked (October 2026): the model's history on the server
+                    // says who synchronised and when without one.
+                    if (!BatchCoordination.Commit(model, string.Empty, failures))
                         result.LinksFailure = Strip(failures, model.Entry.Name);
                 }
                 else
@@ -457,6 +534,43 @@ namespace VladTools.Infrastructure
             {
                 BatchCoordination.Release(model);
             }
+        }
+
+        /// <summary>
+        /// Pass 2 over a whole list: what "Upload to Server" runs after its uploads, and the whole of the
+        /// "Link Updater" batch. Each model is the unit of work — one that fails is a line, and the next is
+        /// taken — and each goes into the report the moment it is done. Revit's warnings are taken after
+        /// every model, so each model's lines say its own.
+        /// </summary>
+        public static void UpdateLinks(
+            Application app,
+            IReadOnlyList<ServerUploadResult> queue,
+            ServerLinkTargets targets,
+            ServerUploadLog log,
+            WarningSilencer warnings)
+        {
+            foreach (var result in queue)
+            {
+                try
+                {
+                    UpdateLinks(app, result, targets);
+                }
+                catch (Exception exception)
+                {
+                    // Nothing in UpdateLinks is meant to throw; a model that does anyway is a line, not the
+                    // end of a run hours long.
+                    result.LinksFailure = "the links broke off: " + LinkCatalog.Explain(exception);
+                }
+
+                result.LinksWarnings.AddRange(warnings.Take());
+                log.Links(result);
+            }
+
+            if (targets.LimitReached)
+                log.Lines(new[] { "The server search stopped after " + targets.Limit + " folders: a link left \"not on the server\" may still be there." });
+
+            if (targets.Failures.Count > 0)
+                log.Lines(new[] { "Server folders that could not be read:" }.Concat(targets.Failures.Select(line => "    " + line)));
         }
 
         /// <summary>The folder a server model lies in.</summary>
@@ -490,6 +604,121 @@ namespace VladTools.Infrastructure
     }
 
     /// <summary>
+    /// The destination folder and the folders below it, as an "Upload to Server" run (or its window) sees
+    /// them: what each holds, read once, and the missing ones made. A folder that does not exist yet holds
+    /// no models — so "already there" is answered for a subfolder before it is made. The destination
+    /// itself is taken as existing (it was picked in the tree); below it, a folder exists when its parent
+    /// lists it, so nothing above the destination is ever read.
+    /// </summary>
+    internal sealed class ServerFolderCache
+    {
+        private readonly string _server;
+        private readonly string _root;
+        private readonly Dictionary<string, Listing> _read = new Dictionary<string, Listing>(StringComparer.OrdinalIgnoreCase);
+
+        private sealed class Listing
+        {
+            public HashSet<string> Models;
+            public HashSet<string> Folders;
+        }
+
+        /// <param name="root">The destination folder, in service form.</param>
+        public ServerFolderCache(string server, string root)
+        {
+            _server = server;
+            _root = root;
+        }
+
+        public string Server => _server;
+
+        /// <summary>The models in a folder by name; empty for one not made yet. Throws with ready-to-show text.</summary>
+        public ISet<string> Models(string path)
+        {
+            return Read(path)?.Models ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>The folders in a folder by name; empty for one not made yet. Throws with ready-to-show text.</summary>
+        public ISet<string> Folders(string path)
+        {
+            return Read(path)?.Folders ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Whether the folder is on the server. Throws with ready-to-show text.</summary>
+        public bool Exists(string path)
+        {
+            return Read(path) != null;
+        }
+
+        /// <summary>
+        /// Makes the folder and every missing one above it, top down — the service makes one level per
+        /// request — and reads each back: a folder its parent does not list afterwards was not made, whatever
+        /// the request answered. The paths made go into <paramref name="made"/>. Throws with ready-to-show text.
+        /// </summary>
+        public bool Ensure(string path, List<string> made, out string failure)
+        {
+            failure = string.Empty;
+
+            if (Read(path) != null)
+                return true;
+
+            var parent = RevitServerClient.ParentFolder(path);
+            if (parent == null)
+            {
+                failure = "the server root cannot be made";
+                return false;
+            }
+
+            if (!Ensure(parent, made, out failure))
+                return false;
+
+            RevitServerClient.CreateFolder(_server, path);
+
+            _read.Remove(parent);
+            _read.Remove(path);
+
+            if (Read(path) == null)
+            {
+                failure = "the server answered, but " + RevitServerClient.RsnPath(_server, path, string.Empty).TrimEnd('/') + " is not there";
+                return false;
+            }
+
+            made.Add(path);
+            return true;
+        }
+
+        /// <summary>A folder's listing; null when it does not exist.</summary>
+        private Listing Read(string path)
+        {
+            Listing listing;
+            if (_read.TryGetValue(path, out listing))
+                return listing;
+
+            if (!string.Equals(path, _root, StringComparison.OrdinalIgnoreCase))
+            {
+                var parent = RevitServerClient.ParentFolder(path);
+                var above = parent == null ? null : Read(parent);
+
+                if (above == null || !above.Folders.Contains(RevitServerClient.FolderName(path)))
+                {
+                    _read[path] = null;
+                    return null;
+                }
+            }
+
+            var entries = RevitServerClient.Contents(_server, path);
+
+            listing = new Listing
+            {
+                Models = new HashSet<string>(entries.Where(entry => !entry.IsFolder).Select(entry => entry.Name), StringComparer.OrdinalIgnoreCase),
+                Folders = new HashSet<string>(entries.Where(entry => entry.IsFolder).Select(entry => entry.Name), StringComparer.OrdinalIgnoreCase)
+            };
+
+            _read[path] = listing;
+            return listing;
+        }
+    }
+
+    /// <summary>
     /// Where the second pass of "Upload to Server" points each link. A model of the link's name uploaded
     /// in this run comes first — the batch's own copy is the certain one, whatever namesakes the server
     /// holds elsewhere. Failing that, exactly one model of exactly the name found round the model's own
@@ -499,14 +728,20 @@ namespace VladTools.Infrastructure
     /// watching a batch.
     ///
     /// One index serves the whole pass (<see cref="ServerModelIndex"/> only grows), so the models of one
-    /// project read their shared folders once.
+    /// project read their shared folders once. It is bounded by the batch's limit, not the window's: a run
+    /// over a whole server reads every project's folders. And because it holds every project read so far,
+    /// a link is matched only with the models under the folder its own model's search reached — never with
+    /// a namesake in another project that an earlier model of the run happened to read.
     /// </summary>
     internal sealed class ServerLinkTargets
     {
-        private readonly ServerModelIndex _index = new ServerModelIndex();
+        private readonly ServerModelIndex _index = new ServerModelIndex(ServerModelIndex.BatchFolderLimit);
         private readonly IDictionary<string, ServerUploadResult> _uploaded;
 
-        /// <param name="uploaded">The models this run uploaded, by name without the extension.</param>
+        /// <summary>The highest folder the last <see cref="Search"/> read; null — the model's folder is not known.</summary>
+        private ModelFolder _reach;
+
+        /// <param name="uploaded">The models this run uploaded, by name without the extension; null for a name it uploaded twice.</param>
         public ServerLinkTargets(IDictionary<string, ServerUploadResult> uploaded)
         {
             _uploaded = uploaded ?? new Dictionary<string, ServerUploadResult>();
@@ -517,23 +752,27 @@ namespace VladTools.Infrastructure
 
         public bool LimitReached => _index.LimitReached;
 
-        /// <summary>Reads the server round a model's folder, as far as its links need.</summary>
+        /// <summary>The most folders the run reads in all.</summary>
+        public int Limit => _index.Limit;
+
+        /// <summary>Reads the server round a model's folder, as far as its links need; <see cref="Plan"/> then looks only there.</summary>
         public void Search(ModelFolder folder, IReadOnlyList<LinkPathInfo> links)
         {
+            _reach = folder;
+
             if (folder == null)
                 return;
 
             Walk(folder);
 
-            var reach = folder;
             while (!_index.LimitReached && links.Any(link => link.Obstacle.Length == 0 && Missing(link)))
             {
-                var above = RevitServerClient.ParentFolder(reach.Path);
+                var above = RevitServerClient.ParentFolder(_reach.Path);
                 if (above == null || above == RevitServerClient.RootFolder)
                     return;
 
-                reach = ModelFolder.ForServer(reach.Server, above);
-                Walk(reach);
+                _reach = ModelFolder.ForServer(_reach.Server, above);
+                Walk(_reach);
             }
         }
 
@@ -545,7 +784,7 @@ namespace VladTools.Infrastructure
 
         private bool Missing(LinkPathInfo link)
         {
-            return !_uploaded.ContainsKey(ServerModelIndex.Bare(link.Name)) && _index.Named(link.Name).Count == 0;
+            return !_uploaded.ContainsKey(ServerModelIndex.Bare(link.Name)) && _index.Named(link.Name, _reach).Count == 0;
         }
 
         /// <summary>
@@ -623,6 +862,12 @@ namespace VladTools.Infrastructure
             ServerUploadResult own;
             if (_uploaded.TryGetValue(ServerModelIndex.Bare(link.Name), out own))
             {
+                if (own == null)
+                {
+                    reason = "this run uploaded a model of this name into more than one folder — choose one in \"Link Updater\"";
+                    return null;
+                }
+
                 // A file link moves with the batch only when it points at the very file this run
                 // uploaded — then the server copy is that file. Another file of the same name may be a
                 // local model on purpose.
@@ -641,20 +886,26 @@ namespace VladTools.Infrastructure
                 return null;
             }
 
-            var exact = _index.Named(link.Name);
+            if (_reach == null)
+            {
+                reason = "where the model itself lies on the server is not known, so nothing was searched round it";
+                return null;
+            }
+
+            var exact = _index.Named(link.Name, _reach);
             if (exact.Count == 1)
                 return exact[0].RsnPath;
 
             if (exact.Count > 1)
             {
-                reason = exact.Count + " models of this name on the server — choose one in \"Link Updater\"";
+                reason = exact.Count + " models of this name under " + _reach.Display + " — choose one in \"Link Updater\"";
                 return null;
             }
 
-            var loose = _index.Resembling(link.Name);
-            reason = "no model of this name on the server" +
+            var loose = _index.Resembling(link.Name, _reach);
+            reason = "no model of this name under " + _reach.Display +
                      (loose.Count > 0 ? " — a similar one: " + loose[0].Name + "; check it in \"Link Updater\"" : string.Empty) +
-                     (_index.LimitReached ? " (the search stopped after " + ServerModelIndex.FolderLimit + " folders)" : string.Empty);
+                     (_index.LimitReached ? " (the search stopped after " + _index.Limit + " folders)" : string.Empty);
             return null;
         }
 
@@ -685,7 +936,11 @@ namespace VladTools.Infrastructure
         /// <summary>Why the file could not be written; empty while it could.</summary>
         public string Error { get; private set; } = string.Empty;
 
-        public static ServerUploadLog Start(ModelFolder destination, int files, int linksOnly, bool links, bool replace)
+        /// <param name="subfolders">
+        /// Null — every file straight into the destination; otherwise the folder whose subfolders are
+        /// recreated below it, empty when the files share none.
+        /// </param>
+        public static ServerUploadLog Start(ModelFolder destination, int files, int linksOnly, bool links, bool replace, string subfolders)
         {
             var now = DateTime.Now;
             var log = new ServerUploadLog(Path.Combine(ServerUploadPreferences.ReportsFolder,
@@ -695,11 +950,34 @@ namespace VladTools.Infrastructure
             {
                 "VladTools — Upload to Server, " + now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
                 "Into: " + (destination == null ? "(nothing to upload — links only)" : destination.Display),
+                "Subfolders: " + (subfolders == null
+                    ? "not recreated — every file straight into the folder"
+                    : subfolders.Length == 0
+                        ? "asked for, but the files share no folder (different drives) — every file straight into the folder"
+                        : "recreated below it as they are below " + subfolders),
                 "Files to upload: " + files + (replace ? " (a model of the same name already there is replaced)" : " (a model of the same name already there is left as it is)"),
                 "Server models for links only: " + linksOnly,
                 "Links updated afterwards: " + (links ? "yes" : "no"),
                 string.Empty,
                 "UPLOAD"
+            });
+
+            return log;
+        }
+
+        /// <summary>The "Link Updater" batch's report: nothing goes up, only the links of models already on a server.</summary>
+        public static ServerUploadLog StartLinks(int models)
+        {
+            var now = DateTime.Now;
+            var log = new ServerUploadLog(Path.Combine(LinkUpdaterPreferences.ReportsFolder,
+                "Links " + now.ToString("yyyy-MM-dd HH-mm-ss", CultureInfo.InvariantCulture) + ".txt"));
+
+            log.Write(true, new[]
+            {
+                "VladTools — Link Updater, several models, " + now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+                "Revit Server models: " + models,
+                string.Empty,
+                "LINKS"
             });
 
             return log;
@@ -718,12 +996,14 @@ namespace VladTools.Infrastructure
                 line = result.Name + " — " + (result.Replaced ? "REPLACED " : "uploaded ") + "→ " + result.ServerPath +
                        " (" + Count(result.LinkCount, "link") + ")";
             else if (result.Skipped)
-                line = result.Name + " — already in the folder, left as it is";
+                line = result.Name + " — already there, left as it is: " + result.ServerPath;
             else
                 line = result.Name + " — NOT uploaded: " + result.Failure +
                        (result.Entry.Path.Length > 0 ? " (" + result.Entry.Path + ")" : string.Empty);
 
-            Write(false, new[] { Stamp() + line }.Concat(result.Notes.Select(note => "    note: " + note)));
+            Write(false, new[] { Stamp() + line }
+                .Concat(result.Notes.Select(note => "    note: " + note))
+                .Concat(result.Warnings.Select(warning => "    Revit warning, dismissed: " + warning)));
         }
 
         public void Links(ServerUploadResult result)
@@ -757,6 +1037,7 @@ namespace VladTools.Infrastructure
 
             lines.AddRange(result.LinksLeft.Select(text => "    left as it is: " + text));
             lines.AddRange(result.LinksNotes.Select(note => "    note: " + note));
+            lines.AddRange(result.LinksWarnings.Select(warning => "    Revit warning, dismissed: " + warning));
 
             Write(false, lines);
         }
@@ -769,6 +1050,55 @@ namespace VladTools.Infrastructure
         public void Finish(IEnumerable<string> lines)
         {
             Write(false, new[] { string.Empty, Stamp() + "Done." }.Concat(lines));
+        }
+
+        /// <summary>The second pass in one line, for the report's totals.</summary>
+        public static string LinkTotals(IReadOnlyList<ServerUploadResult> results)
+        {
+            var tried = results.Where(result => result.LinksTried).ToList();
+
+            return "Links: models where links were pointed at the server: " +
+                   tried.Count(result => result.Links != null && result.Links.Count > 0 && result.LinksFailure.Length == 0) +
+                   " of " + tried.Count + "; models whose links could not be updated: " +
+                   tried.Count(result => result.LinksFailure.Length > 0) + ".";
+        }
+
+        /// <summary>
+        /// The second pass in the dialog at the end, as titled lists: "Upload to Server" and the "Link
+        /// Updater" batch say the same about the same work, each in its own dialog.
+        /// </summary>
+        public static List<KeyValuePair<string, List<string>>> LinkSections(IReadOnlyList<ServerUploadResult> results)
+        {
+            var tried = results.Where(result => result.LinksTried).ToList();
+
+            return new List<KeyValuePair<string, List<string>>>
+            {
+                Titled("Links", tried.Where(result => result.LinksFailure.Length == 0)
+                    .Select(result => result.Name + " — " + (result.LinkCount == 0 ? "no links" : LinkSummary(result)))),
+
+                Titled("Links left as they are — finish them in \"Link Updater\" with the model open", tried
+                    .SelectMany(result => result.LinksLeft.Select(line => result.Name + ": " + line))),
+
+                Titled("Links that failed", tried
+                    .Where(result => result.Links != null)
+                    .SelectMany(result => result.Links.Failures.Select(line => result.Name + ": " + line))),
+
+                Titled("Links could not be updated", tried.Where(result => result.LinksFailure.Length > 0)
+                    .Select(result => result.Name + " — " + result.LinksFailure))
+            };
+        }
+
+        /// <summary>Every warning dismissed in the run, each with its model — for the dialog at the end.</summary>
+        public static List<string> WarningLines(IReadOnlyList<ServerUploadResult> results)
+        {
+            return results
+                .SelectMany(result => result.Warnings.Concat(result.LinksWarnings).Select(warning => result.Name + " — " + warning))
+                .ToList();
+        }
+
+        private static KeyValuePair<string, List<string>> Titled(string title, IEnumerable<string> lines)
+        {
+            return new KeyValuePair<string, List<string>>(title, lines.ToList());
         }
 
         /// <summary>"5 pointed at the server, 1 already there, 2 left as they are, 1 failed".</summary>

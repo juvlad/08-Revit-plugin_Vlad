@@ -66,6 +66,65 @@ namespace VladTools.UI
             return picker.ShowDialog() == true ? ToFolder(picker.SelectedFolder) : null;
         }
 
+        /// <summary>
+        /// A Revit Server by name — for "Whole server…", where there is no folder to pick. The names typed
+        /// before are offered, and one typed here joins them. Null when the user thought better of it.
+        /// </summary>
+        public static string PickServer(Window owner, string title, LinkPreferences preferences)
+        {
+            var box = new ComboBox
+            {
+                IsEditable = true,
+                MinWidth = 320,
+                Margin = new Thickness(0, 6, 0, 12),
+                Text = preferences.Servers.FirstOrDefault() ?? string.Empty
+            };
+
+            foreach (var name in preferences.Servers)
+                box.Items.Add(name);
+
+            var dialog = new Window
+            {
+                Title = title,
+                Owner = owner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ShowInTaskbar = false
+            };
+
+            var ok = new Button { Content = "Take every model", IsDefault = true, MinWidth = 90, Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 8, 0) };
+            ok.Click += (s, e) => dialog.DialogResult = true;
+
+            var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 90, Padding = new Thickness(10, 3, 10, 3) };
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            buttons.Children.Add(ok);
+            buttons.Children.Add(cancel);
+
+            var panel = new StackPanel { Margin = new Thickness(12) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "The Revit Server — its name as in Revit's own dialog, without \"RSN://\".\n" +
+                       "Every folder of it is read to list the models: on a large server, a minute or more."
+            });
+            panel.Children.Add(box);
+            panel.Children.Add(buttons);
+
+            dialog.Content = panel;
+            dialog.Loaded += (s, e) => box.Focus();
+
+            if (dialog.ShowDialog() != true)
+                return null;
+
+            var server = RevitServerClient.NormalizeServer(box.Text);
+            if (server.Length == 0)
+                return null;
+
+            Remember(preferences.Servers, server);
+            return server;
+        }
+
         private static ModelBrowserWindow ServerWindow(
             Window owner,
             string title,

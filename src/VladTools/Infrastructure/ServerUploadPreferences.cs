@@ -29,6 +29,7 @@ namespace VladTools.Infrastructure
             "# \"Upload to Server\" button settings — the Project panel.",
             "# FOLDER — the Revit Server folder the models went into last, as SERVER | RSN://server/folder",
             "# LINKS — 1/0: update the links in the uploaded models afterwards",
+            "# SUBFOLDERS — 1/0: recreate the files' subfolders below the Revit Server folder",
             "# SET — the link set worked with last",
             "# MODEL — a model of the list from last time, in the same line format as in link sets:",
             "#   FILE | path · SERVER | RSN://…",
@@ -39,6 +40,9 @@ namespace VladTools.Infrastructure
         public string Folder { get; set; } = string.Empty;
 
         public bool UpdateLinks { get; set; } = true;
+
+        /// <summary>Recreate the subfolders the files lie in below the destination, rather than put every file straight into it.</summary>
+        public bool KeepFolders { get; set; } = true;
 
         /// <summary>The link set worked with last.</summary>
         public string Set { get; set; } = string.Empty;
@@ -92,6 +96,7 @@ namespace VladTools.Infrastructure
                     string.Empty,
                     Line("FOLDER", Folder ?? string.Empty),
                     Line("LINKS", UpdateLinks ? "1" : "0"),
+                    Line("SUBFOLDERS", KeepFolders ? "1" : "0"),
                     Line("SET", Set ?? string.Empty)
                 };
 
@@ -133,6 +138,9 @@ namespace VladTools.Infrastructure
                     break;
                 case "LINKS":
                     UpdateLinks = value != "0";
+                    break;
+                case "SUBFOLDERS":
+                    KeepFolders = value != "0";
                     break;
                 case "SET":
                     Set = value;

@@ -19,6 +19,9 @@ namespace VladTools.Infrastructure
         public List<string> Failures { get; } = new List<string>();
         public List<string> Notes { get; } = new List<string>();
 
+        /// <summary>Revit's warnings the run dismissed (<see cref="WarningSilencer"/>) — the caller takes them in; Run does not.</summary>
+        public List<string> Warnings { get; } = new List<string>();
+
         /// <summary>Links pointed at the server — loaded from there or not.</summary>
         public int Count => Repointed.Count + NotLoaded.Count;
     }

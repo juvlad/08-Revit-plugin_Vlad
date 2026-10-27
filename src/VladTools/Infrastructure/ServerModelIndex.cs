@@ -39,8 +39,8 @@ namespace VladTools.Infrastructure
     /// nothing on the server answers to the GUIDs. What survives a move from the cloud to a server is
     /// the model's name, so the server is read folder by folder (<see cref="RevitServerClient.Contents"/>
     /// — the API itself lists no server folders) and a link is matched by its name. The walk is breadth
-    /// first and bounded by <see cref="FolderLimit"/>, the same reasoning as the "Building Kit": every
-    /// folder is an HTTP request, and a whole server can hold thousands of them.
+    /// first and bounded by <see cref="Limit"/>, the same reasoning as the "Building Kit": every folder is
+    /// an HTTP request, and a whole server can hold thousands of them.
     ///
     /// The index only grows: a wider search walks the new part and skips what was read already, so
     /// "search wider" costs the folders it adds, not the whole tree again.
@@ -50,6 +50,13 @@ namespace VladTools.Infrastructure
         /// <summary>How many folders one window may read in all, before it stops and says so.</summary>
         public const int FolderLimit = 400;
 
+        /// <summary>
+        /// The same for a batch. A window waits on its reads; a batch over every project of a server reads
+        /// each project's folders once for all its models, and at <see cref="FolderLimit"/> it would stop
+        /// reading a few projects in — every model after that would find its links "not on the server".
+        /// </summary>
+        public const int BatchFolderLimit = 5000;
+
         /// <summary>A Revit version suffix at the end of a name: "_R22", "-R2024". Only a loose match ignores it.</summary>
         private static readonly Regex VersionSuffix =
             new Regex(@"[ _\-.]R(20)?\d{2}$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -58,11 +65,20 @@ namespace VladTools.Infrastructure
         private readonly List<ServerModel> _models = new List<ServerModel>();
         private readonly List<string> _failures = new List<string>();
 
+        /// <param name="limit">The most folders this index reads in all — <see cref="FolderLimit"/> or <see cref="BatchFolderLimit"/>.</param>
+        public ServerModelIndex(int limit = FolderLimit)
+        {
+            Limit = limit;
+        }
+
+        /// <summary>The most folders this index reads in all, before it stops and says so.</summary>
+        public int Limit { get; }
+
         public int FolderCount => _walked.Count;
 
         public int ModelCount => _models.Count;
 
-        /// <summary>The walk stopped at <see cref="FolderLimit"/>: what was not read may still hold the model.</summary>
+        /// <summary>The walk stopped at <see cref="Limit"/>: what was not read may still hold the model.</summary>
         public bool LimitReached { get; private set; }
 
         /// <summary>Folders that could not be read — named, not fatal: the rest of the tree is still worth having.</summary>
@@ -96,7 +112,7 @@ namespace VladTools.Infrastructure
                 if (_walked.Contains(key))
                     continue;
 
-                if (_walked.Count >= FolderLimit)
+                if (_walked.Count >= Limit)
                 {
                     LimitReached = true;
                     break;
@@ -134,14 +150,16 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>The models of exactly this name — case and the extension aside, as Revit itself compares them.</summary>
-        public IReadOnlyList<ServerModel> Named(string name)
+        /// <param name="within">Only models in this folder or under it; null — anywhere read so far.</param>
+        public IReadOnlyList<ServerModel> Named(string name, ModelFolder within = null)
         {
             var wanted = Bare(name);
             if (wanted.Length == 0)
                 return new List<ServerModel>();
 
             return _models
-                .Where(model => string.Equals(Bare(model.Name), wanted, StringComparison.CurrentCultureIgnoreCase))
+                .Where(model => Under(model, within) &&
+                                string.Equals(Bare(model.Name), wanted, StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
         }
 
@@ -150,13 +168,34 @@ namespace VladTools.Infrastructure
         /// "Корпус1_OV_R22" and "Корпус1-OV-R24". Asked only when <see cref="Named"/> finds nothing, and
         /// never taken without the user's check — a loose name is a guess.
         /// </summary>
-        public IReadOnlyList<ServerModel> Resembling(string name)
+        public IReadOnlyList<ServerModel> Resembling(string name, ModelFolder within = null)
         {
             var wanted = Loose(name);
             if (wanted.Length == 0)
                 return new List<ServerModel>();
 
-            return _models.Where(model => Loose(model.Name) == wanted).ToList();
+            return _models.Where(model => Under(model, within) && Loose(model.Name) == wanted).ToList();
+        }
+
+        /// <summary>
+        /// Whether a model lies in a folder or anywhere under it. An index a batch shares between the
+        /// projects of a whole server holds every project read so far, and a link must not be matched with
+        /// its namesake in another project only because that project happened to be read first.
+        /// </summary>
+        private static bool Under(ServerModel model, ModelFolder folder)
+        {
+            if (folder == null)
+                return true;
+
+            if (folder.Origin != LinkOrigin.Server ||
+                !string.Equals(folder.Server, model.Server, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (folder.Path == RevitServerClient.RootFolder)
+                return true;
+
+            return string.Equals(model.FolderPath, folder.Path, StringComparison.CurrentCultureIgnoreCase) ||
+                   model.FolderPath.StartsWith(folder.Path + "|", StringComparison.CurrentCultureIgnoreCase);
         }
 
         /// <summary>

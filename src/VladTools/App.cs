@@ -468,7 +468,8 @@ namespace VladTools
                 name: "VladTools_LinkUpdater",
                 text: "Link\nUpdater",
                 commandType: typeof(LinkUpdaterCommand),
-                tooltip: "Points the model's links at Revit Server: every BIM360 link to the model of the same name on the server this model lies on.",
+                tooltip: "Points the model's links at Revit Server: every BIM360 link to the model of the same name on the server this model lies on. " +
+                         "\"Several models…\" does it for a whole server, folders or single models.",
                 longDescription:
                     "After models move from BIM360 to Revit Server, every link in every one of them still points at the cloud.\n" +
                     "Revit's own way out is \"Manage Links → Reload From\", one link at a time, browsing the server for each.\n\n" +
@@ -479,8 +480,13 @@ namespace VladTools
                     "\"Choose on server…\" cover models that went somewhere else.\n\n" +
                     "The links are reloaded from their new place and stay the same elements: placement, pins, worksets, view\n" +
                     "settings and Copy/Monitor are kept, and so are the worksets open inside each link. Reloading a link\n" +
-                    "clears Revit's undo history — save the model first.",
-                iconBaseName: "linkupdater");
+                    "clears Revit's undo history — save the model first.\n\n" +
+                    "\"Several models…\" does the same for models on Revit Server you do not open yourself — the whole server,\n" +
+                    "folders or single models: each is opened as a local copy, every link with exactly one namesake round it\n" +
+                    "is repointed, and the model is synchronised back. Works with no model open. Revit's warnings on the way\n" +
+                    "(\"needs Coordination Review\") are listed in the report instead of stopping the run.",
+                iconBaseName: "linkupdater",
+                availability: typeof(AlwaysAvailable));
 
             // ───────────────── Button 22: Upload to Server (project) ─────────────────
             Ribbon.AddPushButton(

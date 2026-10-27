@@ -61,13 +61,15 @@ namespace VladTools.Commands
             var results = window.Selected.Select(row => new ServerUploadResult(row.Entry)).ToList();
             var files = results.Where(result => result.Entry.Origin == LinkOrigin.File).ToList();
 
-            // What is in the folder now, not when the window opened: the run decides by it what to skip.
-            var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // What is in the folders now, not when the window opened: the run decides by it what to skip.
+            ServerFolderCache folders = null;
             if (destination != null && files.Count > 0)
             {
+                folders = new ServerFolderCache(destination.Server, destination.Path);
+
                 try
                 {
-                    taken = ServerUpload.ModelNames(destination);
+                    folders.Models(destination.Path);
                 }
                 catch (Exception exception)
                 {
@@ -77,22 +79,63 @@ namespace VladTools.Commands
                 }
             }
 
-            var log = ServerUploadLog.Start(destination, files.Count, results.Count(result => result.LinksOnly),
-                window.UpdateLinks, window.Replace);
+            // With "Recreate the subfolders", a file goes as far below the destination as it lies below the
+            // folder all the files share; otherwise straight into the destination.
+            var root = window.KeepFolders && files.Count > 0 ? ServerUpload.CommonFolder(files.Select(file => file.Entry.Path)) : null;
+            var targets = new Dictionary<ServerUploadResult, string>();
 
-            var uploaded = new Dictionary<string, ServerUploadResult>(StringComparer.OrdinalIgnoreCase);
-
-            // Two files of one name from different folders: the second would land on the first — with
-            // "Replace", write over the model this very run had just put there. The first one goes.
-            var first = new Dictionary<string, ServerUploadResult>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in files)
             {
-                ServerUploadResult earlier;
-                if (first.TryGetValue(file.Name, out earlier))
-                    file.Failure = "another file of this name is earlier in the list (" + earlier.Entry.Path + ") — only the first goes up";
+                var problem = string.Empty;
+                var path = destination == null
+                    ? null
+                    : window.KeepFolders ? ServerUpload.TargetPath(destination.Path, root, file.Entry.Path, out problem) : destination.Path;
+
+                if (destination == null)
+                    file.Failure = "no Revit Server folder was chosen";
+                else if (path == null)
+                    file.Failure = problem;
                 else
-                    first[file.Name] = file;
+                    targets[file] = path;
             }
+
+            var log = ServerUploadLog.Start(destination, files.Count, results.Count(result => result.LinksOnly),
+                window.UpdateLinks, window.Replace, window.KeepFolders ? root ?? string.Empty : null);
+
+            // Two files of one name for one folder: the second would land on the first — with "Replace",
+            // write over the model this very run had just put there. The first one goes.
+            var first = new Dictionary<string, ServerUploadResult>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in files.Where(targets.ContainsKey))
+            {
+                var key = targets[file] + "|" + file.Name;
+
+                ServerUploadResult earlier;
+                if (first.TryGetValue(key, out earlier))
+                    file.Failure = "another file of this name goes into the same server folder (" + earlier.Entry.Path + ") — only the first goes up";
+                else
+                    first[key] = file;
+            }
+
+            // Revit's warnings — "needs Coordination Review" after every link reloaded, above all — would
+            // each wait for a click; the run dismisses them and the report says what they were.
+            using (var warnings = new WarningSilencer(app))
+                Passes(app, window, results, folders, targets, log, warnings);
+
+            log.Finish(Totals(results, window.UpdateLinks));
+
+            Report(results, destination, window.UpdateLinks, log);
+        }
+
+        private static void Passes(
+            Autodesk.Revit.ApplicationServices.Application app,
+            ServerUploadWindow window,
+            IReadOnlyList<ServerUploadResult> results,
+            ServerFolderCache folders,
+            IDictionary<ServerUploadResult, string> targets,
+            ServerUploadLog log,
+            WarningSilencer warnings)
+        {
+            var uploaded = new Dictionary<string, ServerUploadResult>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var result in results)
             {
@@ -105,17 +148,24 @@ namespace VladTools.Commands
                             break;
                         }
 
-                        try
+                        var path = targets[result];
+
+                        if (Prepare(folders, path, result))
                         {
-                            ServerUpload.Upload(app, result, destination, window.Replace, taken, uploaded);
-                        }
-                        catch (Exception exception)
-                        {
-                            // Nothing in Upload is meant to throw; a model that does anyway is a line,
-                            // not the end of a run hours long.
-                            result.Failure = "the upload broke off: " + LinkCatalog.Explain(exception);
+                            try
+                            {
+                                ServerUpload.Upload(app, result, ModelFolder.ForServer(folders.Server, path), window.Replace,
+                                    folders.Models(path), uploaded);
+                            }
+                            catch (Exception exception)
+                            {
+                                // Nothing in Upload is meant to throw; a model that does anyway is a line,
+                                // not the end of a run hours long.
+                                result.Failure = "the upload broke off: " + LinkCatalog.Explain(exception);
+                            }
                         }
 
+                        result.Warnings.AddRange(warnings.Take());
                         log.Upload(result);
                         break;
 
@@ -130,38 +180,40 @@ namespace VladTools.Commands
                 }
             }
 
-            if (window.UpdateLinks)
+            if (!window.UpdateLinks)
+                return;
+
+            var queue = results.Where(result => result.Uploaded || result.Skipped || result.LinksOnly).ToList();
+
+            if (queue.Count > 0)
+                log.Section("LINKS");
+
+            ServerUpload.UpdateLinks(app, queue, new ServerLinkTargets(uploaded), log, warnings);
+        }
+
+        /// <summary>
+        /// Makes the file's server folder where it is missing — just before its upload, so a run that breaks
+        /// off leaves no empty folders for files it never reached — and notes every folder made.
+        /// </summary>
+        private static bool Prepare(ServerFolderCache folders, string path, ServerUploadResult result)
+        {
+            var made = new List<string>();
+
+            try
             {
-                var targets = new ServerLinkTargets(uploaded);
-                var queue = results.Where(result => result.Uploaded || result.Skipped || result.LinksOnly).ToList();
-
-                if (queue.Count > 0)
-                    log.Section("LINKS");
-
-                foreach (var result in queue)
-                {
-                    try
-                    {
-                        ServerUpload.UpdateLinks(app, result, targets);
-                    }
-                    catch (Exception exception)
-                    {
-                        result.LinksFailure = "the links broke off: " + LinkCatalog.Explain(exception);
-                    }
-
-                    log.Links(result);
-                }
-
-                if (targets.LimitReached)
-                    log.Lines(new[] { "The server search stopped after " + ServerModelIndex.FolderLimit + " folders: a link left \"not on the server\" may still be there." });
-
-                if (targets.Failures.Count > 0)
-                    log.Lines(new[] { "Server folders that could not be read:" }.Concat(targets.Failures.Select(line => "    " + line)));
+                string failure;
+                if (!folders.Ensure(path, made, out failure))
+                    result.Failure = "its folder could not be made on the server: " + failure;
+            }
+            catch (Exception exception)
+            {
+                result.Failure = "its folder on the server could not be read or made: " + LinkCatalog.Short(exception.Message);
             }
 
-            log.Finish(Totals(results, window.UpdateLinks));
+            result.Notes.AddRange(made.Select(folder =>
+                "folder made on the server: " + RevitServerClient.RsnPath(folders.Server, folder, string.Empty).TrimEnd('/')));
 
-            Report(results, destination, window.UpdateLinks, log);
+            return result.Failure.Length == 0;
         }
 
         private static IEnumerable<string> Totals(IReadOnlyList<ServerUploadResult> results, bool links)
@@ -173,13 +225,7 @@ namespace VladTools.Commands
                          "; not uploaded: " + files.Count(result => !result.Uploaded && !result.Skipped) + ".";
 
             if (links)
-            {
-                var tried = results.Where(result => result.LinksTried).ToList();
-                yield return "Links: models where links were pointed at the server: " +
-                             tried.Count(result => result.Links != null && result.Links.Count > 0 && result.LinksFailure.Length == 0) +
-                             " of " + tried.Count + "; models whose links could not be updated: " +
-                             tried.Count(result => result.LinksFailure.Length > 0) + ".";
-            }
+                yield return ServerUploadLog.LinkTotals(results);
         }
 
         // ───────────────────────────── the report ─────────────────────────────
@@ -197,29 +243,15 @@ namespace VladTools.Commands
 
             if (links)
             {
-                var tried = results.Where(result => result.LinksTried).ToList();
-
-                text += Section("Links", tried.Where(result => result.LinksFailure.Length == 0)
-                    .Select(result => result.Name + " — " + (result.LinkCount == 0 ? "no links" : ServerUploadLog.LinkSummary(result)))
-                    .ToList());
-
-                text += Section("Links left as they are — finish them in \"Link Updater\"", tried
-                    .SelectMany(result => result.LinksLeft.Select(line => result.Name + ": " + line))
-                    .ToList());
-
-                text += Section("Links that failed", tried
-                    .Where(result => result.Links != null)
-                    .SelectMany(result => result.Links.Failures.Select(line => result.Name + ": " + line))
-                    .ToList());
-
-                text += Section("Links could not be updated", tried.Where(result => result.LinksFailure.Length > 0)
-                    .Select(result => result.Name + " — " + result.LinksFailure)
-                    .ToList());
+                foreach (var section in ServerUploadLog.LinkSections(results))
+                    text += Section(section.Key, section.Value);
             }
 
             text += Section("Notes", results
                 .SelectMany(result => result.Notes.Concat(result.LinksNotes).Select(note => result.Name + " — " + note))
                 .ToList());
+
+            text += Section("Revit warnings — dismissed so the run would not stop", ServerUploadLog.WarningLines(results));
 
             text += log.Error.Length > 0
                 ? "\n\nTHE FULL REPORT COULD NOT BE WRITTEN: " + log.Error + "\n" + log.FilePath

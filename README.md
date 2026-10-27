@@ -1454,9 +1454,10 @@ parameter as the source gives every element its own type's value.
 
 ### Link Updater (Project panel)
 
-Works **only in a project** (`.rvt`, and a template `.rte`). Points the model's links at **Revit Server**:
+Works **in a project** (`.rvt`, and a template `.rte`). Points the model's links at **Revit Server**:
 every link — above all a BIM360 one — is reloaded from the model of the same name on the server the open
-model lies on.
+model lies on. **"Several models…"** does the same for a batch of models on the server — the whole server,
+folders or single models — and works from a family or with no model open too (see below).
 
 What for: after the models of a project move from BIM360 to Revit Server, every link in every one of
 them still points at the cloud. Revit's own way out is "Manage Links → Reload From", one link at a time,
@@ -1515,8 +1516,31 @@ walking the server tree for each.
   nowhere to start from: choose the folder with "Another folder…" — it is remembered for the next model.
 - Every path is read back after the reload; the report lists what was repointed, what Revit did not
   load from the new place, and what failed and why.
-- A whole batch of models just put on Revit Server can have its links updated in one go — see "Upload to
-  Server" below; it runs this same button's reload on every model.
+- **Revit's warnings do not stop the run.** Reloading a link whose grids or levels this model copy-monitors
+  makes Revit say "Instance of linked .rvt file needs Coordination Review" — one dialog per link. The button
+  dismisses such warnings and lists them in its report instead (with the link's name); the Coordination
+  Review alert itself stays in the model — check it in Collaborate → Coordination Review. Errors are not
+  dismissed: Revit still shows those.
+
+**Several models — the batch.** "Several models…" in the window (or straight away, with no model open or
+in a family) opens a list of models on Revit Server:
+
+- **"Whole server…"** — every model on a server, in every folder (type or pick the server name; every
+  folder is read once — on a large server that takes a minute or more);
+- **"Folder…"** — every model in a server folder, with its subfolders if you say so;
+- **"Revit Server…"** — single models picked in the tree;
+- a **saved set** — the same sets as in "Link Manager" (only its Revit Server models are taken).
+
+"Update links" confirms and runs. Each model is opened as a **local copy** with only the worksets its links
+stand in, every link is pointed at **the one** model of its name found around the model's own folder (its
+folder, then a level up while something is missing — never the whole server, so a namesake in another
+project is never taken), and the model is **synchronised** with everything handed back. Nobody chooses per
+link here, so anything less certain — several models of one name, a name that only resembles, a link to a
+local file, a link somebody holds — is **left as it is** and listed: open that model and finish it in the
+window. A model where nothing changed is not synchronised. The full report is a text file written as the
+run goes — `%AppData%\VladTools\linkupdater\reports\` — and the list is remembered, so a run that broke off
+is started again over the same list. Best run with no model open: a model open in Revit cannot be updated
+by the batch, and a link to it cannot be repointed.
 
 ### Upload to Server (Project panel)
 
@@ -1534,13 +1558,18 @@ models that is days of clicking.
    uploaded — only its links are updated. BIM360 is not offered: download the models first.
 2. **Choose the Revit Server folder** they go into ("Choose…"), or create one inside it ("New folder…").
    The folder is read at once, and the status line says which models are already there.
-3. **"Then point their links at the server"** (on by default) and **what to do with a model of the same
+3. **"Recreate the subfolders"** (on by default): a file goes into the same subfolder on the server as on
+   disk. Add `D:\SLS\PS\` with its subfolders `K1\`, `K2\`, `ST\`, and the models land in `…\9.2_PS\K1\`,
+   `…\9.2_PS\K2\`, `…\9.2_PS\ST\` — to any depth. The structure is taken below the deepest folder all the
+   checked files share; the status line and the confirmation list the folders that will be made. Off —
+   every file goes straight into the chosen folder.
+4. **"Then point their links at the server"** (on by default) and **what to do with a model of the same
    name already in the folder** — skip it (the default, every time) or replace it.
-4. **"Upload"** confirms and runs. Revit is busy until the whole list is done.
+5. **"Upload"** confirms and runs. Revit is busy until the whole list is done.
 
 **Pass 1 — the upload.** Each file is opened **detached, with every workset closed** — quick, nothing but
-the file itself is loaded, and your file on disk is not changed — and saved into the folder **under its own
-name** as a central model. Its worksets are handed back straight away, so the team can work in it, and the
+the file itself is loaded, and your file on disk is not changed — and saved into its folder **under its own
+name** as a central model; a folder missing on the server is made just before the first file that goes in. Its worksets are handed back straight away, so the team can work in it, and the
 server folder is read to confirm the model is there.
 
 **Pass 2 — the links**, once every model is up (a link can only be pointed at a model already on the
@@ -1565,7 +1594,15 @@ everything is handed back.
 - A model **saved in a newer Revit**, or **not workshared**, is not uploaded — the report says why (Revit
   Server keeps only workshared models; turn worksharing on in it first). A model from an older Revit is
   upgraded on the way.
-- Two files with **the same name** go up once — the second is listed as not uploaded.
+- Two files with **the same name for one server folder** go up once — the second is listed as not uploaded.
+  In different subfolders they both go up, but a link to that name is then left for "Link Updater": the
+  button will not guess which of the two it means.
+- If every checked file lies in **one** subfolder, that subfolder is where the structure starts, and it is
+  not made on the server — add its parent folder's models too, or create the folder with "New folder…".
+- **Revit's warnings** on the way — "needs Coordination Review" after a link is reloaded, above all — are
+  dismissed rather than left waiting for a click, and listed in the report with their model. Errors are not.
+- Only the links pass is needed for models already on the server? "Link Updater → Several models…" runs
+  it on its own — over a whole server, folders or single models.
 - **The full report** is a text file written as the run goes, with a time on every line —
   `%AppData%\VladTools\serverupload\reports\`. If Revit falls over halfway, the file says how far it got.
   The dialog at the end summarises it and opens it.
@@ -1600,7 +1637,7 @@ src/VladTools/
     ViewsToSheetsCommand.cs           logic for the "Views to Sheets" button (project)
     SheetScaleCommand.cs              logic for the "Sheet Scale" button (project)
     CopyParameterValuesCommand.cs     logic for the "Copy Parameters" button (project)
-    LinkUpdaterCommand.cs             logic for the "Link Updater" button (project)
+    LinkUpdaterCommand.cs             logic for the "Link Updater" button (project; its batch with no document too)
     ServerUploadCommand.cs            logic for the "Upload to Server" button (project, or no document)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
@@ -1638,7 +1675,8 @@ src/VladTools/
     CoordinationScan.cs              the result of comparing against one link
     BatchCoordinationWindow.cs       "Other models…": the model list, the worksets to open, what may be changed
     ModelListPanel.cs                a batch's model list: Folder…, Files…, Revit Server…, BIM360…, sets, the table —
-                                     shared by "Other models…", "Sheets → Several models…" and "Upload to Server"
+                                     shared by "Other models…", "Sheets → Several models…", "Upload to Server" and
+                                     "Link Updater → Several models…" (server-only there, with "Whole server…")
     BatchModelRow.cs                 a row of that table (check box, model, source, where it lives)
     ScheduleLibraryWindow.cs         the "Schedule Library" window: the set, where to fill it from, the insert table
     ScheduleChooserWindow.cs         "which of this model's schedules go into the set"
@@ -1697,15 +1735,19 @@ src/VladTools/
     LinkUpdaterWindow.cs             the "Link Updater" window: the links, where each points, the server model to point it at
     LinkUpdateRow.cs                 a row of that table (check box, the server models found, the choice, state)
     LinkPathInfo.cs                  a snapshot of one link: where it points, whether it loads, what stops it
+    LinkUpdaterBatchWindow.cs        "Link Updater → Several models…": the Revit Server models whose links are updated
     ServerUploadWindow.cs            the "Upload to Server" window: the models, the Revit Server folder, the options
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
-    AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets" for its batch, "Upload to Server")
+    AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets" and "Link Updater" for their
+                                 batches, "Upload to Server")
     Icons.cs                     loading icons from the assembly's resources
     FormulaLibrary.cs            reading and writing the formula list file (%AppData%)
     FormulaParser.cs             finding names in a formula that are not family parameters
     NameBuffer.cs                reading and writing the name buffer (%AppData%)
     WarningSuppressor.cs         suppresses Revit warnings during a batch edit and gathers them for the report
+    WarningSilencer.cs           the same for a whole run with no transaction of ours — Revit's own LoadFrom, opening,
+                                 synchronising ("needs Coordination Review" above all)
     DimensionLabelCache.cs       the saved family scan for dimension labels (%AppData%, one file per project)
     JsonHttp.cs                  JSON parsing and HTTP requests (no third-party libraries)
     AutodeskSession.cs           the Autodesk token of the user signed in to Revit
@@ -1756,9 +1798,10 @@ src/VladTools/
     ParameterValueConverter.cs   a parameter's identity across families, and a value converted between kinds (text, number, yes/no…)
     CopyParameterPreferences.cs  the "Copy Parameters" window settings (%AppData%)
     ServerModelIndex.cs          the models of a part of Revit Server, read once and found by name
-    LinkUpdaterPreferences.cs    the "Link Updater" window settings (%AppData%)
+    LinkUpdaterPreferences.cs    the "Link Updater" windows' settings, the batch's list and reports folder (%AppData%)
     LinkRepointing.cs            repointing a model's links at Revit Server — "Link Updater" and "Upload to Server" alike
-    ServerUpload.cs              "Upload to Server": the upload, the links pass, where each link goes, the report file
+    ServerUpload.cs              "Upload to Server": the upload, the links pass (also the "Link Updater" batch), where
+                                 each link goes, the report file
     ServerUploadPreferences.cs   the "Upload to Server" window settings and its reports folder (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```

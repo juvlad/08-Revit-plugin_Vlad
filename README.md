@@ -409,6 +409,9 @@ Details:
   touched, but if checked, they reload with the new workset setup, and if the project workset is
   changed they move into it together with all of their instances. The placement of an existing
   link does not change: Revit will not allow that — the link has to be deleted and set up again.
+  A BIM360 link is listed only while it is loaded: an unloaded one does not say which model it is.
+  Picking that model again is refused with a note rather than linking it a second time — load it in
+  Manage Links, and it shows up here as an existing link.
 - **Reloading existing links wipes the undo history.** That is how Revit works: reloading a link
   clears the whole "Undo" list. So it is done first, and new links are set up after it — Ctrl+Z
   will bring those back. But whatever was done in the project before pressing the button can no
@@ -1449,6 +1452,66 @@ parameter as the source gives every element its own type's value.
 - **Every value is read back** after the copy, and the report counts only what the model really holds.
 - The category, the two parameters and the options are remembered for the next time.
 
+### Link Updater (Project panel)
+
+Works **only in a project** (`.rvt`, and a template `.rte`). Points the model's links at **Revit Server**:
+every link — above all a BIM360 one — is reloaded from the model of the same name on the server the open
+model lies on.
+
+What for: after the models of a project move from BIM360 to Revit Server, every link in every one of
+them still points at the cloud. Revit's own way out is "Manage Links → Reload From", one link at a time,
+walking the server tree for each.
+
+**What the button does.**
+
+1. **Open the model that is already on Revit Server** (its local copy will do) and press the button. The
+   window lists every link of the model: its name, whether it loads now ("Loaded", "Not found",
+   "Unloaded"…) and where it points (`BIM 360://Project/Model.rvt`, a file, an `RSN://` path).
+2. **The server is searched on its own** as soon as the window opens: the open model's own folder with
+   everything under it first, then a level up, and up again while some link is still not found — but
+   never onto the whole server by itself. The line above the table says what was read.
+3. **"New path on Revit Server"** — for every link the models of the same name, the nearest to the open
+   model first:
+   - found **exactly once** → chosen and checked;
+   - **several** of that name (a working folder and an archive, say) → the nearest is chosen but left
+     unchecked, "State" says so; equally near → nothing is chosen, pick one in the drop-down;
+   - only a name that differs in punctuation or a Revit version suffix (`Корпус1_OV_R22` ↔
+     `Корпус1-OV-R24`) → offered, flagged red, unchecked;
+   - a **file link** (a model on disk) with a namesake on the server is offered but never checked by
+     itself — it may be a local model on purpose. A link through Desktop Connector
+     (`C:\Users\…\DC\ACCDocs\…`) is not a file link in this sense: it is a BIM360 model, and is treated
+     like one.
+4. Not found? **"Search wider"** reads one level above everything searched so far (up to the whole
+   server), **"Another folder…"** adds any folder on any Revit Server, **"Choose on server…"** picks the
+   model for the highlighted link by hand in the server tree. Picking a model in the drop-down checks the
+   row.
+5. **"Update paths"** confirms with the list "link → new path" and runs.
+
+**What is worth knowing.**
+
+- **The links stay the same elements.** Each one is reloaded from its new place (Revit's "Reload From"),
+  not deleted and linked again — so its placement, pins, project workset, view settings (Visibility/
+  Graphics overrides) and Copy/Monitor relations are all kept.
+- **A link loaded straight from BIM360** ("Points to" reads `Autodesk Docs://…` or `BIM 360://…`) is
+  repointed too — Revit keeps such a link as a cloud resource, not a file path, and the button takes it
+  over to the server path the way Revit allows for it.
+- **The worksets open inside each link are kept as they were.** A link that was loaded is compared after
+  the move, workset by workset; if Revit did not keep them, it is loaded a second time with them spelled
+  out, and the report says so. A link that was not loaded (a BIM360 one you have no access to any more)
+  has nothing to compare with — it gets what Revit remembered for it, and the report lists it to check.
+- **Reloading a link clears Revit's undo history** — nothing done before can be undone with Ctrl+Z.
+  Save the model first. Each link takes about as long as opening it.
+- **Synchronise (or save) afterwards** — until then the new paths are only in your local copy.
+- In a workshared model the links are checked out first; a link held by another user, or standing in a
+  closed workset, has no check box, and "State" says why.
+- A server model already linked into this model as a separate link cannot be chosen — Revit holds one
+  link per model; remove one of the two in Manage Links first.
+- **Nested links are not listed**: their paths live in the model they are nested in — update that model.
+- If the open model is not on Revit Server itself (still in BIM360, a file, open detached), there is
+  nowhere to start from: choose the folder with "Another folder…" — it is remembered for the next model.
+- Every path is read back after the reload; the report lists what was repointed, what Revit did not
+  load from the new place, and what failed and why.
+
 ## Structure
 
 ```
@@ -1478,6 +1541,7 @@ src/VladTools/
     ViewsToSheetsCommand.cs           logic for the "Views to Sheets" button (project)
     SheetScaleCommand.cs              logic for the "Sheet Scale" button (project)
     CopyParameterValuesCommand.cs     logic for the "Copy Parameters" button (project)
+    LinkUpdaterCommand.cs             logic for the "Link Updater" button (project)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1570,6 +1634,9 @@ src/VladTools/
     CopyParametersWindow.cs          the "Copy Parameters" window: scope, category, the two parameter lists, the preview
     CopyParameterInfo.cs             snapshots for that window: a category, a parameter; the scopes
     CopyParameterPreview.cs          what that window asks for and what the preview shows, line by line
+    LinkUpdaterWindow.cs             the "Link Updater" window: the links, where each points, the server model to point it at
+    LinkUpdateRow.cs                 a row of that table (check box, the server models found, the choice, state)
+    LinkPathInfo.cs                  a snapshot of one link: where it points, whether it loads, what stops it
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets", for its batch)
@@ -1627,6 +1694,8 @@ src/VladTools/
     SheetScalePreferences.cs     the "Sheet Scale" window settings (%AppData%)
     ParameterValueConverter.cs   a parameter's identity across families, and a value converted between kinds (text, number, yes/no…)
     CopyParameterPreferences.cs  the "Copy Parameters" window settings (%AppData%)
+    ServerModelIndex.cs          the models of a part of Revit Server, read once and found by name
+    LinkUpdaterPreferences.cs    the "Link Updater" window settings (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

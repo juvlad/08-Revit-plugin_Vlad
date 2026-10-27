@@ -706,6 +706,14 @@ namespace VladTools.Commands
             List<string> notes,
             List<string> failures)
         {
+            if (row.Entry.Origin == LinkOrigin.Cloud && LinkCatalog.HasUnreadCloudLink(doc, row.Entry.Name))
+            {
+                row.Note = "Already in the project, not loaded";
+                failures.Add(row.Name + " — a BIM360 link of this name is already in the project, not loaded: " +
+                             "load it in Manage Links, and it will be listed here as an existing link");
+                return ElementId.InvalidElementId;
+            }
+
             using (var configuration = Configuration(doc, row, preferences, notes))
             {
                 // A relative path exists only for a file: for Revit Server and the cloud the path

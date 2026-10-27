@@ -54,7 +54,7 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — sixteen buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — seventeen buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). The one exception is the "Sheets"
 batch ("Several models…"), which opens its models itself and so also runs from a family or with no
 document open at all. There is no test project — checking is done by hand, in Revit.
@@ -217,6 +217,13 @@ UI/CopyParameterPreview.cs        CopyParameterRequest (what the window asks for
                                   source, target now, target after, Write/Same/Skipped/Blocked), CopyParameterPreview
 UI/CopyParametersWindow.cs        the "Copy Parameters" window: scope, category, "Copy from" / "Copy into" lists, the four
                                   options, the conversion rule, the preview; everything Revit comes through three call-backs
+UI/LinkPathInfo.cs                a snapshot of one top-level link for "Link Updater": type id, where it points (LinkEntry +
+                                  as Manage Links shows it), load state, from BIM360 or not (cloud, cloud resource, Desktop
+                                  Connector), and what stops LoadFrom (held / closed workset)
+UI/LinkUpdateRow.cs               a row of that table + LinkTarget (one server model it could point at: RSN path, same name
+                                  or loose, picked by hand, distance); Picked — the combo's null-proof view of Target
+UI/LinkUpdaterWindow.cs           the "Link Updater" window: the server search (climbing from the open model's folder,
+                                  "Search wider", "Another folder…", "Choose on server…"), the per-row drop-down, the checks
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/AlwaysAvailable.cs an IExternalCommandAvailability saying "yes" — a button pressable with no document open
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
@@ -307,6 +314,9 @@ Infrastructure/ParameterValueConverter.cs  ParameterKey — a parameter as the s
                                   once in every form; ParameterValueConverter — converting it into a target of another
                                   storage type, writing, the read-back check, the rule in words (see "Key decisions")
 Infrastructure/CopyParameterPreferences.cs  the "Copy Parameters" settings (%AppData%\VladTools\copyparams\_settings.txt)
+Infrastructure/ServerModelIndex.cs  ServerModel + ServerModelIndex: a part of Revit Server walked breadth first (FolderLimit,
+                                  never the same folder twice), models found by exact name or loosely, tree distance
+Infrastructure/LinkUpdaterPreferences.cs  the "Link Updater" settings (%AppData%\VladTools\linkupdater\_settings.txt)
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -335,6 +345,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project | "Views to Sheets" | `ViewsToSheetsCommand` | one new sheet per checked view (`ViewSheet.Create` of the titleblock type chosen in the window, named after the view, numbered prefix + counter, skipping taken numbers) and the view on it (`Viewport.Create`), at the scale chosen per view (`View.Scale`), centred in the titleblock's drawing area — the titleblock's measured frame minus margins kept per titleblock type. The views are picked in a tree laid out like the Project Browser's view organization (folders, then the view-type groups); a folder's box takes its views. Four ways to position, asked in the window: the whole viewport with its title (`GetBoxOutline` + `GetLabelOutline`), the crop region, one model point in the same place on every sheet for views looking the same way, or like a sample sheet — where a viewport placed by hand stands, for new sheets and for views already on sheets, which are then moved there (`SetBoxCenter`). Workshared: the views and viewports are checked out first. Everything in one transaction; every viewport and scale is read back after the commit, and the report lists sheets where the view sticks out of the drawing area |
 | Project | "Sheet Scale" | `SheetScaleCommand` | one new scale (`View.Scale`) for the views standing on the checked sheets — the sheets selected in the Project Browser start checked, every view on them but legends — laid out like the browser's sheet organization, a sheet's box taking its views. "Change the checked views at 1:100 to 1:200" narrows what can be checked to one scale. A view whose template sets the scale is handled as asked in the window: the template stops setting it (`SetNonControlledTemplateParameterIds`, every other view keeps its scale), the template gets the new scale (every view using it follows), or the view is left alone. A primary and its dependents change together; the primary is the one changed. Workshared: views, viewports and templates are checked out first. One transaction; the middle of every viewport is put back where it stood (`SetBoxCenter`); every scale and viewport is read back after the commit, and the report lists sheets where a view now sticks out of the drawing area |
 | Project | "Copy Parameters" | `CopyParameterValuesCommand` | writes the value of one parameter into another on every element of one category — the selection, the active view (`FilteredElementCollector(doc, viewId)`) or the whole model; the categories are those with `AllowsBoundParameters`. Both lists are the category's parameters read off one element of each type and that type (`GetOrderedParameters`), keyed across families by `ParameterKey`; read-only ones (reporting, computed, formula-driven) are sources only. The two may store different kinds of value — `ParameterValueConverter` turns a number into text as Revit shows it, text into a number the way Revit parses a typed value (`UnitFormatUtils.TryParse`), anything into Yes/No, a length into a plain number by its displayed figure. A preview line per element (per type for a type parameter, whose elements in scope must agree) shows source, target now, target after and why not; options: only empty targets, an empty source empties a text, no unit symbol, the first number out of a text. Workshared: checked out first. One transaction; every value is read back after the commit |
+| Project | "Link Updater" | `LinkUpdaterCommand` | points the model's top-level Revit links at Revit Server — made for a move from BIM360: for every link, a model of the same name on the server the open model lies on (`LinkCatalog.Host`), found by reading the server through its REST service (`ServerModelIndex`) from the open model's own folder, climbing a level at a time while a link is still missing, never onto the server root by itself; "Search wider", "Another folder…" (any server) and "Choose on server…" (one link, by hand) go further. One model of exactly the name is checked; several (nearest preselected), a loosely matching name or a file link are offered unchecked. Each checked link is reloaded with `RevitLinkType.LoadFrom` from its `RSN://` path (a link Revit keeps as a cloud resource falls back to the `ExternalResourceReference` overload) — the same element, so placement, pins, worksets, view overrides and Copy/Monitor stay; the worksets inside the link go in as `null` ("as the link had them"), are compared by name with what was open before and put right by a second load if Revit did not keep them. Workshared: the link types are checked out first; held / closed-workset links have no check box. No transaction — `LoadFrom` clears the undo history; every path is read back after the reload |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -431,6 +442,15 @@ parameters (a whole-model scope is a pass over every element). The plan behind t
 kept, and the command writes the plan behind exactly the preview the window hands back
 (`CopyParametersWindow.Confirmed`) — the same shape as the "Excel" import. Steps 5–8 as usual, with the
 "Move to Workset" checkout before the transaction and a read-back after the commit.
+
+**Exception — `LinkUpdaterCommand`, steps 5–6.** There is no transaction at all: the whole run is
+`RevitLinkType.LoadFrom`, which refuses to run inside one and clears the undo history anyway — the
+same as "Link Manager"'s reload of existing links. So the batch is a loop of `LoadFrom` calls, each link
+in its own `try`, after the "Move to Workset" checkout of the link types; nothing is rolled back, and
+the confirmation in the window says before the run that Ctrl+Z will not reach past it. Each link is
+then read back (its path, whether it loaded, its worksets) instead of trusting the result code. Step 3
+is shared with the window: the command hands over the links, the window reads Revit Server itself
+(`ServerModelIndex` — plain HTTP, no Revit API) while it is open.
 
 ## Key decisions
 
@@ -1886,6 +1906,80 @@ kept, and the command writes the plan behind exactly the preview the window hand
   writes every line that will be written, and the status line says how many of those are out of sight
   (see "Conventions"). "Find" over each parameter list is different: the parameter it hides is no longer
   the chosen one (the preview clears) — the choice comes back when it is shown again.
+- **"Link Updater" repoints a link with `LoadFrom`, never by deleting it and linking the server model
+  anew.** `LoadFrom` keeps the `RevitLinkType` and its instances the same elements, so placement, pins,
+  the project workset, view overrides and — the one that cannot be rebuilt through the API at all —
+  Copy/Monitor relations survive (see the "Copy-monitoring does not exist in the Revit API" entry). The
+  price is the undo history, said in the confirmation. `TransmissionData` (rewriting a closed model's
+  link paths) was not an option: it is for closed models and, by RevitAPI.xml, skips cloud references —
+  exactly the ones to change.
+- **A link is matched to a server model by its name, because that is all that survives the move.** A
+  BIM360 link knows a region and a pair of GUIDs, and nothing on Revit Server answers to them. The name
+  is compared case-insensitively without ".rvt" (`ServerModelIndex.Named`); only when nothing matches
+  is a loose name tried (`Resembling`: letters and digits only, a trailing `_R22`/`-R2024` version
+  suffix dropped). The window's rule for checking a row by itself (`LinkUpdaterWindow.Certain`) is the
+  same "several matches mean the user chooses" as the kit and the workset guess: exactly one model of
+  exactly the name, and a link that is not a plain file. Several of one name — the nearest is chosen
+  (strictly nearer only; a tie chooses nothing) but left unchecked; a loose name — offered, red,
+  unchecked; a file link — never checked by itself, it may be a local model on purpose. Picking from
+  the drop-down or "Choose on server…" is the user's word and checks the row.
+- **The search starts where the open model lies and climbs only while something is missing.** The
+  open model's own folder (`LinkCatalog.Host` → the central's `RSN://` path) with everything under it,
+  then a level up, while a link has no namesake in what was read (`LinkUpdaterWindow.Climb`) — but never
+  onto the server root by itself: that is every project of the office, and a link missing from this
+  project's folders is far more likely not moved yet. "Search wider" climbs past that by hand. The
+  index only grows (`ServerModelIndex.Walk` skips a folder read before, with its subtree), so widening
+  costs only the new folders; `FolderLimit` (400) bounds a window, and hitting it is said on screen.
+  "Nearest" is the tree distance from the open model's folder (`ServerModelIndex.Distance`): a model in
+  the project's own discipline folder beats its namesake in an archive.
+- **The worksets inside a link are passed as `null` to `LoadFrom`, then checked.** RevitAPI.xml: null
+  loads "the same set of worksets the link previously had" — the right request for a model that kept
+  its worksets on the move. Whether Revit honours that for a model from another place is not taken on
+  trust: for a link loaded before the run, the open/closed state of its user worksets is read by name
+  before and after (`LinkPreferences.NormalizeWorkset`, case ignored — the `SameWorkset` rule); a
+  difference triggers a second `LoadFrom` with the setup spelled out from the new model's own worksets
+  in the "close all, open the listed ones" phrasing, and the report keeps "healed", "still different",
+  "open before but missing in the server model" and "could not be compared" apart. A link not loaded
+  before (a BIM360 model nobody can reach any more) has nothing to compare with, and is listed as
+  "as Revit remembered" — never counted as checked. No cloud model is opened for any of this.
+- **A link loaded from BIM360 is not a file path, and `LinkCatalog.Describe` cannot see it.** Revit
+  keeps a model linked from the cloud as an external resource of its cloud server:
+  `ExternalFileUtils.GetExternalFileReference` throws for it, so `Describe` returns null — the first
+  version of "Link Updater" showed such links as "(Revit does not give the path)" and refused them,
+  exactly the links the button exists for (October 2026, a loaded `MK3-SLS-K5-FAS.rvt`). They are read
+  through `Element.GetExternalResourceReference(BuiltInExternalResourceTypes.RevitLink)` instead
+  (`InSessionPath` for the "Points to" column; the type's name to search the server by; the type's
+  UniqueId as the key — the reference information's keys are undocumented, so no GUIDs are parsed out
+  of it). Repointing such a link (`LinkPathInfo.IsResource`) tries two routes in turn
+  (`LinkUpdaterCommand.Load`): `LoadFrom(ModelPath)` and, if that is refused, throws, or reports
+  success with the link still on the cloud, `LoadFrom(ExternalResourceReference)` with
+  `ExternalResourceReference.CreateLocalResource(…, PathType.Server)` — RevitAPI.xml says which
+  overload a resource link needs nowhere, and neither has been seen on a live model yet. The route
+  that took is used again for the workset second load. **`Link Manager` has the same blind spot**:
+  `LinkCatalog.Existing` skipped every link `Describe` returns null for, so a BIM360 link was missing
+  from its list, looked new, and picking the model again sent it to `RevitLinkType.Create` a second
+  time. There the GUID pair is now read off the loaded link's own document (`LinkCatalog.CloudLink`,
+  `GetCloudModelPath` — the pair a link is created from, so the key matches the model picked from
+  BIM360, and "Load" reloads it with `LoadFrom(ModelPath)`, which RevitAPI.xml says takes a cloud
+  path). An unloaded one has no document to ask and stays unlisted; creating a cloud model whose name
+  such a link carries is refused (`LinkCatalog.HasUnreadCloudLink`) with "load it in Manage Links". A link through
+  Desktop Connector (`…\ACCDocs\…`, older `…\BIM 360\…`) is an ordinary file path to Revit, but counts
+  as a BIM360 link for the window's own check (`IsCloud`), not as a plain file link.
+- **A link's new path is read back, not taken from the result code.** `LoadFrom` returning success is
+  followed by reading the same link type again (`LinkUpdaterCommand.PathNow`: its file path through
+  `LinkCatalog.Describe`, else the resource's `InSessionPath`) and a comparison with the target, case
+  and slash direction aside; a mismatch sends a resource link down the second route and is otherwise a
+  failure line, and a path that took but a model that did not load (`RevitLinkType.IsLoaded`) is a
+  section of its own.
+- **Two links can never be given one server model, and a model already linked cannot be chosen.**
+  Revit holds one `RevitLinkType` per model; the window blocks "Update paths" on a clash between
+  checked rows and makes a row uncheckable whose target is another link's current path — removing one
+  of the two links is the user's call, in Manage Links.
+- **The drop-down binds `LinkUpdateRow.Picked`, which ignores a null.** A WPF combo box pushes a null
+  into its `SelectedItem` source when its items are replaced (every wider search rebuilds them) or its
+  row unloads; there is no empty item to pick, so a null from the combo is never a choice. The window
+  sets `Target` itself (null included), and `Picked` mirrors it. The same one-binding rule as the
+  "DataGridComboBoxColumn" entry; the template is the window's own because every row has its own list.
 
 ## Storing user settings
 
@@ -1909,7 +2003,7 @@ closes, with every translation the window held (see "Key decisions"). `sheets\` 
 history, rewritten at every opening of the window, before it is shown, and for every model a batch
 opens as itself (never for a detached copy — see "Key decisions"). The batch's reports themselves are
 not kept here: they go wherever the user saves the summary.
-`viewstosheets\`, `sheetscale\` and `copyparams\` hold settings only.
+`viewstosheets\`, `sheetscale\`, `copyparams\` and `linkupdater\` hold settings only.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -2099,6 +2193,13 @@ splits at its first `=`, so a name may hold one), and the check boxes `ONLY_EMPT
 from the open project is simply not preselected. The scope is not kept: it follows the selection.
 Rewritten whenever the window closes.
 
+`linkupdater\_settings.txt` — the "Link Updater" window's settings: `KEY = value` — `ROOT` (the Revit
+Server folder last added with "Another folder…", as a `ModelFolder.Format` line: `SERVER | RSN://…`).
+It is a fallback, read only when the open model does not lie on a Revit Server itself (still in BIM360,
+a file, open detached); otherwise the search starts from the model's own folder. The server names the
+browser offers are not here — the window reads and adds to `SERVER` in `links\_settings.txt`, as
+"Base File" does. Rewritten whenever the window closes.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -2208,7 +2309,14 @@ uses `LabelUtils.GetLabelForSpec`, `FormatOptions(FormatOptions)` with `CanHaveS
 `SetSymbolTypeId`, `Parameter.AsValueString(FormatOptions)`, `Element.GetParameters(string)`,
 `Category.AllowsBoundParameters` and `UnitFormatUtils.TryParse`/`Format` — all in RevitAPI.xml of the
 three years with the same signatures, and compiled for all three. Its value class is `SourceValue`, not
-`ParameterValue`: `Autodesk.Revit.DB.ParameterValue` exists, and the name clashes (CS0104).
+`ParameterValue`: `Autodesk.Revit.DB.ParameterValue` exists, and the name clashes (CS0104). "Link
+Updater" uses `RevitLinkType.GetLinkedFileStatus` (`<since>2018.2</since>`; `LinkedFileStatus` has
+`LocallyUnloaded` and `InClosedWorkset` in 2022 already), `RevitLinkType.LoadFrom(ModelPath,
+WorksetConfiguration)` with a null configuration (documented as "the same set of worksets the link
+previously had" in 2022 and 2024 alike) and `RevitLinkType.IsLoaded`; for links kept as cloud
+resources, `Element.GetExternalResourceReference`, `ExternalResourceTypes.BuiltInExternalResourceTypes.RevitLink`,
+`ExternalResourceReference.InSessionPath`/`CreateLocalResource` and `RevitLinkType.LoadFrom(ExternalResourceReference,
+WorksetConfiguration)` — all in RevitAPI.xml 2022, compiled for all three years.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

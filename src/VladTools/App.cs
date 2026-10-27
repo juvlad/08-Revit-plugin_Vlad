@@ -462,6 +462,26 @@ namespace VladTools
                     "cannot be converted says why. \"Copy\" writes them all in one operation — one Ctrl+Z.",
                 iconBaseName: "copyparams");
 
+            // ───────────────── Button 21: Link Updater (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_LinkUpdater",
+                text: "Link\nUpdater",
+                commandType: typeof(LinkUpdaterCommand),
+                tooltip: "Points the model's links at Revit Server: every BIM360 link to the model of the same name on the server this model lies on.",
+                longDescription:
+                    "After models move from BIM360 to Revit Server, every link in every one of them still points at the cloud.\n" +
+                    "Revit's own way out is \"Manage Links → Reload From\", one link at a time, browsing the server for each.\n\n" +
+                    "Here the button looks where the open model itself lies on Revit Server — its folder and the folders around\n" +
+                    "it — and finds a model of the same name for every link. The table shows each link, where it points now and\n" +
+                    "the new path. A link found exactly once is checked; several models of one name, or a name that differs\n" +
+                    "slightly, are offered in a drop-down for you to check. \"Search wider\", \"Another folder…\" and\n" +
+                    "\"Choose on server…\" cover models that went somewhere else.\n\n" +
+                    "The links are reloaded from their new place and stay the same elements: placement, pins, worksets, view\n" +
+                    "settings and Copy/Monitor are kept, and so are the worksets open inside each link. Reloading a link\n" +
+                    "clears Revit's undo history — save the model first.",
+                iconBaseName: "linkupdater");
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

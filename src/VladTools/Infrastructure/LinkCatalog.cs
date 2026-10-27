@@ -76,7 +76,7 @@ namespace VladTools.Infrastructure
 
             foreach (var type in types)
             {
-                var entry = Describe(doc, type);
+                var entry = Describe(doc, type) ?? CloudLink(doc, type);
                 if (entry == null)
                     continue;
 
@@ -321,6 +321,69 @@ namespace VladTools.Infrastructure
             {
                 // The path is unavailable — the link simply will not make the list; no reason not to open the window.
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// A link loaded from BIM360, which <see cref="Describe(Document, RevitLinkType)"/> cannot see:
+        /// Revit keeps it as an external resource of its cloud server, and <c>ExternalFileUtils</c> throws
+        /// for it. Left out of <see cref="Existing"/>, such a link looked new to "Link Manager", and
+        /// picking the same model again sent it to <c>RevitLinkType.Create</c> a second time. The GUID
+        /// pair is read off the loaded link's own document — the pair a link is created from, so the key
+        /// matches the model picked from BIM360. An unloaded one has no document to ask, and the
+        /// resource's reference information is undocumented: it stays out, as before.
+        /// </summary>
+        private static LinkEntry CloudLink(Document doc, RevitLinkType type)
+        {
+            foreach (var instance in Instances(doc, type.Id))
+            {
+                try
+                {
+                    var linked = instance.GetLinkDocument();
+                    if (linked == null || !linked.IsModelInCloud)
+                        continue;
+
+                    var path = linked.GetCloudModelPath();
+
+                    return LinkEntry.ForCloud(
+                        path.Region,
+                        path.GetProjectGUID().ToString(),
+                        path.GetModelGUID().ToString(),
+                        type.Name);
+                }
+                catch (Exception)
+                {
+                    // This instance will not say; another one of the same type may.
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Whether the project already holds a BIM360 link of this name that <see cref="Existing"/>
+        /// could not identify — one not loaded, so there is no document to read its GUIDs from. Matched
+        /// by name, the one thing such a link still gives: creating the model again would make a second
+        /// link of it, or fail inside Revit, so "Link Manager" refuses it and says how to get it listed.
+        /// </summary>
+        public static bool HasUnreadCloudLink(Document doc, string name)
+        {
+            return new FilteredElementCollector(doc)
+                .OfClass(typeof(RevitLinkType))
+                .Cast<RevitLinkType>()
+                .Where(type => !type.IsNestedLink && string.Equals(type.Name, name, StringComparison.OrdinalIgnoreCase))
+                .Any(type => Describe(doc, type) == null && CloudLink(doc, type) == null && IsResource(type));
+        }
+
+        private static bool IsResource(RevitLinkType type)
+        {
+            try
+            {
+                return type.GetExternalResourceReference(ExternalResourceTypes.BuiltInExternalResourceTypes.RevitLink) != null;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 

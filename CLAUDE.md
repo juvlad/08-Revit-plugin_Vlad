@@ -1971,6 +1971,19 @@ is shared with the window: the command hands over the links, the window reads Re
   and slash direction aside; a mismatch sends a resource link down the second route and is otherwise a
   failure line, and a path that took but a model that did not load (`RevitLinkType.IsLoaded`) is a
   section of its own.
+- **"Already opened directly" (`LinkOpenAsHost`) on a loaded link means: unload it, then load.** On
+  the office's migration (October 2026) almost every model came back with "this file is already open as
+  a project" for its links loaded from Desktop Connector paths — opened one model at a time — while the
+  links that were not loaded in the same model went through. The server copy is a "Save As" of that very
+  file, and the likeliest reading is that Revit takes it for the document the old link still holds in
+  the session: RevitAPI.xml says `LoadFrom` unloads a loaded link itself, but not, evidently, before this
+  check. Not confirmed on a live model yet. `LinkUpdaterCommand.Load` therefore unloads
+  (`RevitLinkType.Unload(null)`) and tries the same route again — only on that refusal, never up front,
+  so any other failure leaves the link loaded where it was; and if nothing takes after the unload, the
+  link is loaded back from its old place (`Restore`, `RevitLinkType.Reload`) and the line says whether
+  that worked. A refusal that survives the unload names where a model of that name sits in the session
+  (`WhereOpen`: open as a project, or loaded inside another link) — matched by the documents' titles,
+  files and centrals' file names.
 - **Two links can never be given one server model, and a model already linked cannot be chosen.**
   Revit holds one `RevitLinkType` per model; the window blocks "Update paths" on a clash between
   checked rows and makes a row uncheckable whose target is another link's current path — removing one

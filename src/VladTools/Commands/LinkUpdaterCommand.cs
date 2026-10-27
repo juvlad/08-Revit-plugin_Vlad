@@ -466,11 +466,22 @@ namespace VladTools.Commands
         /// link the resource overload is tried as well when the path does not take — refused, thrown,
         /// or "success" with the link still pointing at the cloud. The first route that leaves the
         /// link on the server path wins, and the reasons of every failed one go into the report.
+        ///
+        /// A loaded link that Revit refuses with "already opened directly" (<c>LinkOpenAsHost</c>) is
+        /// unloaded and tried once more. Seen on this office's migration (October 2026): every link
+        /// loaded from a Desktop Connector path failed that way while the unloaded ones in the same
+        /// model went through. The server copy is a "Save As" of that very file, and the likeliest
+        /// reading is that Revit takes it for the document the old link still holds in the session —
+        /// RevitAPI.xml says <c>LoadFrom</c> unloads a loaded link itself, but evidently not before this
+        /// check. The unload comes only on that refusal, never up front: on any other failure the link
+        /// stays loaded where it was. If nothing takes after it, the link is loaded back from its old
+        /// place, so a failed run never leaves a link unloaded that was loaded before it.
         /// </summary>
         private static bool Load(Document doc, LinkUpdateRow row, ModelPath path, out Route used, out string failure)
         {
             var routes = row.Info.IsResource ? new[] { Route.Path, Route.Reference } : new[] { Route.Path };
             var reasons = new List<string>();
+            var unloaded = false;
 
             foreach (var route in routes)
             {
@@ -486,9 +497,20 @@ namespace VladTools.Commands
                 try
                 {
                     var result = LoadFrom(doc, type, path, route, null);
+
+                    if (result.LoadResult == LinkLoadResultType.LinkOpenAsHost && !unloaded && RevitLinkType.IsLoaded(doc, type.Id))
+                    {
+                        type.Unload(null);
+                        unloaded = true;
+
+                        type = doc.GetElement(row.Info.TypeId) as RevitLinkType;
+                        result = LoadFrom(doc, type, path, route, null);
+                    }
+
                     if (!LinkLoadResult.IsCodeSuccess(result.LoadResult))
                     {
-                        reasons.Add(said + LinkCatalog.Describe(result.LoadResult));
+                        reasons.Add(said + LinkCatalog.Describe(result.LoadResult) +
+                                    (result.LoadResult == LinkLoadResultType.LinkOpenAsHost ? WhereOpen(doc, row.Target.Name) : string.Empty));
                         continue;
                     }
                 }
@@ -512,9 +534,87 @@ namespace VladTools.Commands
                 reasons.Add(said + "Revit reported success, but the link points to " + (now ?? "a place it does not name"));
             }
 
+            if (unloaded)
+                reasons.Add(Restore(doc, row.Info.TypeId));
+
             used = Route.Path;
             failure = string.Join("; ", reasons);
             return false;
+        }
+
+        /// <summary>
+        /// Loads a link this run unloaded back from where it pointed, and says how that went — the run
+        /// must not end with a link unloaded that was loaded before it.
+        /// </summary>
+        private static string Restore(Document doc, ElementId typeId)
+        {
+            try
+            {
+                var type = doc.GetElement(typeId) as RevitLinkType;
+                if (type != null && !RevitLinkType.IsLoaded(doc, typeId) &&
+                    LinkLoadResult.IsCodeSuccess(type.Reload().LoadResult))
+                    return "the link was loaded back from where it pointed";
+            }
+            catch (Exception)
+            {
+                // Said below: the link is left unloaded.
+            }
+
+            return RevitLinkType.IsLoaded(doc, typeId)
+                ? "the link is loaded from where it pointed"
+                : "the link is left UNLOADED — reload it in Manage Links";
+        }
+
+        /// <summary>
+        /// Where a model Revit calls "already opened directly" stands in this session: open as a project,
+        /// or loaded as a link of some other model (nested in another link, as a rule). Matched by the
+        /// model's file name — the open documents' own names, their files' and their centrals'.
+        /// </summary>
+        private static string WhereOpen(Document doc, string name)
+        {
+            var wanted = ServerModelIndex.Bare(name);
+            var asProject = false;
+            var asLink = false;
+
+            foreach (Document other in doc.Application.Documents)
+            {
+                try
+                {
+                    if (other.Equals(doc) || other.IsFamilyDocument)
+                        continue;
+
+                    var names = new[] { other.Title, FileName(other.PathName), FileName(LinkCatalog.VisiblePath(other)) };
+                    if (!names.Any(candidate => string.Equals(ServerModelIndex.Bare(candidate), wanted, StringComparison.CurrentCultureIgnoreCase)))
+                        continue;
+
+                    if (other.IsLinked)
+                        asLink = true;
+                    else
+                        asProject = true;
+                }
+                catch (Exception)
+                {
+                    // A document that will not say its name is not the one being looked for.
+                }
+            }
+
+            if (asProject)
+                return " — it is open in this Revit session as a project: close it and run the button again";
+
+            if (asLink)
+                return " — a model of this name is loaded in this session inside another link: " +
+                       "repoint or unload that link first, then run the button again";
+
+            return " — Revit takes the server copy for a model already in this session; " +
+                   "restart Revit, open only this model and run the button again";
+        }
+
+        private static string FileName(string path)
+        {
+            var text = path ?? string.Empty;
+            var cut = Math.Max(text.LastIndexOf('/'), text.LastIndexOf('\\'));
+
+            return cut >= 0 ? text.Substring(cut + 1) : text;
         }
 
         private static LinkLoadResult LoadFrom(Document doc, RevitLinkType type, ModelPath path, Route route, WorksetConfiguration configuration)

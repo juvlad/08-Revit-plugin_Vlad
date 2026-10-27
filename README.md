@@ -1502,6 +1502,10 @@ walking the server tree for each.
 - **Reloading a link clears Revit's undo history** — nothing done before can be undone with Ctrl+Z.
   Save the model first. Each link takes about as long as opening it.
 - **Synchronise (or save) afterwards** — until then the new paths are only in your local copy.
+- A loaded link that Revit refuses with "this file is already open as a project" — typical of a link
+  loaded from Desktop Connector whose server copy is a "Save As" of the same file — is unloaded and
+  loaded again from the server. If that still fails, it is loaded back from where it pointed, and the
+  report says where Revit sees that model open: as a project (close it), or inside another link.
 - In a workshared model the links are checked out first; a link held by another user, or standing in a
   closed workset, has no check box, and "State" says why.
 - A server model already linked into this model as a separate link cannot be chosen — Revit holds one

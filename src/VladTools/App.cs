@@ -508,6 +508,29 @@ namespace VladTools
                 iconBaseName: "serverupload",
                 availability: typeof(AlwaysAvailable));
 
+            // ───────────────── Button 23: Insert Links (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_InsertLinks",
+                text: "Insert\nLinks",
+                commandType: typeof(InsertLinksCommand),
+                tooltip: "Links the same set of Revit Server models into a whole batch of models on Revit Server — each link into its " +
+                         "project workset, with the worksets inside the links closed as in \"Link Manager\".",
+                longDescription:
+                    "When a discipline joins or a stage starts, the same consultants' models have to be linked into every model\n" +
+                    "of a building: open each one, \"Link Revit\" the same files, pick the same placement, move each link into its\n" +
+                    "workset, close the same worksets inside it, synchronise. Here it is set up once, in three steps:\n" +
+                    "1. the links — models on Revit Server, or a saved set;\n" +
+                    "2. the project workset each link goes into — the same name in every model (\"01_Link_AR\"), guessed\n" +
+                    "   from the discipline code in the link's name — and which worksets inside the links to close;\n" +
+                    "3. the models the links go into — on Revit Server too.\n\n" +
+                    "Each model is opened as a local copy, the links are inserted (pinned) and checked, and the model is\n" +
+                    "synchronised with central. A link a model has already is left as it is; a model without a link's workset\n" +
+                    "gets it made, or the link left out — as the window says. Revit is busy until the whole list is done;\n" +
+                    "the full report is written as it goes. Works with no model open.",
+                iconBaseName: "insertlinks",
+                availability: typeof(AlwaysAvailable));
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

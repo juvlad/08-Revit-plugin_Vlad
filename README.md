@@ -1608,6 +1608,61 @@ everything is handed back.
   The dialog at the end summarises it and opens it.
 - Your files are never changed. Nothing about BIM360 is touched.
 
+### Insert Links (Project panel)
+
+Works **with any document open, or none** — it opens its models itself. Links the same set of models on
+**Revit Server** into a whole batch of models on Revit Server: each link into its project workset, with the
+worksets inside the links closed the way "Link Manager" closes them.
+
+What for: when a discipline joins or a stage starts, the same consultants' models have to be linked into
+every model of a building. By hand that is, per model: open it, "Link Revit" each file, pick the placement,
+move each link into its workset, close the same worksets inside it, synchronise.
+
+**The window has three steps, one tab each** ("< Back" / "Next >" move between them; the tabs can be
+clicked too):
+
+1. **Links** — the models to link, on Revit Server: "Folder…", "Revit Server…" or a saved set (the same
+   sets as "Link Manager"; a set's project worksets come along). Only the checked ones go in. Below: the
+   placement for every link ("By shared coordinates" and the rest) and overlay or attachment. Every new
+   link is pinned.
+2. **Worksets** — two things, as in "Link Manager":
+   - **the project workset each link goes into.** The link worksets are named the same in every model
+     ("01_Link_AR"), so one name per link serves them all. The cell is a drop-down you can also type into;
+     it offers the worksets of the model open in Revit (if any) and of the models read on step 3.
+     "Guess from the model name" fills it from the discipline code in the link's name (…_AR → "01_Link_AR").
+     "Set for highlighted rows" puts one workset on several rows. **"In the models"** says in how many of
+     the models the workset exists — red where some model lacks it.
+   - **the worksets inside the links**: "Read Worksets", "Open all / Close all / As last opened", the
+     name rule and the list of names — exactly "Link Manager"'s, and the run checks the result the same
+     way.
+3. **Models** — the models the links go into, on Revit Server ("Folder…", "Whole server…",
+   "Revit Server…", a saved set). "Read worksets of the checked models" fills step 2's list and its "In
+   the models" column; **"Make a link's workset in a model that does not have it"** decides what happens
+   there — off (the default): the link is left out of that model; on: the workset is made.
+
+**"Insert links"** reads the worksets of any model not read yet, then asks — the confirmation lists every
+link with its workset and every workset some model lacks.
+
+**What happens to each model**: it is opened as a **local copy** with only the links' worksets open, every
+link is created in its workset, pinned, and read back; the worksets inside it are checked and, where Revit
+did not apply them (Revit Server links sometimes ignore the first request), the link is loaded once more.
+Then the model is **synchronised with central** (no comment) with everything handed back.
+
+**What is worth knowing.**
+
+- **A link a model has already is left as it is** and counted. So a run that broke off is simply run
+  again over the same lists (the window remembers them).
+- A model that has **a link of the same name pointing elsewhere** (still at BIM360, say) does not get a
+  second copy: it is listed — point the old one at the server with "Link Updater".
+- A link's workset **checked out to another user** in some model: the link is left out there, and the
+  report names who holds it.
+- **Run it with no model open**: a model open in Revit cannot be worked on here, and a link to a model
+  open as a project will not load.
+- **Revit's warnings** on the way (shared coordinates, above all) are dismissed rather than left waiting
+  for a click, and listed in the report with their model. Errors are not.
+- **The full report** is a text file written as the run goes, with a time on every line —
+  `%AppData%\VladTools\insertlinks\reports\`. The dialog at the end summarises it and opens it.
+
 ## Structure
 
 ```
@@ -1639,6 +1694,7 @@ src/VladTools/
     CopyParameterValuesCommand.cs     logic for the "Copy Parameters" button (project)
     LinkUpdaterCommand.cs             logic for the "Link Updater" button (project; its batch with no document too)
     ServerUploadCommand.cs            logic for the "Upload to Server" button (project, or no document)
+    InsertLinksCommand.cs             logic for the "Insert Links" button (project, or no document)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1675,8 +1731,9 @@ src/VladTools/
     CoordinationScan.cs              the result of comparing against one link
     BatchCoordinationWindow.cs       "Other models…": the model list, the worksets to open, what may be changed
     ModelListPanel.cs                a batch's model list: Folder…, Files…, Revit Server…, BIM360…, sets, the table —
-                                     shared by "Other models…", "Sheets → Several models…", "Upload to Server" and
-                                     "Link Updater → Several models…" (server-only there, with "Whole server…")
+                                     shared by "Other models…", "Sheets → Several models…", "Upload to Server",
+                                     "Link Updater → Several models…" (server-only there, with "Whole server…") and
+                                     both lists of "Insert Links"
     BatchModelRow.cs                 a row of that table (check box, model, source, where it lives)
     ScheduleLibraryWindow.cs         the "Schedule Library" window: the set, where to fill it from, the insert table
     ScheduleChooserWindow.cs         "which of this model's schedules go into the set"
@@ -1737,10 +1794,12 @@ src/VladTools/
     LinkPathInfo.cs                  a snapshot of one link: where it points, whether it loads, what stops it
     LinkUpdaterBatchWindow.cs        "Link Updater → Several models…": the Revit Server models whose links are updated
     ServerUploadWindow.cs            the "Upload to Server" window: the models, the Revit Server folder, the options
+    InsertLinksWindow.cs             the "Insert Links" window: 1. the links, 2. their worksets, 3. the models
+    InsertLinkRow.cs                 a row of its workset table (link, project workset, in how many models it exists)
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets" and "Link Updater" for their
-                                 batches, "Upload to Server")
+                                 batches, "Upload to Server", "Insert Links")
     Icons.cs                     loading icons from the assembly's resources
     FormulaLibrary.cs            reading and writing the formula list file (%AppData%)
     FormulaParser.cs             finding names in a formula that are not family parameters
@@ -1755,6 +1814,8 @@ src/VladTools/
     RevitServerClient.cs         Revit Server folders and models through its REST service; creating a folder
     LinkSetLibrary.cs            saved link sets (%AppData%)
     LinkPreferences.cs           the "Link Manager" window settings (%AppData%)
+    LinkWorksetRule.cs           which worksets inside a link to open or close, and checking what Revit did —
+                                 shared by "Link Manager" and "Insert Links"
     ModelStore.cs                a model folder across the three stores: what is inside, what is above
     ModelKit.cs                  guessing a link kit by building number and discipline folders
     LinkCatalog.cs               the links and worksets of the open project
@@ -1803,6 +1864,8 @@ src/VladTools/
     ServerUpload.cs              "Upload to Server": the upload, the links pass (also the "Link Updater" batch), where
                                  each link goes, the report file
     ServerUploadPreferences.cs   the "Upload to Server" window settings and its reports folder (%AppData%)
+    LinkInsertion.cs             "Insert Links": the run over one model, its result, the report file
+    InsertLinksPreferences.cs    the "Insert Links" window settings, both lists and its reports folder (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

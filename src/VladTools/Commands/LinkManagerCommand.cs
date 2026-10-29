@@ -45,7 +45,7 @@ namespace VladTools.Commands
         /// The workset names actually encountered in links during this load run. This exists for
         /// exactly one purpose: a checked name that was not found in any link is the most common
         /// reason behind "the workset did not close". There is simply nothing to close in that
-        /// case, <see cref="Matches"/> never finds such a workset, and until now nobody found out
+        /// case, <see cref="LinkWorksetRule.Matches"/> never finds such a workset, and until now nobody found out
         /// about it: the "Found in" column in the window read "from last time" both when a
         /// workset was not found and when nobody had looked for it at all.
         /// </summary>
@@ -80,6 +80,7 @@ namespace VladTools.Commands
                     return Result.Cancelled;
 
                 var preferences = window.Preferences;
+                var rule = LinkWorksetRule.From(preferences);
                 var chosen = window.Selected;
 
                 // The workset ids are read afresh. By Autodesk's documentation, WorksetPreview.Id
@@ -102,12 +103,12 @@ namespace VladTools.Commands
                 // transaction to be closed, and on top of that **it wipes the document's undo
                 // history**. Do it after the creation instead, and Ctrl+Z would no longer bring
                 // back the links just set up; this order keeps undo working at least for the new ones.
-                Reload(doc, chosen.Where(row => row.IsExisting).ToList(), preferences,
+                Reload(doc, chosen.Where(row => row.IsExisting).ToList(), rule,
                     reloaded, healed, unverified, failures);
 
-                Apply(doc, chosen, preferences, created, moved, healed, unverified, failures, warnings);
+                Apply(doc, chosen, preferences, rule, created, moved, healed, unverified, failures, warnings);
 
-                Report(created, reloaded, moved, healed, Missing(preferences), unverified, failures,
+                Report(created, reloaded, moved, healed, rule.Missing(_seenNames), unverified, failures,
                     warnings.Messages);
                 return Result.Succeeded;
             }
@@ -203,35 +204,16 @@ namespace VladTools.Commands
             return worksets;
         }
 
-        /// <summary>Whether any workset is asked for by name or by rule — otherwise there is nothing to read.</summary>
-        private static bool Requested(LinkPreferences preferences)
-        {
-            return preferences.Worksets.Count > 0 || !string.IsNullOrEmpty(preferences.WorksetPattern);
-        }
-
         /// <summary>
-        /// Builds the workset setup for one link: the base mode plus the names checked in the
-        /// window plus a name rule. The rule is applied here rather than in the window, exactly
-        /// because every model's worksets are its own: "00_" catches both "00_Shared Levels and
-        /// Grids" and its Russian-named equivalent, though neither appears in the window's own list.
-        ///
-        /// The request is always phrased as "close all, open the listed ones" rather than "open
-        /// all, close the listed ones". By the documentation both phrasings are equivalent, but
-        /// CloseAllWorksets + Open is the only one Autodesk's own example uses specifically for
-        /// links (Developers Guide → Linked Files → Revit Links), and the only one with no reports
-        /// of silently doing nothing. OpenAllWorksets + Close on links leaves the worksets open
-        /// while reporting success — exactly what made the button "fail at closing". So "close the
-        /// checked ones" is computed as a complement: open every link workset except the checked
-        /// ones. The workset list needed for that has already been read anyway.
-        ///
-        /// The worksets could not be read — we hand back a plain base mode: the link will still
-        /// load, just without the selective closing.
+        /// The workset setup for one link (<see cref="LinkWorksetRule.Configuration"/>) out of the
+        /// link's own worksets, read for this run. The worksets could not be read — a plain base mode:
+        /// the link will still load, just without the selective closing, and the note says why.
         /// </summary>
-        private WorksetConfiguration Configuration(Document doc, LinkRow row, LinkPreferences preferences, List<string> notes)
+        private WorksetConfiguration Configuration(Document doc, LinkRow row, LinkWorksetRule rule, List<string> notes)
         {
             // Nothing is checked — no reason to go to the file for worksets.
-            if (!Requested(preferences))
-                return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
+            if (!rule.Requested)
+                return rule.Base();
 
             List<ModelWorkset> worksets;
             try
@@ -242,7 +224,7 @@ namespace VladTools.Commands
             {
                 notes.Add(row.Name + " — could not read the worksets (" + LinkCatalog.Explain(exception) +
                           "), the link was loaded as is");
-                return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
+                return rule.Base();
             }
 
             // An empty list after a successful read is suspicious: a workshared model always has
@@ -253,143 +235,10 @@ namespace VladTools.Commands
             {
                 notes.Add(row.Name + " — the file returned an empty workset list " +
                           "(this looks like a read failure rather than an absence), the link was loaded with the worksets unchanged");
-                return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
+                return rule.Base();
             }
 
-            var marked = worksets.Where(workset => Matches(workset.Name, preferences))
-                .Select(workset => workset.Id)
-                .ToList();
-
-            var rest = worksets.Where(workset => !Matches(workset.Name, preferences))
-                .Select(workset => workset.Id)
-                .ToList();
-
-            // Nothing checked matches this link — nothing to close, hand back a plain base mode.
-            // This also sidesteps an ambiguity in the Open method's XML doc: "if all worksets are
-            // set to open, the configuration will be unchanged". Finding out on a live project
-            // whether that means CloseAll + Open(all) would leave the link entirely closed is not
-            // a price worth paying for the answer.
-            if (marked.Count == 0)
-                return new WorksetConfiguration(BaseOption(preferences.WorksetMode));
-
-            // "As last opened" cannot be expressed through Open: only Revit knows what was open
-            // last time, and there is no complement to compute here. Close is what is left — with
-            // the very unreliability described above; if Revit does not carry it out, Check will
-            // catch that and say so in the report rather than swallow it.
-            if (preferences.WorksetMode == LinkWorksetMode.LastViewed)
-            {
-                var lastViewed = new WorksetConfiguration(WorksetConfigurationOption.OpenLastViewed);
-                lastViewed.Close(marked);
-
-                return lastViewed;
-            }
-
-            // Under "close all", a check mark means the opposite: open only the checked ones.
-            var open = preferences.WorksetMode == LinkWorksetMode.CloseAll ? marked : rest;
-
-            var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
-
-            if (open.Count > 0)
-                configuration.Open(open);
-
-            return configuration;
-        }
-
-        /// <summary>
-        /// The base mode when there is nothing to list by name: nothing is checked, or the link's
-        /// workset list could not be read.
-        ///
-        /// It matters here that "open all" is specifically <c>OpenAllWorksets</c>: substituting
-        /// <c>CloseAllWorksets</c> here, as in the main path, would mean loading the link empty on
-        /// any read failure, silently.
-        /// </summary>
-        private static WorksetConfigurationOption BaseOption(LinkWorksetMode mode)
-        {
-            switch (mode)
-            {
-                case LinkWorksetMode.CloseAll:
-                    return WorksetConfigurationOption.CloseAllWorksets;
-                case LinkWorksetMode.LastViewed:
-                    return WorksetConfigurationOption.OpenLastViewed;
-                default:
-                    return WorksetConfigurationOption.OpenAllWorksets;
-            }
-        }
-
-        /// <summary>
-        /// What a workset with this name should become after loading: <c>true</c> — open,
-        /// <c>false</c> — closed, <c>null</c> — nothing was promised about it, and it cannot be
-        /// checked. A mirror of <see cref="Configuration"/>: edit one, edit the other.
-        /// </summary>
-        private static bool? Expected(string name, LinkPreferences preferences)
-        {
-            var marked = Matches(name, preferences);
-
-            switch (preferences.WorksetMode)
-            {
-                case LinkWorksetMode.CloseAll:
-                    return marked;
-
-                case LinkWorksetMode.OpenAll:
-                    return !marked;
-
-                default:
-                    // "As last opened": only Revit knows what happened to the unchecked ones.
-                    return marked ? (bool?)false : null;
-            }
-        }
-
-        /// <summary>
-        /// Re-reads an already-loaded link document and checks what Revit actually did with the
-        /// worksets against what was asked. Without this, finding out whether it obeyed could only
-        /// be done by hand — through Revit's own "Manage Worksets". A WorksetConfiguration only
-        /// conveys a wish; the check here is the only way to catch a case where Revit did not
-        /// carry it out, instead of guessing blindly.
-        ///
-        /// There are three outcomes, not two, and that is the whole point. Previously "could not
-        /// be checked" was returned as "everything as asked": the link would not hand over its
-        /// document, the collector would fail — and the report read "Loaded" with not a word about
-        /// worksets. That is precisely how a closing failure stayed unnoticed, so
-        /// <see cref="WorksetVerdict.Unknown"/> now reaches the report as a line of its own.
-        /// </summary>
-        private static WorksetCheck Check(Document linkDocument, LinkPreferences preferences)
-        {
-            if (!Requested(preferences))
-                return WorksetCheck.NotRequested();
-
-            if (linkDocument == null)
-                return WorksetCheck.Unknown("the link did not hand over its document — the worksets could not be checked");
-
-            try
-            {
-                // A non-workshared link has no worksets at all: nothing to close, and that is not a failure.
-                if (!linkDocument.IsWorkshared)
-                    return WorksetCheck.NotRequested();
-
-                var worksets = new FilteredWorksetCollector(linkDocument)
-                    .OfKind(WorksetKind.UserWorkset)
-                    .ToWorksets()
-                    .ToList();
-
-                if (worksets.Count == 0)
-                    return WorksetCheck.Unknown("the workshared link has no worksets at all — nothing to check against");
-
-                var wrong = new List<string>();
-
-                foreach (var workset in worksets)
-                {
-                    var expected = Expected(workset.Name, preferences);
-
-                    if (expected.HasValue && workset.IsOpen != expected.Value)
-                        wrong.Add(workset.Name);
-                }
-
-                return WorksetCheck.Verified(wrong);
-            }
-            catch (Exception exception)
-            {
-                return WorksetCheck.Unknown("could not check the worksets: " + LinkCatalog.Explain(exception));
-            }
+            return rule.Configuration(worksets);
         }
 
         /// <summary>The link's document — or <c>null</c> if the link does not hand it over.</summary>
@@ -420,22 +269,22 @@ namespace VladTools.Commands
         /// This can only be called outside a transaction: `LoadFrom` refuses to work inside an open one.
         /// </summary>
         /// <param name="retried">Whether a second attempt was needed — if not, the report has nothing to say.</param>
-        private WorksetCheck EnsureWorksets(Document doc, LinkRow row, ElementId typeId, LinkPreferences preferences, out bool retried)
+        private LinkWorksetCheck EnsureWorksets(Document doc, LinkRow row, ElementId typeId, LinkWorksetRule rule, out bool retried)
         {
             retried = false;
 
             // Read now, from the link itself, even if no reload turns out to be needed: its names
             // count for "not found in any link", which would otherwise accuse a name it never saw.
-            var reread = Requested(preferences) && _unreadable.ContainsKey(row.Key);
+            var reread = rule.Requested && _unreadable.ContainsKey(row.Key);
             if (reread)
                 Reread(doc, row);
 
-            var check = Check(LinkDocument(doc, typeId), preferences);
+            var check = rule.Check(LinkDocument(doc, typeId));
 
             // We only retry when we know for certain that Revit did not comply. On Unknown, a
             // second LoadFrom would be firing blind, and it wipes the document's undo history —
             // too high a price for a guess. The report will say "not checked".
-            if (check.Verdict != WorksetVerdict.Mismatched)
+            if (check.Verdict != LinkWorksetVerdict.Mismatched)
                 return check;
 
             var type = doc.GetElement(typeId) as RevitLinkType;
@@ -449,7 +298,7 @@ namespace VladTools.Commands
 
             try
             {
-                using (var configuration = Configuration(doc, row, preferences, notes))
+                using (var configuration = Configuration(doc, row, rule, notes))
                 {
                     // Retrying only makes sense with a full configuration. If Configuration could
                     // not read the link's worksets even now, it handed back the base mode: such a
@@ -470,7 +319,7 @@ namespace VladTools.Commands
                 return check.Because(LinkCatalog.Explain(exception));
             }
 
-            return Check(LinkDocument(doc, typeId), preferences);
+            return rule.Check(LinkDocument(doc, typeId));
         }
 
         /// <summary>
@@ -514,7 +363,7 @@ namespace VladTools.Commands
         private static void Account(
             LinkRow row,
             IReadOnlyList<string> notes,
-            WorksetCheck check,
+            LinkWorksetCheck check,
             bool retried,
             List<string> healed,
             List<string> unverified,
@@ -522,16 +371,16 @@ namespace VladTools.Commands
         {
             var unread = notes.Count > 0;
 
-            if (unread && check.Verdict != WorksetVerdict.Satisfied)
+            if (unread && check.Verdict != LinkWorksetVerdict.Satisfied)
                 failures.AddRange(notes);
 
             switch (check.Verdict)
             {
-                case WorksetVerdict.Unknown:
+                case LinkWorksetVerdict.Unknown:
                     unverified.Add(row.Name + " — " + check.Reason);
                     break;
 
-                case WorksetVerdict.Mismatched:
+                case LinkWorksetVerdict.Mismatched:
                     if (retried)
                         failures.Add(row.Name + " — the worksets did not apply even after reloading: " +
                                      string.Join(", ", check.Names) +
@@ -541,32 +390,13 @@ namespace VladTools.Commands
                                      string.Join(", ", check.Names));
                     break;
 
-                case WorksetVerdict.Satisfied:
+                case LinkWorksetVerdict.Satisfied:
                     if (retried)
                         healed.Add(row.Name + (unread
                                        ? " — the worksets could not be read before loading, only after it"
                                        : " — Revit ignored the first request"));
                     break;
             }
-        }
-
-        private static bool Matches(string name, LinkPreferences preferences)
-        {
-            // Leading/trailing spaces are trimmed both here and in the rule: a consultant's
-            // workset name with a trailing space would otherwise never close at all —
-            // see LinkPreferences.NormalizeWorkset.
-            var trimmed = LinkPreferences.NormalizeWorkset(name);
-
-            if (preferences.Worksets.Any(chosen => LinkPreferences.SameWorkset(chosen, trimmed)))
-                return true;
-
-            var pattern = preferences.WorksetPattern;
-            if (string.IsNullOrEmpty(pattern))
-                return false;
-
-            return preferences.WorksetPatternContains
-                ? trimmed.IndexOf(pattern, StringComparison.CurrentCultureIgnoreCase) >= 0
-                : trimmed.StartsWith(pattern, StringComparison.CurrentCultureIgnoreCase);
         }
 
         // ───────────────────────────── loading ─────────────────────────────
@@ -580,6 +410,7 @@ namespace VladTools.Commands
             Document doc,
             IReadOnlyList<LinkRow> rows,
             LinkPreferences preferences,
+            LinkWorksetRule rule,
             List<string> created,
             List<string> moved,
             List<string> healed,
@@ -615,7 +446,7 @@ namespace VladTools.Commands
                     try
                     {
                         var notes = new List<string>();
-                        var typeId = Create(doc, row, preferences, placement, worksets, created, notes, failures);
+                        var typeId = Create(doc, row, preferences, rule, placement, worksets, created, notes, failures);
                         if (typeId != ElementId.InvalidElementId)
                             toVerify.Add(new PendingCheck(row, typeId, notes));
                     }
@@ -648,7 +479,7 @@ namespace VladTools.Commands
                 try
                 {
                     bool retried;
-                    var check = EnsureWorksets(doc, pending.Row, pending.TypeId, preferences, out retried);
+                    var check = EnsureWorksets(doc, pending.Row, pending.TypeId, rule, out retried);
                     Account(pending.Row, pending.Notes, check, retried, healed, unverified, failures);
                 }
                 catch (Exception exception)
@@ -700,6 +531,7 @@ namespace VladTools.Commands
             Document doc,
             LinkRow row,
             LinkPreferences preferences,
+            LinkWorksetRule rule,
             ImportPlacement placement,
             Dictionary<string, WorksetId> worksets,
             List<string> created,
@@ -714,7 +546,7 @@ namespace VladTools.Commands
                 return ElementId.InvalidElementId;
             }
 
-            using (var configuration = Configuration(doc, row, preferences, notes))
+            using (var configuration = Configuration(doc, row, rule, notes))
             {
                 // A relative path exists only for a file: for Revit Server and the cloud the path
                 // is always absolute, and Revit simply will not accept a relative one there.
@@ -788,7 +620,7 @@ namespace VladTools.Commands
         private void Reload(
             Document doc,
             IReadOnlyList<LinkRow> rows,
-            LinkPreferences preferences,
+            LinkWorksetRule rule,
             List<string> reloaded,
             List<string> healed,
             List<string> unverified,
@@ -807,7 +639,7 @@ namespace VladTools.Commands
 
                     var notes = new List<string>();
 
-                    using (var configuration = Configuration(doc, row, preferences, notes))
+                    using (var configuration = Configuration(doc, row, rule, notes))
                     {
                         var result = type.LoadFrom(LinkCatalog.ToModelPath(row.Entry), configuration);
 
@@ -825,7 +657,7 @@ namespace VladTools.Commands
                     // Reload already runs outside a transaction, so healing (EnsureWorksets →
                     // LoadFrom) can happen right away, without waiting for a separate pass as new links need.
                     bool retried;
-                    var check = EnsureWorksets(doc, row, row.ExistingId, preferences, out retried);
+                    var check = EnsureWorksets(doc, row, row.ExistingId, rule, out retried);
                     Account(row, notes, check, retried, healed, unverified, failures);
                 }
                 catch (Exception exception)
@@ -836,23 +668,6 @@ namespace VladTools.Commands
         }
 
         // ───────────────────────────── the report ─────────────────────────────
-
-        /// <summary>
-        /// The checked workset names that were not found in any link this run.
-        ///
-        /// An empty <see cref="_seenNames"/> means the worksets could not be read for any link at
-        /// all — then "not found" has nothing to say: the reason is a different one, and it is
-        /// already in the report, on a line of its own.
-        /// </summary>
-        private List<string> Missing(LinkPreferences preferences)
-        {
-            if (_seenNames.Count == 0)
-                return new List<string>();
-
-            return preferences.Worksets
-                .Where(name => !_seenNames.Contains(LinkPreferences.NormalizeWorkset(name)))
-                .ToList();
-        }
 
         private static void Report(
             IReadOnlyList<string> created,
@@ -923,74 +738,6 @@ namespace VladTools.Commands
             }
 
             TaskDialog.Show(DialogTitle, text);
-        }
-
-        /// <summary>What was found out about the worksets of an already-loaded link.</summary>
-        private enum WorksetVerdict
-        {
-            /// <summary>Nothing was requested — nothing to check.</summary>
-            NotRequested,
-
-            /// <summary>Everything is as asked.</summary>
-            Satisfied,
-
-            /// <summary>Some worksets are not in the right state — Revit did not carry out the request.</summary>
-            Mismatched,
-
-            /// <summary>Could not be checked. This is not the same thing as "all is well".</summary>
-            Unknown
-        }
-
-        /// <summary>
-        /// The result of checking a link's worksets against what was requested. It exists so that
-        /// <see cref="WorksetVerdict.Unknown"/> can never be mistaken for a success: the previous
-        /// check returned an empty list both when it checked and everything matched, and when it
-        /// could not check at all.
-        /// </summary>
-        private sealed class WorksetCheck
-        {
-            private static readonly string[] None = new string[0];
-
-            private WorksetCheck(WorksetVerdict verdict, IReadOnlyList<string> names, string reason)
-            {
-                Verdict = verdict;
-                Names = names ?? None;
-                Reason = reason ?? string.Empty;
-            }
-
-            public WorksetVerdict Verdict { get; }
-
-            /// <summary>The names of the worksets whose state did not match what was requested.</summary>
-            public IReadOnlyList<string> Names { get; }
-
-            /// <summary>
-            /// Why it could not be checked, or — on a mismatch — why the reload meant to fix it
-            /// failed; empty otherwise.
-            /// </summary>
-            public string Reason { get; }
-
-            /// <summary>The same outcome, with the reason the reload left it as it was.</summary>
-            public WorksetCheck Because(string reason)
-            {
-                return new WorksetCheck(Verdict, Names, reason);
-            }
-
-            public static WorksetCheck NotRequested()
-            {
-                return new WorksetCheck(WorksetVerdict.NotRequested, None, null);
-            }
-
-            public static WorksetCheck Unknown(string reason)
-            {
-                return new WorksetCheck(WorksetVerdict.Unknown, None, reason);
-            }
-
-            public static WorksetCheck Verified(IReadOnlyList<string> wrong)
-            {
-                return wrong.Count == 0
-                    ? new WorksetCheck(WorksetVerdict.Satisfied, None, null)
-                    : new WorksetCheck(WorksetVerdict.Mismatched, wrong, null);
-            }
         }
 
         /// <summary>A link just created, waiting to be checked once its transaction has committed.</summary>

@@ -12,11 +12,19 @@ namespace VladTools.UI
     /// </summary>
     internal sealed class LinkWorksetScan
     {
-        public LinkWorksetScan(IReadOnlyList<string> names, int scanned, IReadOnlyList<string> failures)
+        private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Nobody =
+            new Dictionary<string, IReadOnlyList<string>>();
+
+        public LinkWorksetScan(
+            IReadOnlyList<string> names,
+            int scanned,
+            IReadOnlyList<string> failures,
+            IReadOnlyDictionary<string, IReadOnlyList<string>> byModel = null)
         {
             Names = names ?? new List<string>();
             Scanned = scanned;
             Failures = failures ?? new List<string>();
+            ByModel = byModel ?? Nobody;
         }
 
         /// <summary>Every workset name found in at least one model that was read.</summary>
@@ -27,5 +35,12 @@ namespace VladTools.UI
 
         /// <summary>Models that could not be read, with the reason.</summary>
         public IReadOnlyList<string> Failures { get; }
+
+        /// <summary>
+        /// Each model read, by its <see cref="Infrastructure.LinkEntry.Key"/>, with its own workset names —
+        /// for a window that says in how many models a name occurs. A model missing here was not read.
+        /// "Link Manager" fills its rows instead and leaves this empty.
+        /// </summary>
+        public IReadOnlyDictionary<string, IReadOnlyList<string>> ByModel { get; }
     }
 }

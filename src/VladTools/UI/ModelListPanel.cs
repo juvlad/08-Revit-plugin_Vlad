@@ -74,7 +74,12 @@ namespace VladTools.UI
         /// on Revit Server, so its list is the server's alone — then "Whole server…" is offered, and a saved
         /// set's files and BIM360 models are left out of the table rather than listed only to be refused.
         /// </param>
-        public ModelListPanel(string title, LinkPreferences linkPreferences, string set, bool cloud = true, bool files = true)
+        /// <param name="wholeServer">
+        /// Offer "Whole server…" on a server-only list. The links of "Insert Links" do not: every model of a
+        /// server linked into every model is never what anybody means.
+        /// </param>
+        public ModelListPanel(string title, LinkPreferences linkPreferences, string set, bool cloud = true, bool files = true,
+            bool wholeServer = true)
         {
             _title = title;
             _linkPreferences = linkPreferences ?? new LinkPreferences();
@@ -109,7 +114,7 @@ namespace VladTools.UI
 
             var sources = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
 
-            if (!files)
+            if (!files && wholeServer)
             {
                 sources.Children.Add(SourceButton("Whole server…",
                     "Every model on a Revit Server, in every folder. Every folder is read once to list them —\n" +

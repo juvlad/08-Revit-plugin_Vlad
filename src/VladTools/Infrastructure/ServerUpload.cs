@@ -586,7 +586,7 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>BatchCoordination's lines start with the model's name; in a line about that model it is said already.</summary>
-        private static string Strip(IEnumerable<string> lines, string name)
+        internal static string Strip(IEnumerable<string> lines, string name)
         {
             return string.Join("; ", lines.Select(line => line.StartsWith(name + " — ", StringComparison.Ordinal)
                 ? line.Substring(name.Length + 3)

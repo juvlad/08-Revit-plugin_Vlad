@@ -54,10 +54,10 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — eighteen buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — nineteen buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). The exceptions are the "Sheets"
-and "Link Updater" batches ("Several models…") and "Upload to Server", which open their models
-themselves and so also run from a family or with no document open at all. There is no test project — checking is done by hand, in Revit.
+and "Link Updater" batches ("Several models…"), "Upload to Server" and "Insert Links", which open their
+models themselves and so also run from a family or with no document open at all. There is no test project — checking is done by hand, in Revit.
 
 ## Build and run
 
@@ -123,7 +123,8 @@ UI/CleanupTarget.cs               the list of what "Cleanup" is able to remove; 
 UI/CleanupOption.cs               an item of the cleanup window: check box, count found, and its full text
 UI/LinkRow.cs                     a row of the link table: LinkEntry + check box + link set + the existing link's Id, if any
 UI/WorksetRow.cs                  a row of the workset list: name, check box, how many links it occurs in
-UI/LinkWorksetScan.cs             the result of reading worksets from links: names + a count + failures
+UI/LinkWorksetScan.cs             the result of reading worksets from links: names + a count + failures, + per model (ByModel)
+                                  for "Insert Links"' "in how many models"
 UI/BrowseNode.cs                  a node of the browse tree (folder/model), shared by Revit Server and BIM360
 UI/ModelBrowserWindow.cs          the tree itself with check boxes; what fills its children is given as a lambda
 UI/CloudLinkWindow.cs             entering cloud models as pairs of GUIDs — the fallback path to BIM360
@@ -141,7 +142,8 @@ UI/BatchModelRow.cs               a row of a batch's model list: the model itsel
 UI/ModelListPanel.cs              a batch's model list: sources (Folder… in all three stores, Files…, Revit Server…, BIM360…,
                                   by GUID), saved sets, the table with check boxes; shared by every batch window ("Upload to
                                   Server" turns the BIM360 sources off; the "Link Updater" batch turns files off as well —
-                                  server-only, with "Whole server…", and a saved set's other models kept out of the table)
+                                  server-only, with "Whole server…", and a saved set's other models kept out of the table;
+                                  "Insert Links" has two of them, server-only, its links' one without "Whole server…")
 UI/BatchCoordinationWindow.cs     "Accept Changes → Other models…": the model list, which worksets to open, what may be changed
 UI/ScheduleInfo.cs                a snapshot of one schedule for the window + the ScheduleChooser call-back
 UI/ScheduleAction.cs              what to do when the project already holds a schedule of that name + captions
@@ -231,6 +233,12 @@ UI/LinkUpdaterBatchWindow.cs      "Link Updater → Several models…": the Revi
 UI/ServerUploadWindow.cs          the "Upload to Server" window: the model list (ModelListPanel without BIM360), the Revit
                                   Server folder (Choose…, New folder…, read to say what is there already), the links box,
                                   what to do with a model of the same name already there (always starts on "Skip")
+UI/InsertLinkRow.cs               a row of the "Insert Links" workset table: the link's LinkEntry (its Workset is the project
+                                  workset), the worksets inside it once read, "In the models", the guess note
+UI/InsertLinksWindow.cs           the "Insert Links" window, three tabs: 1. the links (ModelListPanel, server-only, no "Whole
+                                  server…") + placement; 2. a project workset per link (editable drop-down, the discipline
+                                  guess, "In the models") + "Link Manager"'s worksets inside the links; 3. the models
+                                  (ModelListPanel, server-only), read for their worksets, "make a missing workset"
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/AlwaysAvailable.cs an IExternalCommandAvailability saying "yes" — a button pressable with no document open
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
@@ -258,6 +266,10 @@ Infrastructure/ModelStore.cs      a model folder across the three stores: what i
 Infrastructure/ModelKit.cs        guessing a link kit by building number and discipline folders
 Infrastructure/LinkSetLibrary.cs  saved link sets, %AppData%\VladTools\links\<name>.txt
 Infrastructure/LinkPreferences.cs the "Link Manager" window settings (%AppData%\VladTools\links\_settings.txt)
+Infrastructure/LinkWorksetRule.cs the worksets inside a link: mode + checked names + name rule → a WorksetConfiguration for one
+                                  link out of its own list (Configuration, BaseOption), what each should become (Expected),
+                                  what Revit did (Check → LinkWorksetCheck / LinkWorksetVerdict), checked names no link has
+                                  (Missing); shared by "Link Manager" and "Insert Links"
 Infrastructure/BaseFilePreferences.cs  the "Base File" window settings (%AppData%\VladTools\basefile\_settings.txt)
 Infrastructure/BaseFileFinder.cs  guessing the base file from the building in the open model's name
 Infrastructure/CoordinationCatalog.cs  comparing the project's grids and levels against the coordination file
@@ -345,6 +357,13 @@ Infrastructure/ServerUpload.cs    "Upload to Server": ServerUploadResult (one mo
                                   (the destination's folders: what each holds, read once; the missing ones made and read back)
 Infrastructure/ServerUploadPreferences.cs  the "Upload to Server" settings (%AppData%\VladTools\serverupload\_settings.txt)
                                   and the reports folder
+Infrastructure/LinkInsertion.cs   "Insert Links": LinkInsertionRequest (the links with their project worksets, placement, the
+                                  inside rule, make missing worksets), LinkInsertionResult (one model), LinkInsertion.Run (one
+                                  model: OpenLocal with the links' worksets, what it has already, the worksets — owner, made —,
+                                  a transaction per link, the read-back, the inside check + one more LoadFrom, synchronise),
+                                  LinkInsertionLog (the report file, written as the run goes)
+Infrastructure/InsertLinksPreferences.cs  the "Insert Links" settings, both lists too (%AppData%\VladTools\insertlinks\
+                                  _settings.txt), first run seeded from "Link Manager"'s, and the reports folder
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -375,6 +394,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project | "Copy Parameters" | `CopyParameterValuesCommand` | writes the value of one parameter into another on every element of one category — the selection, the active view (`FilteredElementCollector(doc, viewId)`) or the whole model; the categories are those with `AllowsBoundParameters`. Both lists are the category's parameters read off one element of each type and that type (`GetOrderedParameters`), keyed across families by `ParameterKey`; read-only ones (reporting, computed, formula-driven) are sources only. The two may store different kinds of value — `ParameterValueConverter` turns a number into text as Revit shows it, text into a number the way Revit parses a typed value (`UnitFormatUtils.TryParse`), anything into Yes/No, a length into a plain number by its displayed figure. A preview line per element (per type for a type parameter, whose elements in scope must agree) shows source, target now, target after and why not; options: only empty targets, an empty source empties a text, no unit symbol, the first number out of a text. Workshared: checked out first. One transaction; every value is read back after the commit |
 | Project | "Link Updater" | `LinkUpdaterCommand` | points the model's top-level Revit links at Revit Server — made for a move from BIM360: for every link, a model of the same name on the server the open model lies on (`LinkCatalog.Host`), found by reading the server through its REST service (`ServerModelIndex`) from the open model's own folder, climbing a level at a time while a link is still missing, never onto the server root by itself; "Search wider", "Another folder…" (any server) and "Choose on server…" (one link, by hand) go further. One model of exactly the name is checked; several (nearest preselected), a loosely matching name or a file link are offered unchecked. Each checked link is reloaded with `RevitLinkType.LoadFrom` from its `RSN://` path (a link Revit keeps as a cloud resource falls back to the `ExternalResourceReference` overload) — the same element, so placement, pins, worksets, view overrides and Copy/Monitor stay; the worksets inside the link go in as `null` ("as the link had them"), are compared by name with what was open before and put right by a second load if Revit did not keep them. Workshared: the link types are checked out first; held / closed-workset links have no check box. No transaction — `LoadFrom` clears the undo history; every path is read back after the reload. **"Several models…"** (also offered from a family, a model with no links, and with no document open — `AlwaysAvailable`): a list of Revit Server models (`ModelListPanel`, server-only — "Whole server…", "Folder…", "Revit Server…", a saved set), and for each the second pass of "Upload to Server" on its own (`ServerUpload.UpdateLinks`): a local copy with the worksets its links stand in, every link with exactly one namesake under the folder its search reached pointed there, synchronised with no comment and everything relinquished; the rest listed. The report is a text file written as the run goes. In both runs Revit's warnings — "needs Coordination Review" (`LinkInstanceNeedsReconcile`) after a reload, above all — are dismissed and listed (`WarningSilencer`) |
 | Project | "Upload to Server" | `ServerUploadCommand` | puts a batch of models — downloaded from BIM360 and detached, as a rule — on Revit Server, then points their links there. The list is `ModelListPanel` without BIM360 (a folder on disk or the server, files, Revit Server models, a saved set); the destination is one Revit Server folder picked in the tree or made with "New folder…" (`RevitServerClient.CreateFolder`). **Pass 1**, per file: `BasicFileInfo` first (newer version, not workshared → refused), opened detached (`DetachAndPreserveWorksets`) with every workset closed, its link types' user worksets noted, `Document.SaveAs` to `RSN://server/folder/<its name>` as central (`WorksharingSaveAsOptions.SaveAsCentral`, new locals open every workset), `WorksharingUtils.RelinquishOwnership` of everything, closed, and confirmed by listing the server folder. With "Recreate the subfolders" (on by default) each file goes into the same subfolder below it as on disk, below the folder the checked files share — missing folders made just before their first file (`ServerFolderCache`). A name already in its folder is skipped (or written over, if the window says so — never remembered); one name twice for one folder goes up once. **Pass 2** (optional, on by default), after every upload, per model uploaded, already there, or given as a Revit Server model: a local copy (`BatchCoordination.OpenLocal`) with only the worksets its links stand in, every link pointed at a model of its name uploaded in this run, else at the one model of its name round its folder on the server (the "Link Updater" search) — through `LinkRepointing`, the "Link Updater" run — then synchronised (no comment) with everything relinquished. Several of one name, a loose name, a file link to another file are left and listed for "Link Updater". Revit's warnings in either pass are dismissed and listed (`WarningSilencer`). Works with no document open (`AlwaysAvailable`); the files in the list are never written; the full report is a text file written as the run goes |
+| Project | "Insert Links" | `InsertLinksCommand` | links one set of Revit Server models into a batch of models on Revit Server nobody has open. Three tabs: **1. Links** (`ModelListPanel`, server-only; placement, overlay/attachment); **2. Worksets** — a project workset per link, one name for every model (editable drop-down offering the open model's worksets and those read from the models of step 3; the `DisciplineCatalog` guess; "In the models" says where it is missing), and "Link Manager"'s worksets inside the links (mode, checked names, rule — `LinkWorksetRule`); **3. Models** (`ModelListPanel`, server-only), their worksets read without opening (`GetUserWorksetInfo`) on a button and on "Insert" for any not read, and whether to make a missing workset (off by default — the link is left out there). Per model (`LinkInsertion.Run`): `BatchCoordination.OpenLocal` with only the links' worksets open; a link already there (same path) only counted, one of the same name pointing elsewhere left for "Link Updater", a link workset checked out to another user left out; missing worksets made in a transaction of their own (`Workset.Create`) if asked; each link in a transaction of its own — `RevitLinkType.Create` with the inside setup built from the link's worksets read just then, `RevitLinkInstance.Create`, pinned, instance and type put into the workset — then read back (workset, inside worksets checked, one more `LoadFrom` where Revit ignored them); synchronised with no comment, everything relinquished. Revit's warnings dismissed and listed (`WarningSilencer`); the full report is a text file written as the run goes |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -497,6 +517,16 @@ report is written into a file **as the run goes** (`ServerUploadLog`), line by l
 `TaskDialog` at the end only summarises it with a link to open it: a run over a hundred models takes
 hours, and a crash at model sixty must still leave a record of the fifty-nine done. Both passes run
 inside one `WarningSilencer`, taken after every model, so a warning lands in its own model's lines.
+
+**Exception — `InsertLinksCommand`, steps 2 and 5–7.** No document is needed (`AlwaysAvailable`); an
+open project only lends its worksets to the window's drop-down. Step 3's snapshot is a call-back: the
+window reads the links' and the models' worksets through the command while it is open. Step 5 is a loop
+over models in the "Upload to Server" shape — each model in a `try` of its own, a failure a line, the
+report written into a file as the run goes (`LinkInsertionLog`), one `WarningSilencer` taken after every
+model — and inside a model **not one transaction but one per link** (plus one for the worksets it makes):
+nobody undoes a batch, and a link Revit refuses at commit must take only itself back, not the links
+before it. `LoadFrom` (the second load of a link whose inside worksets Revit ignored) runs between them,
+outside any. The run lives in `LinkInsertion`, not in the command.
 
 ## Key decisions
 
@@ -657,8 +687,8 @@ inside one `WarningSilencer`, taken after every model, so a warning lands in its
   a missing key or the wrong type yields empty rather than throwing.
 - **Link worksets are matched by name, not by id.** Every model has its own `WorksetId`; the only
   thing "00_Shared levels and grids" has in common across links is its name. So the window works
-  with names, and `LinkManagerCommand.Configuration` translates them into ids separately for every
-  link via `WorksharingUtils.GetUserWorksetInfo(ModelPath)` — it reads the worksets without opening
+  with names, and `LinkWorksetRule.Configuration` translates them into ids separately for every
+  link, out of the list read via `WorksharingUtils.GetUserWorksetInfo(ModelPath)` — it reads the worksets without opening
   the model. Next to the names there is a rule (`00_`): one model calls the workset "00_Shared
   Levels and Grids", another names it differently, and the rule is applied **on load, to each link
   separately** — otherwise the name list would only ever catch what it had already seen. If the
@@ -689,13 +719,13 @@ inside one `WarningSilencer`, taken after every model, so a warning lands in its
   That is exactly why the button "failed at closing" until September 2026. Autodesk's own example
   specifically for links (Developers Guide → Linked Files → Revit Links) uses only
   `CloseAllWorksets` + `Open(...)`, and every working recipe found in the community does too. So
-  `LinkManagerCommand.Configuration` computes a **complement**: "close the checked ones" turns into
+  `LinkWorksetRule.Configuration` computes a **complement**: "close the checked ones" turns into
   "open every link workset except the checked ones", and "close all except the checked ones" turns
   directly into `Open(checked)`. The workset list needed for this is read anyway.
   One case cannot be expressed as a complement: "as last opened" — only Revit knows what was open
   last time — there `Close()` remains, with the same unreliability, and that case is caught by the
   check described below. Do not revert to `Close()`.
-- **`BaseOption` must return `OpenAllWorksets` on a read failure, never `CloseAllWorksets`.** When
+- **`LinkWorksetRule.BaseOption` must return `OpenAllWorksets` on a read failure, never `CloseAllWorksets`.** When
   the link's workset list could not be read, there is nothing to compute a complement from.
   Substituting "close all" here, as in the main path, would mean silently loading the link empty on
   any network hiccup — the worst possible failure. So the fallback mode is a method of its own,
@@ -709,15 +739,15 @@ inside one `WarningSilencer`, taken after every model, so a warning lands in its
 - **Checking the worksets after loading tells apart three outcomes, not two.**
   `WorksetConfiguration` only conveys a wish, and finding out whether Revit carried it out means
   re-reading the already-loaded `RevitLinkInstance.GetLinkDocument()` through a
-  `FilteredWorksetCollector` (`LinkManagerCommand.Check`). There are three outcomes: "everything as
+  `FilteredWorksetCollector` (`LinkWorksetRule.Check`). There are three outcomes: "everything as
   asked", "these worksets are wrong", and — separately — **"could not be checked"**
-  (`WorksetVerdict.Unknown`: the link did not hand over its document, the collector threw). Merging
+  (`LinkWorksetVerdict.Unknown`: the link did not hand over its document, the collector threw). Merging
   the last one with the first is exactly how a closing failure stayed unnoticed — the report read
   "Loaded" with not a word about worksets. `Unknown` goes into a report section of its own,
   "Worksets were requested but could not be checked", and a repeated `LoadFrom` is **not** attempted
   for it: that wipes the undo history, and that is not a price worth paying for a guess. What each
-  side should end up with after loading is set by `Expected` — a mirror of `Configuration`; edit
-  one, edit the other. The retry only happens on `Mismatched`; for new links this is only possible
+  side should end up with after loading is set by `LinkWorksetRule.Expected` — a mirror of
+  `LinkWorksetRule.Configuration`; edit one, edit the other. The retry only happens on `Mismatched`; for new links this is only possible
   **after** `Commit()` of the creation transaction (`LoadFrom` runs outside a transaction — see
   above), so `Apply` first gathers candidates into `toVerify` and heals them in a separate pass
   after the `using (transaction)` block. The final report reads: worked on the first try (silently),
@@ -728,12 +758,12 @@ inside one `WarningSilencer`, taken after every model, so a warning lands in its
 - **"The workset did not close" is really two different cases, and they must sound different.**
   Either Revit refused (the check above catches this), or **there is no workset with that name in
   the link at all** — the name is checked from memory in `_settings.txt`, while the consultant
-  named theirs differently, and `Matches` never finds it. The second case used to be completely
+  named theirs differently, and `LinkWorksetRule.Matches` never finds it. The second case used to be completely
   silent from both sides: `Configuration` silently skipped the name, `Expected` promised nothing for
   a name never found (so the check said nothing either), and the window's "Found in" column showed
   "from last time" whether the workset was not found or nobody had looked for it. Now
   `LinkManagerCommand._seenNames` gathers the names actually encountered in links during the run,
-  and `Missing` returns to the report the checked names that were found in none of them;
+  and `LinkWorksetRule.Missing` returns to the report the checked names that were found in none of them;
   `WorksetRow.IsCounted` gives the column a third state — "in none of them". A zero `LinkCount` on
   its own does not mean that: with no links read it means "not looked at", so `RecountWorksets` only
   sets `IsCounted` once worksets have been read for at least one checked link. An empty
@@ -2163,6 +2193,55 @@ inside one `WarningSilencer`, taken after every model, so a warning lands in its
   in the model. **Errors are left alone**, as `WarningSuppressor` leaves them: resolving one is choosing
   what Revit deletes or rolls back. If an error dialog is ever what stops a batch, that is a separate
   decision, not an extension of this one.
+- **"Link Manager"'s setup of the worksets inside a link is one class, `LinkWorksetRule`, shared with
+  "Insert Links".** It was private to `LinkManagerCommand` until a second button needed the same request
+  and the same check: the phrasing ("close all, open the listed ones"), the base mode, `Expected` and
+  the three-outcome `Check` are exactly the things that took months to get right, and a copy would drift.
+  What each caller keeps is the *reading* of a link's list and what a failed or empty read means:
+  "Link Manager" caches per run and re-reads a BIM360 link from its own document, "Insert Links" reads
+  each link fresh in every model. Do not set up a second copy of the rule.
+- **"Insert Links" gives each link one project workset name for every model** — the office names its
+  link worksets the same everywhere ("01_Link_AR"). So a name is chosen per link, not per link × model,
+  and it is required: there is no "(active)" as in "Link Manager", because a local copy the run opened
+  itself has no active workset anybody chose. The window offers names it can know — the open model's,
+  and those read from the models (`GetUserWorksetInfo`, no open) — but the cell is editable: before any
+  model is read there is nothing to offer, and the user knows the name. Names are compared through
+  `LinkPreferences.SameWorkset`, everywhere.
+- **A model without a link's workset: the link is left out, unless the window says to make the workset**
+  (`CREATE_WORKSET`, off by default). On, a name typed wrong once would become a stray workset in every
+  model of the run. Either way the choice is made with the facts: "Insert" reads the worksets of every
+  checked model not read yet, and the confirmation names which models lack which workset and what will
+  happen there. A workset made is made in a transaction of its own, before the links, and read back.
+- **The model is opened with the links' project worksets open** (`BatchCoordination.OpenLocal` with
+  their names): a new link goes into one of them, and whether Revit takes a new element into a closed
+  workset was not tested — an open one is the safe side. The price is that links already standing in
+  those worksets load too. The workset is set on the instance and the type (`LinkCatalog.Place`), never
+  through the active workset, as in "Link Manager"; both are read back after the commit.
+- **A link workset another user has checked out is left out of that model, before anything is tried.**
+  Whether Revit refuses a new element there is not confirmed; if it does, the refusal comes at the
+  commit as an error — a dialog `WarningSilencer` does not dismiss, which would stop the batch until
+  somebody clicks. Skipping is the safe side, and the report names who holds the workset.
+- **What a model has already decides before anything is created.** A link to the same path
+  (`LinkCatalog.Describe` → `LinkEntry.Key`) is only counted — a run that broke off is simply run again.
+  A link of the same **name** pointing elsewhere (still at BIM360, as a rule — a cloud resource has no
+  path, only its name) is left out and listed: a second link type of one model would show the building
+  twice, and repointing the old one is "Link Updater"'s job. Link types are in the document even with
+  their worksets closed (confirmed by "Upload to Server"'s runs), so nothing already linked is missed.
+- **The worksets inside each link are read again in every model, right before it is linked** — never
+  from the window's "Read Worksets", which may be hours old by the time the run reaches a model (the
+  `WorksetPreview.Id` rule). A known mismatch after the commit gets one more `LoadFrom` with the setup
+  built afresh — "Link Manager"'s cure for Revit Server links, whose first workset request Revit
+  sometimes ignores; "could not be checked" gets none. The checked names no link had are said at the end
+  (`LinkWorksetRule.Missing`).
+- **"Insert Links" synchronises with no comment**, the way "Upload to Server" synchronises its links
+  (the office's October 2026 request for that pass); a model where nothing was inserted is relinquished
+  and closed, never synchronised.
+- **"Insert Links" keeps its own settings, seeded from "Link Manager"'s on the first run**
+  (`InsertLinksPreferences.Load`). Both windows save on every close, so sharing one file would have each
+  overwrite the other's list of worksets to close; the seed spares typing the office's usual list twice.
+- **"Insert Links" has not yet been run on a live model** (written October 2026). Try one model and one
+  link first and look at the result in Revit — the workset the link stands in, the worksets inside it in
+  Manage Links, the pin — before running a whole building.
 
 ## Storing user settings
 
@@ -2186,9 +2265,9 @@ closes, with every translation the window held (see "Key decisions"). `sheets\` 
 history, rewritten at every opening of the window, before it is shown, and for every model a batch
 opens as itself (never for a detached copy — see "Key decisions"). The batch's reports themselves are
 not kept here: they go wherever the user saves the summary.
-`viewstosheets\`, `sheetscale\` and `copyparams\` hold settings only. `serverupload\` and `linkupdater\`
-are both: `_settings.txt` is rewritten whenever a window of the button closes, and `reports\` holds one
-text file per batch run, written as the run goes.
+`viewstosheets\`, `sheetscale\` and `copyparams\` hold settings only. `serverupload\`, `linkupdater\`
+and `insertlinks\` are both: `_settings.txt` is rewritten whenever a window of the button closes, and
+`reports\` holds one text file per batch run, written as the run goes.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -2411,6 +2490,25 @@ per model and every link indented (pointed → path, left as it is: reason, the 
 and the totals. Appended to after every model, so a run that never reaches its end still says how far it
 got. Never read back by the add-in; old reports are left for the user to delete.
 
+`insertlinks\_settings.txt` — the "Insert Links" window's settings: `KEY = value` — `PLACEMENT`
+(`Shared` / `Origin` / `Centered` / `Site`), `ATTACHMENT` (`Overlay` / `Attachment`), `WORKSETS`
+(`OpenAll` / `CloseAll` / `LastViewed` — the worksets inside the links), `CLOSE` (may repeat — a checked
+workset inside the links), `RULE` / `RULE_CONTAINS` (the name rule), `MATCH_WORKSET` (`1`/`0` — guess a
+link's project workset from its name; default `1`), `CREATE_WORKSET` (`1`/`0` — make a missing link
+workset in a model; default `0`), `LINK_SET` / `MODEL_SET` (the link sets the two lists worked with
+last), and `LINK` and `MODEL` lines (may repeat — both lists from last time, in the link-set line format,
+`LinkSetLibrary.Format`/`Parse`; a `LINK` line's last field is the link's project workset, as in a saved
+set). With no file yet, everything but the lists starts from `links\_settings.txt` (see "Key
+decisions"). The server names come from and go to `links\_settings.txt`. Rewritten whenever the window
+closes.
+
+`insertlinks\reports\Insert <yyyy-MM-dd HH-mm-ss>.txt` — one run's full report: a header (every link →
+its workset and path, the placement, the inside rule in words, what happens where a workset is missing,
+the model count), a "MODELS" section with a time-stamped line per model (a summary, or NOT done: reason,
+or made but NOT saved) and every outcome indented (inserted → the workset read back, workset made,
+already in the model, left out: reason, the worksets inside the link, FAILED, note, Revit warning,
+dismissed), and the totals. Appended to after every model; never read back by the add-in.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -2533,7 +2631,9 @@ WorksetConfiguration)` — all in RevitAPI.xml 2022, compiled for all three year
 and `Workset.Owner` — long-standing API, compiled for all three years. `WarningSilencer` uses
 `Application.FailuresProcessing`, `FailuresAccessor.DeleteAllWarnings`/`GetFailureMessages`,
 `FailuresProcessingEventArgs.SetProcessingResult` and `BuiltInFailures.LinkFailures.LinkInstanceNeedsReconcile`
-— checked in RevitAPI.xml 2022, 2024 and 2025, compiled for all three.
+— checked in RevitAPI.xml 2022, 2024 and 2025, compiled for all three. "Insert Links" uses nothing the
+add-in did not use already (`RevitLinkType.Create`, `RevitLinkInstance.Create`, `Workset.Create`,
+`WorksetTable.IsWorksetNameUnique`, `Workset.Owner`, `Transaction.Commit`'s status) — compiled for all three.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

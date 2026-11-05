@@ -262,8 +262,12 @@ namespace VladTools.Infrastructure
         /// A model already in the session — the project on screen, its local copy, a loaded link — is
         /// read as it stands rather than opened a second time, and left open afterwards
         /// (<see cref="BatchModel.WasOpen"/>).
+        ///
+        /// <paramref name="everyWorkset"/> opens every workset instead: "Export IFC" needs the geometry
+        /// itself, and an element in a closed workset is not in the document at all — it would be
+        /// missing from the file without a word. Detached and written nowhere all the same.
         /// </summary>
-        public static BatchModel OpenToRead(Application app, LinkEntry entry, out string reason)
+        public static BatchModel OpenToRead(Application app, LinkEntry entry, out string reason, bool everyWorkset = false)
         {
             reason = string.Empty;
 
@@ -319,7 +323,9 @@ namespace VladTools.Infrastructure
                 if (detached)
                     options.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets;
 
-                options.SetOpenWorksetsConfiguration(new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets));
+                options.SetOpenWorksetsConfiguration(new WorksetConfiguration(everyWorkset
+                    ? WorksetConfigurationOption.OpenAllWorksets
+                    : WorksetConfigurationOption.CloseAllWorksets));
             }
 
             try

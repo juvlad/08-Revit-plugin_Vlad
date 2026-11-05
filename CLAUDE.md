@@ -54,10 +54,10 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — nineteen buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — twenty buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). The exceptions are the "Sheets"
-and "Link Updater" batches ("Several models…"), "Upload to Server" and "Insert Links", which open their
-models themselves and so also run from a family or with no document open at all. There is no test project — checking is done by hand, in Revit.
+and "Link Updater" batches ("Several models…"), "Upload to Server", "Insert Links" and "Export IFC",
+which open their models themselves and so also run from a family or with no document open at all. There is no test project — checking is done by hand, in Revit.
 
 ## Build and run
 
@@ -239,6 +239,12 @@ UI/InsertLinksWindow.cs           the "Insert Links" window, three tabs: 1. the 
                                   server…") + placement; 2. a project workset per link (editable drop-down, the discipline
                                   guess, "In the models") + "Link Manager"'s worksets inside the links; 3. the models
                                   (ModelListPanel, server-only), read for their worksets, "make a missing workset"
+UI/IfcSchema.cs                   the IFC versions "Export IFC" offers (not Revit's IFCVersion — the window knows no Revit) + captions
+UI/IfcExportWindow.cs             the "Export IFC" window: the model list (ModelListPanel, every source), the folder, the IFC
+                                  version, "only what this 3D view shows", the four options; names the files it will replace
+UI/BatchProgressWindow.cs         a batch's progress: "3 of 12: name", the bar, done / not done, times, the last result,
+                                  "Stop after this model"; modeless, refreshed between models, Revit's window disabled while
+                                  it is open (IDisposable — in a using); used by "Export IFC", fits any model-by-model batch
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/AlwaysAvailable.cs an IExternalCommandAvailability saying "yes" — a button pressable with no document open
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
@@ -277,7 +283,8 @@ Infrastructure/CoordinationCatalog.cs  comparing the project's grids and levels 
 Infrastructure/DatumUpdate.cs     a ready-made edit for a single grid or level: rotation, translation, elevation, name
                                   plus DatumVerdict — what a re-read after the commit says (Aligned/Off/Unknown)
 Infrastructure/BatchCoordination.cs  opening somebody else's model with two worksets, a local copy, synchronising back
-                                  plus OpenToRead — the read-only road: detached, every workset closed, nothing written back
+                                  plus OpenToRead — the read-only road: detached, every workset closed (or every one open,
+                                  for "Export IFC" — everyWorkset), nothing written back
                                   plus OpenLocal — a local copy with exactly the named worksets open, none named → all
                                   closed ("Upload to Server"'s links); Info → FileHeader — a file's header, unopened
                                   plus BatchModel — one opened model of the batch
@@ -364,6 +371,12 @@ Infrastructure/LinkInsertion.cs   "Insert Links": LinkInsertionRequest (the link
                                   LinkInsertionLog (the report file, written as the run goes)
 Infrastructure/InsertLinksPreferences.cs  the "Insert Links" settings, both lists too (%AppData%\VladTools\insertlinks\
                                   _settings.txt), first run seeded from "Link Manager"'s, and the reports folder
+Infrastructure/IfcExport.cs       "Export IFC": IfcExportRequest (what every model is exported with), IfcExportResult (one
+                                  model), IfcExport.ExportOne (OpenToRead with every workset, the options, Document.Export in
+                                  a transaction always rolled back, into a temp folder, copied over and read back; FileName —
+                                  the model's name, unique in a run), IfcExportLog (the report file, written as the run goes)
+Infrastructure/IfcExportPreferences.cs  the "Export IFC" settings, the list too (%AppData%\VladTools\ifcexport\_settings.txt),
+                                  and the reports folder
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -395,6 +408,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project | "Link Updater" | `LinkUpdaterCommand` | points the model's top-level Revit links at Revit Server — made for a move from BIM360: for every link, a model of the same name on the server the open model lies on (`LinkCatalog.Host`), found by reading the server through its REST service (`ServerModelIndex`) from the open model's own folder, climbing a level at a time while a link is still missing, never onto the server root by itself; "Search wider", "Another folder…" (any server) and "Choose on server…" (one link, by hand) go further. One model of exactly the name is checked; several (nearest preselected), a loosely matching name or a file link are offered unchecked. Each checked link is reloaded with `RevitLinkType.LoadFrom` from its `RSN://` path (a link Revit keeps as a cloud resource falls back to the `ExternalResourceReference` overload) — the same element, so placement, pins, worksets, view overrides and Copy/Monitor stay; the worksets inside the link go in as `null` ("as the link had them"), are compared by name with what was open before and put right by a second load if Revit did not keep them. Workshared: the link types are checked out first; held / closed-workset links have no check box. No transaction — `LoadFrom` clears the undo history; every path is read back after the reload. **"Several models…"** (also offered from a family, a model with no links, and with no document open — `AlwaysAvailable`): a list of Revit Server models (`ModelListPanel`, server-only — "Whole server…", "Folder…", "Revit Server…", a saved set), and for each the second pass of "Upload to Server" on its own (`ServerUpload.UpdateLinks`): a local copy with the worksets its links stand in, every link with exactly one namesake under the folder its search reached pointed there, synchronised with no comment and everything relinquished; the rest listed. The report is a text file written as the run goes. In both runs Revit's warnings — "needs Coordination Review" (`LinkInstanceNeedsReconcile`) after a reload, above all — are dismissed and listed (`WarningSilencer`) |
 | Project | "Upload to Server" | `ServerUploadCommand` | puts a batch of models — downloaded from BIM360 and detached, as a rule — on Revit Server, then points their links there. The list is `ModelListPanel` without BIM360 (a folder on disk or the server, files, Revit Server models, a saved set); the destination is one Revit Server folder picked in the tree or made with "New folder…" (`RevitServerClient.CreateFolder`). **Pass 1**, per file: `BasicFileInfo` first (newer version, not workshared → refused), opened detached (`DetachAndPreserveWorksets`) with every workset closed, its link types' user worksets noted, `Document.SaveAs` to `RSN://server/folder/<its name>` as central (`WorksharingSaveAsOptions.SaveAsCentral`, new locals open every workset), `WorksharingUtils.RelinquishOwnership` of everything, closed, and confirmed by listing the server folder. With "Recreate the subfolders" (on by default) each file goes into the same subfolder below it as on disk, below the folder the checked files share — missing folders made just before their first file (`ServerFolderCache`). A name already in its folder is skipped (or written over, if the window says so — never remembered); one name twice for one folder goes up once. **Pass 2** (optional, on by default), after every upload, per model uploaded, already there, or given as a Revit Server model: a local copy (`BatchCoordination.OpenLocal`) with only the worksets its links stand in, every link pointed at a model of its name uploaded in this run, else at the one model of its name round its folder on the server (the "Link Updater" search) — through `LinkRepointing`, the "Link Updater" run — then synchronised (no comment) with everything relinquished. Several of one name, a loose name, a file link to another file are left and listed for "Link Updater". Revit's warnings in either pass are dismissed and listed (`WarningSilencer`). Works with no document open (`AlwaysAvailable`); the files in the list are never written; the full report is a text file written as the run goes |
 | Project | "Insert Links" | `InsertLinksCommand` | links one set of Revit Server models into a batch of models on Revit Server nobody has open. Three tabs: **1. Links** (`ModelListPanel`, server-only; placement, overlay/attachment); **2. Worksets** — a project workset per link, one name for every model (editable drop-down offering the open model's worksets and those read from the models of step 3; the `DisciplineCatalog` guess; "In the models" says where it is missing), and "Link Manager"'s worksets inside the links (mode, checked names, rule — `LinkWorksetRule`); **3. Models** (`ModelListPanel`, server-only), their worksets read without opening (`GetUserWorksetInfo`) on a button and on "Insert" for any not read, and whether to make a missing workset (off by default — the link is left out there). Per model (`LinkInsertion.Run`): `BatchCoordination.OpenLocal` with only the links' worksets open; a link already there (same path) only counted, one of the same name pointing elsewhere left for "Link Updater", a link workset checked out to another user left out; missing worksets made in a transaction of their own (`Workset.Create`) if asked; each link in a transaction of its own — `RevitLinkType.Create` with the inside setup built from the link's worksets read just then, `RevitLinkInstance.Create`, pinned, instance and type put into the workset — then read back (workset, inside worksets checked, one more `LoadFrom` where Revit ignored them); synchronised with no comment, everything relinquished. Revit's warnings dismissed and listed (`WarningSilencer`); the full report is a text file written as the run goes |
+| Project | "Export IFC" | `ExportIfcCommand` | exports a batch of models to IFC, one file per model, named after the model. The list is `ModelListPanel` with every source (a folder in any store, files, Revit Server, BIM360, a saved set); the folder, the IFC version (`IfcSchema` → `IFCVersion`), "Export only what this 3D view shows" (by name, `IFCExportOptions.FilterViewId` — a model without the view is not exported, and the report names its 3D views), Revit property sets and material property sets (the exporter's `ExportInternalRevitPropertySets` and `ExportMaterialPsets` options), base quantities and walls/columns split by level are chosen once. Per model (`IfcExport.ExportOne`): `BatchCoordination.OpenToRead` with every workset open (detached; a model already open in Revit exported as it stands, a linked one refused), `Document.Export` inside a transaction that is always rolled back, into a temp folder; the file copied into the folder only when whole, and read back. The window names the files it will replace before the run; a model that fails leaves its old file. While it runs, `BatchProgressWindow` shows which model of how many and takes "Stop after this model" (the rest are reported "not started"). Revit's warnings dismissed and listed (`WarningSilencer`); works with no document open (`AlwaysAvailable`); the models are never written; the full report is a text file written as the run goes |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -527,6 +541,17 @@ model — and inside a model **not one transaction but one per link** (plus one 
 nobody undoes a batch, and a link Revit refuses at commit must take only itself back, not the links
 before it. `LoadFrom` (the second load of a link whose inside worksets Revit ignored) runs between them,
 outside any. The run lives in `LinkInsertion`, not in the command.
+
+**Exception — `ExportIfcCommand`, steps 2 and 5–7.** No document is needed and none is looked at
+(`AlwaysAvailable`): the window opens straight away. Step 5 is a loop over models in the "Upload to
+Server" shape — each model in a `try` of its own, a failure a line, the report written into a file as the
+run goes (`IfcExportLog`), one `WarningSilencer` taken after every model — and inside a model one
+transaction that is **always rolled back**: Revit exports IFC only inside a transaction, and what the
+exporter changes in the model is nobody's edit (see "Key decisions"). Step 6 is therefore never "commit
+if something was done"; what counts as done is the file, read back in the folder. The run lives in
+`IfcExport`, not in the command. Unlike the other batches, the run shows `BatchProgressWindow` (opened
+in a `using` together with the `WarningSilencer`, so it is closed and Revit's window enabled again before
+the report), and a "Stop" pressed in it ends the loop before the next model.
 
 ## Key decisions
 
@@ -2242,6 +2267,59 @@ outside any. The run lives in `LinkInsertion`, not in the command.
 - **"Insert Links" has not yet been run on a live model** (written October 2026). Try one model and one
   link first and look at the result in Revit — the workset the link stands in, the worksets inside it in
   Manage Links, the pin — before running a whole building.
+- **"Export IFC" is a port of `ExportToIfcCommand` from the office's other add-in (`revitplugin`, built for
+  2023+), made to run in 2022.** The core is the same — open detached with every workset, `Document.Export`
+  with `IFCExportOptions`, close — and nothing in that API differs between 2022, 2024 and 2025
+  (RevitAPI.xml of each, and a compile for each). What changed is this add-in's way of doing a batch: the
+  model list is `ModelListPanel` (Revit Server and BIM360 too, not a folder of files only), the opening is
+  `BatchCoordination.OpenToRead`, warnings go through `WarningSilencer`, and the report is written as the
+  run goes. Its `SilentModeScope` was deliberately **not** carried over: it answered every dialog Revit
+  raised during an open with "proceed" and resolved open-time *errors* Revit's default way — choices this
+  add-in leaves to the user (see the `WarningSilencer` entry). If a dialog is ever what stops an IFC batch,
+  that is the decision to revisit, for this button alone, since its copies are thrown away.
+- **IFC is exported inside a transaction that is always rolled back.** RevitAPI.xml, all three years:
+  "Exporting to IFC requires that document is modifiable, therefore there must be a transaction already
+  open". The source add-in committed it; here it goes back, because the exporter's own edits (IFC GUIDs
+  into parameters, among others) are nobody's request, and a model already open on screen must come out
+  of the run as it went in. The file is written during the call, so the rollback takes nothing from it.
+  A linked document is refused before trying: Revit opens no transaction in one.
+- **The file goes into a temp folder first, and only a whole one replaces last week's.** `Export`
+  returning true is not counted: the .ifc must exist and not be empty, the copy into the folder must
+  succeed (a viewer holding the old file is a clear line, not a half-written file) and is read back by
+  size. A model that fails leaves its old file in place — the window's confirmation says so when it names
+  the files it will replace.
+- **"Only what this 3D view shows" is `IFCExportOptions.FilterViewId`, and a model without the view is not
+  exported at all.** Exporting it whole instead would hand over a file nobody asked for that looks no
+  different from the right one; the report names the model's 3D views so the name can be fixed. The view
+  is found by name, case aside, non-template `View3D` only. **Not yet seen on a live model** (written
+  November 2026): RevitAPI.xml documents the property as "the view whose visibility settings will govern
+  the contents", which is the dialog's "Export only elements visible in view" — check the first file
+  against Revit's own export of the same view before trusting a whole run.
+- **Revit and material property sets are named options of the IFC exporter, not `IFCExportOptions`
+  properties.** `AddOption("ExportInternalRevitPropertySets", …)` and `AddOption("ExportMaterialPsets", …)`,
+  `"true"`/`"false"` — the names seen in `Revit.IFC.Export.dll` and `IFCExporterUIOverride.dll` of the "IFC
+  for Revit 2022" bundle (22.6.2) installed here, the way its own dialog passes them. A check box for
+  another setting of Revit's IFC dialog is added the same way: find the name the exporter reads and the
+  caption the dialog shows (both are strings in those two DLLs), and use that caption word for word —
+  "Export material property sets" was asked for as a copy of the dialog's own box. An exporter that does
+  not know a name ignores it silently. `SpaceBoundaryLevel` is set to 0, as in Revit's own
+  Coordination View setups — the API's default is 1. Saved IFC export setups (the dialog's "Modify setup")
+  are not read: they live in the exporter add-in's own storage, and reaching them means referencing that
+  add-in's assembly, which changes from year to year.
+- **A batch's progress window runs on the command's own thread, and that decides everything about it**
+  (`BatchProgressWindow`, asked for on "Export IFC" in November 2026). The Revit API has one thread, so the
+  window cannot be drawn from another while a model is worked on: it is shown modeless, and the command
+  calls `Begin`/`Done` between models, each of which lets WPF draw and take input
+  (`Dispatcher.Invoke` at background priority — everything above it, render and input included, runs
+  first). While Revit opens or exports a model the window stands still — its hint says so, and Windows may
+  mark it "Not responding" on a long model, exactly as it does Revit. Letting messages through between
+  models lets Revit's through too, so **Revit's main window is disabled** (`EnableWindow`) for as long as the
+  progress window is open, the way a modal dialog disables its owner: a ribbon click mid-batch must not
+  start a second command. It is enabled again in `Dispose`, before `Close`, and the window lives in a
+  `using`, so a run that throws cannot leave Revit locked. "Stop after this model" and the close button only
+  set `StopRequested`; the command checks it before each model — a model cannot be stopped halfway. The
+  other batches ("Upload to Server", "Insert Links", "Sheets", "Link Updater") do not show it yet; wiring it
+  in is `Start` before the loop, `Begin`/`Done` around each model, `StopRequested` at the top.
 
 ## Storing user settings
 
@@ -2265,9 +2343,10 @@ closes, with every translation the window held (see "Key decisions"). `sheets\` 
 history, rewritten at every opening of the window, before it is shown, and for every model a batch
 opens as itself (never for a detached copy — see "Key decisions"). The batch's reports themselves are
 not kept here: they go wherever the user saves the summary.
-`viewstosheets\`, `sheetscale\` and `copyparams\` hold settings only. `serverupload\`, `linkupdater\`
-and `insertlinks\` are both: `_settings.txt` is rewritten whenever a window of the button closes, and
-`reports\` holds one text file per batch run, written as the run goes.
+`viewstosheets\`, `sheetscale\` and `copyparams\` hold settings only. `serverupload\`, `linkupdater\`,
+`insertlinks\` and `ifcexport\` are both: `_settings.txt` is rewritten whenever a window of the button
+closes, and `reports\` holds one text file per batch run, written as the run goes. The .ifc files
+themselves are not kept here: they go into the folder chosen in the window.
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -2509,6 +2588,21 @@ or made but NOT saved) and every outcome indented (inserted → the workset read
 already in the model, left out: reason, the worksets inside the link, FAILED, note, Revit warning,
 dismissed), and the totals. Appended to after every model; never read back by the add-in.
 
+`ifcexport\_settings.txt` — the "Export IFC" window's settings: `KEY = value` — `FOLDER` (the folder the
+.ifc files went into last), `VERSION` (`Ifc2x3CoordinationView2` / `Ifc4ReferenceView` /
+`Ifc4DesignTransferView` / `Ifc2x3CoordinationView` / `Ifc2x3BasicFmHandover`; default the first),
+`BY_VIEW` (`1`/`0` — only what a 3D view shows; default `0`), `VIEW` (that view's name, kept when
+`BY_VIEW` is off; default `IFC`), `REVIT_PSETS`, `MATERIAL_PSETS`, `BASE_QUANTITIES`, `SPLIT_WALLS`
+(`1`/`0`, default `0`),
+`SET` (the link set worked with last) and `MODEL` lines (may repeat — the list from last time, in the
+link-set line format, `LinkSetLibrary.Format`/`Parse`; the sets themselves live in `links\`). The server
+names come from and go to `links\_settings.txt`. Rewritten whenever the window closes.
+
+`ifcexport\reports\IFC <yyyy-MM-dd HH-mm-ss>.txt` — one run's full report: a header (the folder, the IFC
+version, what is exported, the four options, the model count), a "MODELS" section with a time-stamped
+line per model (exported → path, size, time, REPLACED; or NOT exported: reason) with notes and dismissed
+Revit warnings indented, and the totals. Appended to after every model; never read back by the add-in.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -2634,6 +2728,12 @@ and `Workset.Owner` — long-standing API, compiled for all three years. `Warnin
 — checked in RevitAPI.xml 2022, 2024 and 2025, compiled for all three. "Insert Links" uses nothing the
 add-in did not use already (`RevitLinkType.Create`, `RevitLinkInstance.Create`, `Workset.Create`,
 `WorksetTable.IsWorksetNameUnique`, `Workset.Owner`, `Transaction.Commit`'s status) — compiled for all three.
+"Export IFC" uses `Document.Export(string, string, IFCExportOptions)`, `IFCExportOptions` (`FileVersion`,
+`FilterViewId`, `ExportBaseQuantities`, `WallAndColumnSplitting`, `SpaceBoundaryLevel`, `AddOption`) and
+`IFCVersion.IFC2x3CV2`/`IFC4RV`/`IFC4DTV`/`IFC2x3`/`IFC2x3BFM` — in RevitAPI.xml 2022 with the same
+signatures, compiled for all three. The export itself is done by the IFC exporter add-in Revit ships (or the
+"IFC for Revit" bundle that replaces it); a Revit without it throws `OptionalFunctionalityNotAvailableException`,
+which becomes the model's line in the report.
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

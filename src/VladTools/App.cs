@@ -531,6 +531,28 @@ namespace VladTools
                 iconBaseName: "insertlinks",
                 availability: typeof(AlwaysAvailable));
 
+            // ───────────────── Button 24: Export IFC (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_ExportIfc",
+                text: "Export\nIFC",
+                commandType: typeof(ExportIfcCommand),
+                tooltip: "Exports a whole batch of models to IFC, one file per model, with one set of export settings.",
+                longDescription:
+                    "Revit's own File → Export → IFC works on the open model only: open each one, export, close, again.\n" +
+                    "Here the list is gathered once — a folder of models, files, Revit Server, BIM360, a saved set — the\n" +
+                    "settings are chosen once (IFC version, the whole model or only what a 3D view shows, Revit property\n" +
+                    "sets, material property sets, base quantities, walls and columns split by level), and the button\n" +
+                    "does the rest unattended.\n\n" +
+                    "Each model is opened detached from its central file with every workset open, exported, and closed\n" +
+                    "without saving: nothing is locked and the models are never changed. A model already open in Revit is\n" +
+                    "exported as it stands. The files are named after the models; a model that fails leaves its old file\n" +
+                    "in place. Revit is busy until the whole list is done: a small window shows which model of how many\n" +
+                    "it is on and can stop the run after the current one. The full report is written as it goes.\n" +
+                    "Works with no model open.",
+                iconBaseName: "exportifc",
+                availability: typeof(AlwaysAvailable));
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;

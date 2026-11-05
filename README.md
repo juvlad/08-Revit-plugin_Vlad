@@ -1663,6 +1663,65 @@ Then the model is **synchronised with central** (no comment) with everything han
 - **The full report** is a text file written as the run goes, with a time on every line —
   `%AppData%\VladTools\insertlinks\reports\`. The dialog at the end summarises it and opens it.
 
+### Export IFC (Project panel)
+
+Works **with any document open, or none** — it opens its models itself. Exports a whole batch of models
+to **IFC**, one file per model, with one set of export settings.
+
+What for: Revit's own File → Export → IFC works on the open model only — open each model, export, close,
+again, with the same choices in the dialog every time.
+
+**What the button does.**
+
+1. **Gather the models**: "Folder…" (a whole folder — on disk, Revit Server or BIM360 — with its subfolders
+   if you say so), "Files…", "Revit Server…", "BIM360…", or a saved set (the same sets as "Link Manager").
+   Only the checked ones are exported.
+2. **Choose the folder** the .ifc files go into ("Browse…", or type the path — a missing folder is made).
+3. **The settings**, the same for every model:
+   - **IFC version** — IFC2x3 Coordination View 2.0 (Revit's default), IFC4 Reference View, IFC4 Design
+     Transfer View, IFC2x3 Coordination View, IFC2x3 Basic FM Handover View;
+   - **"Export only what this 3D view shows"** and the view's name (`IFC` by default) — the dialog's
+     "Export only elements visible in view": hidden categories, worksets, filters and the section box of
+     that view decide what goes into the file. Off — the whole model;
+   - **Export Revit property sets**, **Export material property sets**, **Export base quantities**,
+     **Split walls and columns by level** — the same boxes as in Revit's own IFC export setup, passed to the
+     exporter the way that dialog passes them (all off by default, as there).
+4. **"Export"**. If files of the same names are already in the folder, the window lists them and asks
+   before replacing them. Revit is busy until the whole list is done.
+
+**While it runs**, a small window shows which model of how many is being exported, a progress bar, how
+many are done and not done, how long the current model and the whole run have taken, and what became of
+the last model. It is updated **between models**: while one model is opened and exported, Revit is busy
+and the window stands still (Windows may even mark it "Not responding" on a big model — wait). **"Stop
+after this model"** finishes the current model and starts no more; the rest are listed as "not started".
+Revit's own window cannot be clicked until the run is over.
+
+**What happens to each model**: it is opened **detached** from its central file, **with every workset
+open** — nothing is locked, and nothing the model holds is left out — exported, and closed **without
+saving**. The file is named after the model (`MK3-VSC-B01-AR.ifc`); two models of one name in a run get
+`… (2).ifc`.
+
+**What is worth knowing.**
+
+- **Your models are never changed.** Revit only exports IFC while a model is being edited; the button
+  undoes that edit right after the export.
+- **A model that fails keeps its old file**: the new one is written aside first and only replaces the old
+  one when it is whole.
+- **A model without the 3D view** (with "only what this 3D view shows" on) is **not exported**, rather than
+  exported whole — the report lists the 3D views it does have, so the name can be fixed.
+- **A model already open in Revit** is exported as it stands — with your unsaved changes, and without the
+  worksets you have closed (the report names them). A model loaded **as a link** in an open project cannot
+  be exported: close that project first.
+- Saved IFC export setups ("Modify setup" in Revit's dialog) are not used — only the settings in this
+  window.
+- **Check the first file** before a big run: export one model, open the .ifc in a viewer and compare it
+  with Revit's own export of the same model.
+- **Revit's warnings** on the way are dismissed rather than left waiting for a click, and listed in the
+  report with their model. Errors are not.
+- **The full report** is a text file written as the run goes, with a time on every line —
+  `%AppData%\VladTools\ifcexport\reports\`. The dialog at the end summarises it and opens the folder with
+  the files or the report.
+
 ## Structure
 
 ```
@@ -1695,6 +1754,7 @@ src/VladTools/
     LinkUpdaterCommand.cs             logic for the "Link Updater" button (project; its batch with no document too)
     ServerUploadCommand.cs            logic for the "Upload to Server" button (project, or no document)
     InsertLinksCommand.cs             logic for the "Insert Links" button (project, or no document)
+    ExportIfcCommand.cs               logic for the "Export IFC" button (project, or no document)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1733,7 +1793,7 @@ src/VladTools/
     ModelListPanel.cs                a batch's model list: Folder…, Files…, Revit Server…, BIM360…, sets, the table —
                                      shared by "Other models…", "Sheets → Several models…", "Upload to Server",
                                      "Link Updater → Several models…" (server-only there, with "Whole server…") and
-                                     both lists of "Insert Links"
+                                     both lists of "Insert Links", and "Export IFC"
     BatchModelRow.cs                 a row of that table (check box, model, source, where it lives)
     ScheduleLibraryWindow.cs         the "Schedule Library" window: the set, where to fill it from, the insert table
     ScheduleChooserWindow.cs         "which of this model's schedules go into the set"
@@ -1795,11 +1855,14 @@ src/VladTools/
     LinkUpdaterBatchWindow.cs        "Link Updater → Several models…": the Revit Server models whose links are updated
     ServerUploadWindow.cs            the "Upload to Server" window: the models, the Revit Server folder, the options
     InsertLinksWindow.cs             the "Insert Links" window: 1. the links, 2. their worksets, 3. the models
+    IfcExportWindow.cs               the "Export IFC" window: the models, the folder, the IFC settings
+    IfcSchema.cs                     the IFC versions the "Export IFC" window offers
+    BatchProgressWindow.cs           a batch's progress window: which model of how many, times, "Stop after this model"
     InsertLinkRow.cs                 a row of its workset table (link, project workset, in how many models it exists)
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets" and "Link Updater" for their
-                                 batches, "Upload to Server", "Insert Links")
+                                 batches, "Upload to Server", "Insert Links", "Export IFC")
     Icons.cs                     loading icons from the assembly's resources
     FormulaLibrary.cs            reading and writing the formula list file (%AppData%)
     FormulaParser.cs             finding names in a formula that are not family parameters
@@ -1831,7 +1894,8 @@ src/VladTools/
     CoordinationCatalog.cs       comparing the project's grids and levels against the coordination file
     DatumUpdate.cs                a ready-made edit for a single grid or level: rotation, translation, elevation, name
     BatchCoordination.cs         opening somebody else's model with two worksets, and synchronising it back;
-                                 or only to read it — detached, every workset closed ("Sheets" batch)
+                                 or only to read it — detached, every workset closed ("Sheets" batch) or every
+                                 one open ("Export IFC")
     CoordinationPreferences.cs   the "Other models…" window settings (%AppData%)
     ScheduleLibrary.cs           the schedule cache: sets as .rvt files (%AppData%), copying between documents
     SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
@@ -1866,6 +1930,8 @@ src/VladTools/
     ServerUploadPreferences.cs   the "Upload to Server" window settings and its reports folder (%AppData%)
     LinkInsertion.cs             "Insert Links": the run over one model, its result, the report file
     InsertLinksPreferences.cs    the "Insert Links" window settings, both lists and its reports folder (%AppData%)
+    IfcExport.cs                 "Export IFC": one model's open, export and read-back, the report file
+    IfcExportPreferences.cs      the "Export IFC" window settings, the list and its reports folder (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

@@ -448,6 +448,115 @@ namespace VladTools.Infrastructure
         }
 
         /// <summary>
+        /// Opens one model to change something no workset holds — the project's own settings, such as its
+        /// parameter bindings ("Parameters") — and to write it back. Null on any refusal, with the reason in
+        /// <paramref name="reason"/>.
+        ///
+        /// Every workset is closed: none of the model's elements has to load for a document-wide setting, and
+        /// a model opens in seconds. The road back depends on the model: a workshared file or Revit Server model
+        /// gets a local copy (<see cref="OpenLocal"/> — a central is never edited in place); a cloud model is
+        /// opened as it is, Revit keeping its own local, and synchronised; a file that is not workshared is
+        /// opened itself and saved over.
+        ///
+        /// **A file saved in an older Revit is refused, not upgraded.** Saving it here would write it in this
+        /// Revit's format, and the year it belongs to could no longer open it — a whole project moved to a new
+        /// Revit by a button that was asked to add parameters. A central would fare no better: its local copy
+        /// is upgraded on opening, and the synchronisation back then fails.
+        /// </summary>
+        public static BatchModel OpenToEdit(Application app, LinkEntry entry, out string reason)
+        {
+            reason = string.Empty;
+
+            ModelPath path;
+
+            try
+            {
+                path = LinkCatalog.ToModelPath(entry);
+            }
+            catch (Exception exception)
+            {
+                reason = LinkCatalog.Short(exception.Message);
+                return null;
+            }
+
+            if (InSession(app, entry, path) != null)
+            {
+                reason = "the model is open in this Revit session — close it and run the button again";
+                return null;
+            }
+
+            var everyClosed = new OpenOptions();
+            everyClosed.SetOpenWorksetsConfiguration(new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets));
+
+            if (entry.Origin == LinkOrigin.Cloud)
+            {
+                try
+                {
+                    var doc = app.OpenDocumentFile(path, everyClosed);
+                    return new BatchModel(entry, doc, null) { NeedsSync = doc.IsWorkshared };
+                }
+                catch (Exception exception)
+                {
+                    reason = "the model would not open: " + LinkCatalog.Short(exception.Message) +
+                             " Usually: no access to the project, not signed in to Autodesk, or the model saved in another Revit than this one.";
+                    return null;
+                }
+            }
+
+            if (entry.Origin == LinkOrigin.File)
+            {
+                if (!File.Exists(entry.Path))
+                {
+                    reason = "there is no such file — the path may have come from a saved set and gone stale, " +
+                             "or the network folder may not be reachable from this machine";
+                    return null;
+                }
+
+                var info = Info(entry.Path);
+
+                if (info != null && info.IsLater)
+                {
+                    reason = "the model was saved in a newer Revit than this one (Revit " + app.VersionNumber +
+                             "; the model's own format is " + info.Format + ") and will not open here";
+                    return null;
+                }
+
+                int format;
+                int running;
+                if (info != null &&
+                    int.TryParse(info.Format, out format) &&
+                    int.TryParse(app.VersionNumber, out running) &&
+                    format < running)
+                {
+                    reason = "the model was saved in Revit " + format + ": saving it from Revit " + running +
+                             " would upgrade it, and Revit " + format + " could no longer open it. Run the button from Revit " + format + ".";
+                    return null;
+                }
+
+                if (info != null && info.IsWorkshared && !info.IsCentral)
+                {
+                    reason = "by its own header this is not a central model but somebody's local copy — point the list at the central file";
+                    return null;
+                }
+
+                if (info != null && !info.IsWorkshared)
+                {
+                    try
+                    {
+                        return new BatchModel(entry, app.OpenDocumentFile(path, new OpenOptions()), null);
+                    }
+                    catch (Exception exception)
+                    {
+                        reason = "the model would not open: " + LinkCatalog.Short(exception.Message);
+                        return null;
+                    }
+                }
+            }
+
+            return OpenLocal(app, entry, new List<string>(), out reason);
+        }
+
+        /// <summary>
         /// The ids of these worksets in the file about to be opened, read from that file. A local copy's ids
         /// are taken from the copy rather than from its central: <c>WorksetPreview.Id</c> is documented as
         /// changing on synchronising, and a configuration naming ids the file does not have is ignored

@@ -1722,6 +1722,58 @@ saving**. The file is named after the model (`MK3-VSC-B01-AR.ifc`); two models o
   `%AppData%\VladTools\ifcexport\reports\`. The dialog at the end summarises it and opens the folder with
   the files or the report.
 
+### Parameters (Project panel)
+
+Works **with any document open, or none** — it opens its models itself. Adds the parameters of a **DiRoots
+ParaManager** Excel file to a whole batch of models as **project parameters**.
+
+What for: ParaManager adds parameters to the one model that is open — open each model, import the file,
+synchronise, close, again. Here the same file goes into a whole list of models unattended.
+
+**What the button does.**
+
+1. **Pick the file** ("Browse…") — the Excel file ParaManager exports its parameter list to ("Export to
+   Excel", `.xlsm` or `.xlsx`, the "Parameter List" sheet). Every parameter in it is listed: name, type,
+   instance/type, group, categories, "values can vary by group instance", and a state. A parameter that can
+   be added is checked; one that cannot is red and says why — no GUID (a new row ParaManager has not given one
+   yet), not a shared parameter, a type or a category this Revit does not know, the same GUID or name as an
+   earlier row. "Read again" re-reads the file after it was edited in Excel.
+2. **Gather the models**: "Folder…" (a whole folder — on disk, Revit Server or BIM360 — with its subfolders
+   if you say so), "Files…", "Revit Server…", "BIM360…", or a saved set (the same sets as "Link Manager").
+   Only the checked ones are worked on.
+3. **"Add to N model(s)…"** — the window says what will happen and asks once. Revit is busy until the whole
+   list is done.
+
+**What happens to each model**: it is opened **with every workset closed** (quick — nothing of the model's
+geometry has to load for a project parameter); a workshared model as a **local copy**, synchronised with
+central at the end with everything handed back; a model that is not workshared is opened itself and saved
+over. Every parameter is bound, then read back from the model; a model where nothing needed adding is closed
+without saving.
+
+**What is worth knowing.**
+
+- **The file's words do not have to match your Revit's language.** ParaManager writes a dictionary into the
+  file (a hidden sheet), and the categories, types and groups are taken from it by their ids — a file written
+  in a Russian Revit 2024 works in an English Revit 2022.
+- **A parameter a model already has** (the same GUID) only gets what it lacks: the categories missing from
+  its binding, the file's group, and "values can vary by group instance" where the file asks for it.
+  **Nothing is ever taken away**: no category is unbound, instance is never switched to type or back, and
+  "can vary" is never turned off — each of those loses values somebody filled in. Such differences are listed
+  in the report as "differs from the file — left as it is".
+- **A name already taken in a model** by another parameter (a shared one with another GUID, or one that is
+  not shared) — the parameter is left out of that model, with the reason: two parameters of one name cannot
+  be told apart in a schedule or a tag.
+- **A category the model does not have** is left out of the binding, and the report says which.
+- **A model saved in an older Revit** than the one running is **left alone**: saving it would upgrade it, and
+  its own Revit could no longer open it. Run the button from that Revit.
+- **A model open in Revit** (or loaded as a link) is skipped — close it first.
+- **If Revit refuses one parameter** (something it needed is held by another user, as a rule), only that
+  parameter is taken back — the rest of the model goes on — and the report gives Revit's words.
+- **A second run on the same list** changes nothing that is already there: the models are only counted
+  ("already as asked"), and not synchronised.
+- **The full report** is a text file written as the run goes, with a time on every line —
+  `%AppData%\VladTools\batchparameters\reports\`. The dialog at the end summarises it.
+
 ## Structure
 
 ```
@@ -1755,6 +1807,7 @@ src/VladTools/
     ServerUploadCommand.cs            logic for the "Upload to Server" button (project, or no document)
     InsertLinksCommand.cs             logic for the "Insert Links" button (project, or no document)
     ExportIfcCommand.cs               logic for the "Export IFC" button (project, or no document)
+    BatchParametersCommand.cs         logic for the "Parameters" button (project, or no document)
   UI/
     DeleteParametersWindow.cs        the family parameter table window, check boxes and a rule (WPF, built in code)
     SharedParameterRow.cs            a row of that table (check box + parameter data)
@@ -1793,7 +1846,7 @@ src/VladTools/
     ModelListPanel.cs                a batch's model list: Folder…, Files…, Revit Server…, BIM360…, sets, the table —
                                      shared by "Other models…", "Sheets → Several models…", "Upload to Server",
                                      "Link Updater → Several models…" (server-only there, with "Whole server…") and
-                                     both lists of "Insert Links", and "Export IFC"
+                                     both lists of "Insert Links", "Export IFC" and "Parameters"
     BatchModelRow.cs                 a row of that table (check box, model, source, where it lives)
     ScheduleLibraryWindow.cs         the "Schedule Library" window: the set, where to fill it from, the insert table
     ScheduleChooserWindow.cs         "which of this model's schedules go into the set"
@@ -1859,10 +1912,12 @@ src/VladTools/
     IfcSchema.cs                     the IFC versions the "Export IFC" window offers
     BatchProgressWindow.cs           a batch's progress window: which model of how many, times, "Stop after this model"
     InsertLinkRow.cs                 a row of its workset table (link, project workset, in how many models it exists)
+    BatchParametersWindow.cs         the "Parameters" window: the ParaManager file's parameters and the models
+    BatchParameterRow.cs             a row of its parameter table (check box, type, binding, group, categories, state)
   Infrastructure/
     Ribbon.cs                    creating the panel and the buttons
     AlwaysAvailable.cs           lets a button be pressed with no model open ("Sheets" and "Link Updater" for their
-                                 batches, "Upload to Server", "Insert Links", "Export IFC")
+                                 batches, "Upload to Server", "Insert Links", "Export IFC", "Parameters")
     Icons.cs                     loading icons from the assembly's resources
     FormulaLibrary.cs            reading and writing the formula list file (%AppData%)
     FormulaParser.cs             finding names in a formula that are not family parameters
@@ -1895,7 +1950,8 @@ src/VladTools/
     DatumUpdate.cs                a ready-made edit for a single grid or level: rotation, translation, elevation, name
     BatchCoordination.cs         opening somebody else's model with two worksets, and synchronising it back;
                                  or only to read it — detached, every workset closed ("Sheets" batch) or every
-                                 one open ("Export IFC")
+                                 one open ("Export IFC"); or to change what no workset holds, every workset
+                                 closed, a local copy or the file itself, written back ("Parameters")
     CoordinationPreferences.cs   the "Other models…" window settings (%AppData%)
     ScheduleLibrary.cs           the schedule cache: sets as .rvt files (%AppData%), copying between documents
     SchedulePreferences.cs       the "Schedule Library" window settings (%AppData%)
@@ -1932,6 +1988,9 @@ src/VladTools/
     InsertLinksPreferences.cs    the "Insert Links" window settings, both lists and its reports folder (%AppData%)
     IfcExport.cs                 "Export IFC": one model's open, export and read-back, the report file
     IfcExportPreferences.cs      the "Export IFC" window settings, the list and its reports folder (%AppData%)
+    ParaManagerFile.cs           reading a DiRoots ParaManager Excel file into parameters this Revit can bind
+    BatchParameters.cs           "Parameters": the run's shared parameter file, binding in one model, the report file
+    BatchParametersPreferences.cs  the "Parameters" window settings, the list and its reports folder (%AppData%)
   Resources/                     16×16 and 32×32 PNG icons (embedded in the DLL)
 ```
 

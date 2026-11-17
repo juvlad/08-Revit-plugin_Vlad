@@ -54,10 +54,10 @@ and are left out of the report; everything else goes in.
 
 An add-in for **Autodesk Revit 2022, 2024 and 2025**, written in C#, x64. It adds a **Vlad Tools**
 tab to the Revit ribbon, with two panels: "Families" — four buttons, working **only in the family
-editor** (`.rfa`); "Project" — twenty buttons, working **only in a project** (`.rvt`, and a project
+editor** (`.rfa`); "Project" — twenty-one buttons, working **only in a project** (`.rvt`, and a project
 template `.rte` — Revit opens both as the same kind of document). The exceptions are the "Sheets"
-and "Link Updater" batches ("Several models…"), "Upload to Server", "Insert Links" and "Export IFC",
-which open their models themselves and so also run from a family or with no document open at all. There is no test project — checking is done by hand, in Revit.
+and "Link Updater" batches ("Several models…"), "Upload to Server", "Insert Links", "Export IFC" and
+"Parameters", which open their models themselves and so also run from a family or with no document open at all. There is no test project — checking is done by hand, in Revit.
 
 ## Build and run
 
@@ -244,7 +244,13 @@ UI/IfcExportWindow.cs             the "Export IFC" window: the model list (Model
                                   version, "only what this 3D view shows", the four options; names the files it will replace
 UI/BatchProgressWindow.cs         a batch's progress: "3 of 12: name", the bar, done / not done, times, the last result,
                                   "Stop after this model"; modeless, refreshed between models, Revit's window disabled while
-                                  it is open (IDisposable — in a using); used by "Export IFC", fits any model-by-model batch
+                                  it is open (IDisposable — in a using); used by "Export IFC" and "Parameters", fits any
+                                  model-by-model batch
+UI/BatchParameterRow.cs           a row of the "Parameters" table (words only: type, binding, group, categories, state;
+                                  CanSelect — no check box for a row that cannot be added) + BatchParameterFileView, what
+                                  the window is shown of one file
+UI/BatchParametersWindow.cs       the "Parameters" window: the ParaManager file (Browse…, Read again) read through a
+                                  call-back, its parameter table, the models (ModelListPanel, every source)
 Infrastructure/Ribbon.cs          GetOrCreatePanel + AddPushButton
 Infrastructure/AlwaysAvailable.cs an IExternalCommandAvailability saying "yes" — a button pressable with no document open
 Infrastructure/Icons.cs           loading PNGs from an EmbeddedResource
@@ -287,6 +293,8 @@ Infrastructure/BatchCoordination.cs  opening somebody else's model with two work
                                   for "Export IFC" — everyWorkset), nothing written back
                                   plus OpenLocal — a local copy with exactly the named worksets open, none named → all
                                   closed ("Upload to Server"'s links); Info → FileHeader — a file's header, unopened
+                                  plus OpenToEdit — every workset closed, written back: a local copy (file, server), the
+                                  cloud model as it is, a plain file itself; an older-version file refused ("Parameters")
                                   plus BatchModel — one opened model of the batch
 Infrastructure/CoordinationPreferences.cs  the "other models" window settings (%AppData%\VladTools\coordination\_settings.txt)
 Infrastructure/DisciplineCatalog.cs  a discipline code (OV, VK…) from a model name → a project workset "01_Link_OV", by tokens
@@ -377,6 +385,16 @@ Infrastructure/IfcExport.cs       "Export IFC": IfcExportRequest (what every mod
                                   the model's name, unique in a run), IfcExportLog (the report file, written as the run goes)
 Infrastructure/IfcExportPreferences.cs  the "Export IFC" settings, the list too (%AppData%\VladTools\ifcexport\_settings.txt),
                                   and the reports folder
+Infrastructure/ParaManagerFile.cs "Parameters": a DiRoots ParaManager Excel export → BatchParameter (GUID, name, spec, group,
+                                  instance/type, BatchCategory list, vary, description, flags, Problem/Notes) in a
+                                  ParameterFileScan; the words resolved through the file's own "DiRootsTranslationMapping"
+                                  sheet (category ids, spec ForgeIds, PG_ group names), this Revit's labels as a fallback
+Infrastructure/BatchParameters.cs "Parameters": CreateDefinitionFile (the run's own shared parameter file), Run (one model:
+                                  OpenToEdit, a transaction per parameter, read back, synchronise / save),
+                                  BatchParameterResult, RollBackOnError (the per-parameter failure handler),
+                                  BatchParametersLog (the report file, written as the run goes)
+Infrastructure/BatchParametersPreferences.cs  the "Parameters" settings, the list too (%AppData%\VladTools\batchparameters\
+                                  _settings.txt), and the reports folder
 Resources/*.png                   16/32 icons, embedded in the DLL
 ```
 
@@ -409,6 +427,7 @@ Resources/*.png                   16/32 icons, embedded in the DLL
 | Project | "Upload to Server" | `ServerUploadCommand` | puts a batch of models — downloaded from BIM360 and detached, as a rule — on Revit Server, then points their links there. The list is `ModelListPanel` without BIM360 (a folder on disk or the server, files, Revit Server models, a saved set); the destination is one Revit Server folder picked in the tree or made with "New folder…" (`RevitServerClient.CreateFolder`). **Pass 1**, per file: `BasicFileInfo` first (newer version, not workshared → refused), opened detached (`DetachAndPreserveWorksets`) with every workset closed, its link types' user worksets noted, `Document.SaveAs` to `RSN://server/folder/<its name>` as central (`WorksharingSaveAsOptions.SaveAsCentral`, new locals open every workset), `WorksharingUtils.RelinquishOwnership` of everything, closed, and confirmed by listing the server folder. With "Recreate the subfolders" (on by default) each file goes into the same subfolder below it as on disk, below the folder the checked files share — missing folders made just before their first file (`ServerFolderCache`). A name already in its folder is skipped (or written over, if the window says so — never remembered); one name twice for one folder goes up once. **Pass 2** (optional, on by default), after every upload, per model uploaded, already there, or given as a Revit Server model: a local copy (`BatchCoordination.OpenLocal`) with only the worksets its links stand in, every link pointed at a model of its name uploaded in this run, else at the one model of its name round its folder on the server (the "Link Updater" search) — through `LinkRepointing`, the "Link Updater" run — then synchronised (no comment) with everything relinquished. Several of one name, a loose name, a file link to another file are left and listed for "Link Updater". Revit's warnings in either pass are dismissed and listed (`WarningSilencer`). Works with no document open (`AlwaysAvailable`); the files in the list are never written; the full report is a text file written as the run goes |
 | Project | "Insert Links" | `InsertLinksCommand` | links one set of Revit Server models into a batch of models on Revit Server nobody has open. Three tabs: **1. Links** (`ModelListPanel`, server-only; placement, overlay/attachment); **2. Worksets** — a project workset per link, one name for every model (editable drop-down offering the open model's worksets and those read from the models of step 3; the `DisciplineCatalog` guess; "In the models" says where it is missing), and "Link Manager"'s worksets inside the links (mode, checked names, rule — `LinkWorksetRule`); **3. Models** (`ModelListPanel`, server-only), their worksets read without opening (`GetUserWorksetInfo`) on a button and on "Insert" for any not read, and whether to make a missing workset (off by default — the link is left out there). Per model (`LinkInsertion.Run`): `BatchCoordination.OpenLocal` with only the links' worksets open; a link already there (same path) only counted, one of the same name pointing elsewhere left for "Link Updater", a link workset checked out to another user left out; missing worksets made in a transaction of their own (`Workset.Create`) if asked; each link in a transaction of its own — `RevitLinkType.Create` with the inside setup built from the link's worksets read just then, `RevitLinkInstance.Create`, pinned, instance and type put into the workset — then read back (workset, inside worksets checked, one more `LoadFrom` where Revit ignored them); synchronised with no comment, everything relinquished. Revit's warnings dismissed and listed (`WarningSilencer`); the full report is a text file written as the run goes |
 | Project | "Export IFC" | `ExportIfcCommand` | exports a batch of models to IFC, one file per model, named after the model. The list is `ModelListPanel` with every source (a folder in any store, files, Revit Server, BIM360, a saved set); the folder, the IFC version (`IfcSchema` → `IFCVersion`), "Export only what this 3D view shows" (by name, `IFCExportOptions.FilterViewId` — a model without the view is not exported, and the report names its 3D views), Revit property sets and material property sets (the exporter's `ExportInternalRevitPropertySets` and `ExportMaterialPsets` options), base quantities and walls/columns split by level are chosen once. Per model (`IfcExport.ExportOne`): `BatchCoordination.OpenToRead` with every workset open (detached; a model already open in Revit exported as it stands, a linked one refused), `Document.Export` inside a transaction that is always rolled back, into a temp folder; the file copied into the folder only when whole, and read back. The window names the files it will replace before the run; a model that fails leaves its old file. While it runs, `BatchProgressWindow` shows which model of how many and takes "Stop after this model" (the rest are reported "not started"). Revit's warnings dismissed and listed (`WarningSilencer`); works with no document open (`AlwaysAvailable`); the models are never written; the full report is a text file written as the run goes |
+| Project | "Parameters" | `BatchParametersCommand` | adds the parameters of a DiRoots ParaManager Excel export ("Parameter List" sheet) to a batch of models as project parameters. The file is read into `BatchParameter`s (`ParaManagerFile`) — categories, specs and groups taken by id from the file's own hidden "DiRootsTranslationMapping" sheet, so a Russian file works in any Revit language; a row with no GUID, not "Shared Parameter", or a type/category this Revit lacks has no check box and says why. The models come from `ModelListPanel` (every source). The definitions are written once into a shared parameter file of the run's own in %TEMP% (`BatchParameters.CreateDefinitionFile` — GUID, name, spec, description, user modifiable, visible, hide when no value). Per model (`BatchParameters.Run`): `BatchCoordination.OpenToEdit` (every workset closed; a local copy of a workshared file or server model, the cloud model as it is, a plain file itself; a file of an older Revit refused), `SharedParametersFilename` pointed at the run's file for the binding only, each parameter in a transaction of its own (`BindingMap.Insert`, or `ReInsert` adding only missing categories and the group; `SetAllowVaryBetweenGroups` only ever turned on for a parameter the model had), errors rolling that one transaction back (`RollBackOnError`), every binding read back; synchronised (no comment, everything relinquished) or saved, or relinquished when nothing changed. A name the model already uses for another parameter → left out; instance/type, removed categories, "can vary" → aligned are never changed, only listed. `BatchProgressWindow` + `WarningSilencer`; works with no document open (`AlwaysAvailable`); the full report is a text file written as the run goes |
 
 ## How a command is built (a shared pattern — follow it in new ones)
 
@@ -552,6 +571,16 @@ if something was done"; what counts as done is the file, read back in the folder
 `IfcExport`, not in the command. Unlike the other batches, the run shows `BatchProgressWindow` (opened
 in a `using` together with the `WarningSilencer`, so it is closed and Revit's window enabled again before
 the report), and a "Stop" pressed in it ends the loop before the next model.
+
+**Exception — `BatchParametersCommand`, steps 2–7.** The "Export IFC" shape throughout — no document
+needed (`AlwaysAvailable`), the file read through a call-back while the window is open (the command keeps
+every `ParameterFileScan` it produced by path and runs the one behind the view the user confirmed, not a
+second reading), a loop over models with `BatchProgressWindow`, `WarningSilencer` and a report file written
+as the run goes (`BatchParametersLog`). Inside a model **one transaction per parameter**, as "Insert Links"
+does per link: a binding Revit refuses at commit takes only itself back. Unlike every other batch here,
+the transaction carries a failure handler that turns an **error** into a rollback (`RollBackOnError`) — see
+"Key decisions". Step 6 is per model: synchronise or save only when something was added or updated,
+otherwise relinquish. The run lives in `BatchParameters`, not in the command.
 
 ## Key decisions
 
@@ -2320,6 +2349,65 @@ the report), and a "Stop" pressed in it ends the loop before the next model.
   set `StopRequested`; the command checks it before each model — a model cannot be stopped halfway. The
   other batches ("Upload to Server", "Insert Links", "Sheets", "Link Updater") do not show it yet; wiring it
   in is `Start` before the loop, `Begin`/`Done` around each model, `StopRequested` at the top.
+- **"Parameters" reads a DiRoots ParaManager export by its ids, never by its words** (`ParaManagerFile`,
+  November 2026). The office's files are written by ParaManager in a Russian Revit 2024: categories, types and
+  groups are Russian labels ("Арматура трубопроводов", "Текст", "Механизмы"), useless to an English Revit or
+  another year. ParaManager writes its own dictionary next to the list — the hidden sheet
+  "DiRootsTranslationMapping", JSON lists in its cells: categories with `Id` (the `BuiltInCategory` value),
+  specs with `ForgeId` and discipline, groups with their `PG_…` name (`INVALID` is "Other"). The cells are
+  told apart by the ForgeId's shape, not by position — the hidden sheet's layout is ParaManager's to change.
+  Labels are matched against this Revit's own (`LabelUtils`) only where the dictionary is missing or silent.
+  The columns of the list are found by their headings. A name shared by two disciplines' specs ("Расход")
+  is settled by the row's "Discipline".
+- **A spec's ForgeTypeId version is not its identity.** The dictionary says `autodesk.spec.aec:length-2.0.1`
+  (Revit 2024); Revit 2022 calls the same spec `…length-2.0.0`. A spec is looked up among this Revit's own
+  (`SpecUtils.GetAllSpecs` plus `SpecTypeId`'s nested classes by reflection) with `ForgeTypeId.NameEquals` —
+  "excluding the version number", the comparison `==` itself uses — and this Revit's instance is the one
+  given to `ExternalDefinitionCreationOptions`. Confirmed in Revit 2022 on all five office files.
+- **A `PG_…` group name becomes a group id two ways, by year.** 2022 and 2024 still have
+  `BuiltInParameterGroup` and `ParameterUtils.GetParameterGroupTypeId` — exact, reached by reflection so the
+  2025 build compiles; 2025 removed both, and there the name is matched to a `GroupTypeId` property
+  (`IDENTITY_DATA` → `IdentityData`, `PROFILE_1` → `Profilen1` — the `n` before a trailing digit dropped).
+  The second way was checked against the first for all 120 groups in Revit 2022: no mismatch. A group not
+  found goes to "Other" with a note — it only decides where the parameter is listed.
+- **The definitions come from a shared parameter file the run writes itself**
+  (`BatchParameters.CreateDefinitionFile`), not from the office's file: a binding needs an
+  `ExternalDefinition`, the API makes one only inside a shared parameter file, and the ParaManager file
+  already carries everything a definition holds (GUID, name, spec, description, user modifiable, visible,
+  hide when no value). `SharedParametersFilename` points at it while the definitions are written, and again
+  per model only while that model's parameters are bound (`ExternalDefinition`s are valid only while their
+  file is current — the "Parameter Sets" rule), put back in a `finally` each time; the file is deleted when
+  the run ends. A description Revit refuses is dropped with a note rather than losing the parameter.
+- **"Parameters" adds; it never takes away** — and that is why it is not "Parameter Sets"' `Compare`/`ApplyOne`.
+  That button brings an open project fully in line with a set, with the user looking at every red row before
+  "Apply". Nobody looks at a batch: so a parameter a model has already (by GUID) gets only the categories it
+  lacks (`ReInsert` with the union), the file's group, and "values can vary by group instance" turned **on**
+  where the file asks. A category is never unbound, instance is never switched to type or back, and "can vary"
+  is never turned off (`SetAllowVaryBetweenGroups(false)` overwrites the group copies' values) — those are
+  listed as "differs, left as it is". A parameter new to the model gets the file's "can vary" either way: it
+  holds no values yet. A shared parameter in the model bound to nothing (brought in by a family) is bound
+  with the model's own definition. A name the model already uses for another parameter — a shared one with
+  another GUID, or one that is not shared (`ParameterElement`s; global parameters aside) — leaves the
+  parameter out of that model: two of one name are never told apart in a schedule or a tag.
+- **A "Parameters" transaction rolls itself back on an error — the one place an error is resolved for the
+  user, and deliberately.** `WarningSuppressor` and `WarningSilencer` leave errors to Revit, because resolving
+  one means choosing what Revit deletes. Here the transaction is the run's own and holds one parameter's
+  binding: rolling it back changes nothing anybody asked for, while leaving the error to Revit puts a dialog in
+  the middle of an unattended batch. `RollBackOnError` keeps the error's words for the report and returns
+  `ProceedWithRollBack`; the commit status is checked, and every binding is read back after it.
+- **`OpenToEdit` opens every workset closed, and refuses a file of an older Revit.** A project parameter is a
+  document-wide setting: nothing of the model's geometry has to load to bind one, and a model opens in seconds.
+  Binding with every workset closed was confirmed in Revit 2022 (a workshared central on disk: local copy,
+  sixteen bindings, synchronised, every workset relinquished, the central read back detached). A file saved in
+  an older Revit would be upgraded by the save — the project silently moved to a newer Revit — so it is
+  refused with "run the button from Revit <year>"; somebody's local copy (header: workshared, not central) is
+  refused too. **Not yet seen on Revit Server or a BIM360 model**, nor on a model where another user
+  holds something the binding needs: try one model of each before a whole run.
+- **"Parameters" was tested end to end in Revit 2022** (November 2026) on a plain model and a workshared
+  central made from the default template: a new parameter, one with the same GUID on fewer categories (got the
+  rest, the group and "can vary"), one bound per instance where the file says type (left, listed), one name
+  taken by another GUID (left out), a second run (everything "already as asked", the central's file untouched),
+  and the window itself (the file read, the check boxes, the status).
 
 ## Storing user settings
 
@@ -2344,9 +2432,11 @@ history, rewritten at every opening of the window, before it is shown, and for e
 opens as itself (never for a detached copy — see "Key decisions"). The batch's reports themselves are
 not kept here: they go wherever the user saves the summary.
 `viewstosheets\`, `sheetscale\` and `copyparams\` hold settings only. `serverupload\`, `linkupdater\`,
-`insertlinks\` and `ifcexport\` are both: `_settings.txt` is rewritten whenever a window of the button
-closes, and `reports\` holds one text file per batch run, written as the run goes. The .ifc files
-themselves are not kept here: they go into the folder chosen in the window.
+`insertlinks\`, `ifcexport\` and `batchparameters\` are both: `_settings.txt` is rewritten whenever a window
+of the button closes, and `reports\` holds one text file per batch run, written as the run goes. The .ifc files
+themselves are not kept here: they go into the folder chosen in the window. "Parameters" also writes a
+throwaway shared parameter file, `%TEMP%\VladTools-parameters-<guid>.txt`, deleted when the run ends — not a
+setting (see "Key decisions").
 
 `formulas.txt` — the "Add Formulas" window's formula list. Format: `Parameter name = formula`, one
 line per formula; only the **first** `=` sign splits the line (a formula may contain more —
@@ -2603,6 +2693,19 @@ version, what is exported, the four options, the model count), a "MODELS" sectio
 line per model (exported → path, size, time, REPLACED; or NOT exported: reason) with notes and dismissed
 Revit warnings indented, and the totals. Appended to after every model; never read back by the add-in.
 
+`batchparameters\_settings.txt` — the "Parameters" window's settings: `KEY = value` — `FILE` (the ParaManager
+Excel file read last; read again when the window opens), `SET` (the link set worked with last) and `MODEL`
+lines (may repeat — the list from last time, in the link-set line format, `LinkSetLibrary.Format`/`Parse`; the
+sets themselves live in `links\`). Which parameters were checked is not kept: every row that can be added starts
+checked. The server names come from and go to `links\_settings.txt`. Rewritten whenever the window closes.
+
+`batchparameters\reports\Parameters <yyyy-MM-dd HH-mm-ss>.txt` — one run's full report: a header (the file,
+every parameter with its GUID, the ones Revit would not define, the model count), a "MODELS" section with a
+time-stamped line per model (a summary — added, updated, already as asked, left out, differs, FAILED — and how
+it was written back; or NOT done: reason; or changed but NOT saved) and every outcome indented (added, updated:
+what changed, already as asked, left out: reason, differs, left as it is, FAILED, note, Revit warning,
+dismissed), and the totals. Appended to after every model; never read back by the add-in.
+
 ## Conventions
 
 - All user-visible text, XML doc comments and code comments are **in English**. Identifiers are in English too.
@@ -2733,7 +2836,15 @@ add-in did not use already (`RevitLinkType.Create`, `RevitLinkInstance.Create`, 
 `IFCVersion.IFC2x3CV2`/`IFC4RV`/`IFC4DTV`/`IFC2x3`/`IFC2x3BFM` — in RevitAPI.xml 2022 with the same
 signatures, compiled for all three. The export itself is done by the IFC exporter add-in Revit ships (or the
 "IFC for Revit" bundle that replaces it); a Revit without it throws `OptionalFunctionalityNotAvailableException`,
-which becomes the model's line in the report.
+which becomes the model's line in the report. "Parameters" uses `ExternalDefinitionCreationOptions(string,
+ForgeTypeId)` with `GUID`/`Description`/`UserModifiable`/`Visible`/`HideWhenNoValue` (`<since>2020</since>`),
+`SpecUtils.GetAllSpecs`, `ForgeTypeId.NameEquals`, `ParameterUtils.GetAllBuiltInGroups`, `GroupTypeId`,
+`LabelUtils.GetLabelForSpec`/`GetLabelForGroup`/`GetLabelForDiscipline`/`GetLabelFor(BuiltInCategory)`,
+`UnitUtils.GetDiscipline`, `BindingMap.Insert`/`ReInsert(Definition, Binding, ForgeTypeId)`,
+`InternalDefinition.SetAllowVaryBetweenGroups`, `SharedParameterElement.Lookup`/`GuidValue` and `GlobalParameter`
+— in RevitAPI.xml 2022, 2024 and 2025 with the same signatures, compiled for all three. The one member it needs
+that 2025 removed, `ParameterUtils.GetParameterGroupTypeId(BuiltInParameterGroup)`, is reached by reflection,
+with a fallback for 2025 (see "Key decisions").
 
 To add another year, the same way: build with `-p:RevitVersion=<year>` and watch for compile
 errors, not just warnings (that is how every 2024 and 2025 spot was found). First, check

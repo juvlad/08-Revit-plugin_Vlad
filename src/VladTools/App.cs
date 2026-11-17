@@ -553,6 +553,28 @@ namespace VladTools
                 iconBaseName: "exportifc",
                 availability: typeof(AlwaysAvailable));
 
+            // ───────────────── Button 25: Parameters (project) ─────────────────
+            Ribbon.AddPushButton(
+                projectPanel,
+                name: "VladTools_BatchParameters",
+                text: "Parameters",
+                commandType: typeof(BatchParametersCommand),
+                tooltip: "Adds the parameters of a DiRoots ParaManager Excel file to a whole batch of models as project parameters.",
+                longDescription:
+                    "ParaManager adds parameters to the one model that is open. Here the same Excel file it exports goes into\n" +
+                    "a whole list of models — a folder of them, files, Revit Server, BIM360, a saved set — unattended.\n\n" +
+                    "Pick the file: every parameter in it is listed with its type, instance/type, group and categories, and\n" +
+                    "checked where it can be added (a row without a GUID, or not a shared parameter, says why not). The\n" +
+                    "categories and types are taken from the file's own dictionary, so a file written in a Russian Revit works\n" +
+                    "in an English one too.\n\n" +
+                    "Each model is opened with every workset closed — a workshared one as a local copy, synchronised with central\n" +
+                    "at the end; one that is not workshared is saved over. A parameter a model already has gets only the\n" +
+                    "categories it lacks: nothing is ever unbound, and instance and type are never switched. A model saved in an\n" +
+                    "older Revit is left alone rather than upgraded. Revit is busy until the whole list is done; the full report\n" +
+                    "is written as it goes. Works with no model open.",
+                iconBaseName: "batchparameters",
+                availability: typeof(AlwaysAvailable));
+
             // ──────── Add the next project buttons here ────────
 
             return Result.Succeeded;
